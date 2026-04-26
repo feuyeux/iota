@@ -1,0 +1,39 @@
+FROM oven/bun:1.1-alpine
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache python3 bash curl git
+
+# Copy package files (Using root-level sibling structure)
+COPY iota-engine/package.json ./iota-engine/
+COPY iota-agent/package.json ./iota-agent/
+
+# Install dependencies using Bun
+RUN cd iota-engine && bun install --production && \
+    cd ../iota-agent && bun install --production
+
+# Copy built artifacts
+COPY iota-engine/dist ./iota-engine/dist
+COPY iota-agent/dist ./iota-agent/dist
+
+# Install backend CLIs using Bun (global)
+RUN bun add -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
+
+# Verify backend CLIs
+RUN claude --version && codex --version && gemini --version
+
+# Create iota user
+RUN addgroup -g 1000 iota && \
+    adduser -D -u 1000 -G iota iota
+
+USER iota
+
+# Expose HTTP port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+CMD ["bun", "iota-agent/dist/index.js"]
