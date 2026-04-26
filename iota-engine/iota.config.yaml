@@ -1,0 +1,61 @@
+engine:
+  mode: development
+  workingDirectory: .
+  defaultBackend: claude-code
+  eventRetentionHours: 24
+routing:
+  defaultBackend: claude-code
+  disabledBackends: []
+backend:
+  claudeCode:
+    executable: claude
+    timeoutMs: 600000
+  codex:
+    executable: codex
+    timeoutMs: 600000
+  gemini:
+    executable: gemini
+    timeoutMs: 600000
+  hermes:
+    executable: hermes
+    timeoutMs: 600000
+approval:
+  shell: auto
+  fileOutside: ask
+  network: auto
+  container: ask
+  mcpExternal: ask
+  privilegeEscalation: ask
+  timeoutMs: 120000
+visibility:
+  memory: preview
+  tokens: summary
+  chain: summary
+  rawProtocol: off
+  previewChars: 240
+  persistFullContent: false
+  redactSecrets: true
+storage:
+  development:
+    redis:
+      host: localhost
+      port: 6379
+      sentinels: []
+      streamPrefix: iota:events
+  production:
+    redis:
+      sentinels: []
+      host: localhost
+      port: 6379
+      streamPrefix: iota:events
+    milvus:
+      address: localhost:19530
+    minio:
+      endPoint: localhost
+      port: 9002
+      useSSL: false
+      accessKey: iota
+      secretKey: iotasecret
+      bucket: iota-snapshots
+mcp:
+  servers: []

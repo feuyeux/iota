@@ -1,0 +1,128 @@
+import type {
+  BackendName,
+  RuntimeEvent,
+  RuntimeRequest,
+  RuntimeResponse,
+} from "../event/types.js";
+
+export interface SessionRecord {
+  id: string;
+  workingDirectory: string;
+  activeBackend?: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ExecutionRecord {
+  sessionId: string;
+  executionId: string;
+  backend: BackendName;
+  status: RuntimeResponse["status"] | "queued" | "running";
+  requestHash: string;
+  prompt: string;
+  workingDirectory: string;
+  output?: string;
+  errorJson?: string;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+export interface LogQueryOptions {
+  sessionId?: string;
+  executionId?: string;
+  backend?: BackendName;
+  eventType?: RuntimeEvent["type"];
+  since?: number;
+  until?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface RuntimeLogEntry {
+  execution: ExecutionRecord;
+  event: RuntimeEvent;
+}
+
+export interface LogAggregation {
+  totalEvents: number;
+  totalExecutions: number;
+  byBackend: Record<string, number>;
+  bySession: Record<string, number>;
+  byEventType: Record<string, number>;
+  byExecution: Record<string, number>;
+  byStatus: Record<string, number>;
+}
+
+export interface LockLease {
+  key: string;
+  token: number;
+  expiresAt: number;
+}
+
+export interface StorageBackend {
+  init(): Promise<void>;
+  createSession(record: SessionRecord): Promise<void>;
+  updateSession(record: Partial<SessionRecord> & { id: string }): Promise<void>;
+  getSession(sessionId: string): Promise<SessionRecord | null>;
+  listAllSessions?(limit?: number): Promise<SessionRecord[]>;
+  appendEvent(event: RuntimeEvent): Promise<void>;
+  readEvents(
+    executionId: string,
+    afterSequence?: number,
+  ): Promise<RuntimeEvent[]>;
+  createExecution(record: ExecutionRecord): Promise<void>;
+  updateExecution(record: ExecutionRecord): Promise<void>;
+  getExecution(executionId: string): Promise<ExecutionRecord | null>;
+  listSessionExecutions(sessionId: string): Promise<ExecutionRecord[]>;
+  queryExecutions?(options?: LogQueryOptions): Promise<ExecutionRecord[]>;
+  queryLogs?(options?: LogQueryOptions): Promise<RuntimeLogEntry[]>;
+  aggregateLogs?(options?: LogQueryOptions): Promise<LogAggregation>;
+  searchMemoriesAcrossSessions?(
+    query: string,
+    limit?: number,
+  ): Promise<
+    Array<{
+      id: string;
+      sessionId: string;
+      content: string;
+      type?: string;
+      metadata?: Record<string, unknown>;
+    }>
+  >;
+  getBackendIsolationReport?(): Promise<{
+    sessions: Array<{
+      sessionId: string;
+      backend: string;
+      executionCount: number;
+    }>;
+    executions: Array<{
+      executionId: string;
+      sessionId: string;
+      backend: string;
+    }>;
+    isolation: {
+      backendSwitches: number;
+      crossBackendSessions: string[];
+    };
+  }>;
+  acquireLock(key: string, ttlMs: number): Promise<LockLease | null>;
+  renewLock(lease: LockLease, ttlMs: number): Promise<boolean>;
+  releaseLock(lease: LockLease): Promise<boolean>;
+  deleteSession(sessionId: string): Promise<void>;
+  close(): Promise<void>;
+}
+
+export function hashRequest(
+  request: Pick<
+    RuntimeRequest,
+    "prompt" | "backend" | "workingDirectory" | "systemPrompt"
+  >,
+): string {
+  return JSON.stringify({
+    backend: request.backend,
+    prompt: request.prompt,
+    systemPrompt: request.systemPrompt,
+    workingDirectory: request.workingDirectory,
+  });
+}
