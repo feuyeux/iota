@@ -1,0 +1,6 @@
+routing:
+  defaultBackend: claude-code
+engine:
+  defaultBackend: claude-code
+approval:
+  shell: auto
