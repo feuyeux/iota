@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-iota-accent: #aa3bff;
+  --color-iota-bg: #ffffff;
+  --color-iota-text: #6b6375;
+  --color-iota-heading: #08060d;
+  --color-iota-border: #e5e4e7;
+}
+
+:root {
+  --iota-accent: #aa3bff;
+  --iota-bg: #ffffff;
+  --iota-text: #6b6375;
+  --iota-heading: #08060d;
+  --iota-border: #e5e4e7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --iota-bg: #16171d;
+    --iota-text: #9ca3af;
+    --iota-heading: #f3f4f6;
+    --iota-border: #2e303a;
+  }
+}
+
+body {
+  @apply bg-[var(--iota-bg)] text-[var(--iota-text)] antialiased;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply text-[var(--iota-heading)] font-medium;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-iota-border rounded-full hover:bg-iota-text/20 transition-colors;
+}
