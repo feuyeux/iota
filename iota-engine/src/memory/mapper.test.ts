@@ -201,7 +201,11 @@ describe("MemoryMapper", () => {
       {
         backend: "claude-code",
         types: [
-          { native: "conversation_context", unified: "episodic", scope: "session" },
+          {
+            native: "conversation_context",
+            unified: "episodic",
+            scope: "session",
+          },
           { native: "code_context", unified: "procedural", scope: "project" },
           { native: "user_preferences", unified: "factual", scope: "user" },
           { native: "project_context", unified: "strategic", scope: "project" },
@@ -220,7 +224,11 @@ describe("MemoryMapper", () => {
         backend: "gemini",
         types: [
           { native: "interaction_log", unified: "episodic", scope: "session" },
-          { native: "execution_patterns", unified: "procedural", scope: "project" },
+          {
+            native: "execution_patterns",
+            unified: "procedural",
+            scope: "project",
+          },
           { native: "entity_knowledge", unified: "factual", scope: "user" },
           { native: "goal_tracking", unified: "strategic", scope: "project" },
         ],
@@ -231,7 +239,11 @@ describe("MemoryMapper", () => {
           { native: "dialogue_memory", unified: "episodic", scope: "session" },
           { native: "skill_memory", unified: "procedural", scope: "project" },
           { native: "profile_memory", unified: "factual", scope: "user" },
-          { native: "intention_memory", unified: "strategic", scope: "project" },
+          {
+            native: "intention_memory",
+            unified: "strategic",
+            scope: "project",
+          },
         ],
       },
     ];

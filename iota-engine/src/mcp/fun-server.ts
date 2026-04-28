@@ -53,13 +53,48 @@ const TOOLS: Array<{
   attribute: string;
   examples: string[];
 }> = [
-  { name: "cpp",        description: "随机返回一个动作词（中文）",     attribute: "action",    examples: ["睡觉","奔跑","喝水","吃饭","捕捉","发呆"] },
-  { name: "typescript", description: "随机返回一个颜色名（英文）",     attribute: "color",     examples: ["red","blue","green","yellow","black","white"] },
-  { name: "rust",       description: "随机返回一种材质名（英文）",     attribute: "material",  examples: ["wood","metal","glass","plastic","stone"] },
-  { name: "zig",        description: "随机返回一个尺寸词（中文）",     attribute: "size",      examples: ["大","中","小"] },
-  { name: "java",       description: "随机返回一种动物名（中文）",     attribute: "animal",    examples: ["猫","狗","鸟"] },
-  { name: "python",     description: "随机返回 1-100 的整数",         attribute: "lengthCm",  examples: ["42","7","99"] },
-  { name: "go",         description: "随机返回一种形状名（英文）",     attribute: "toyShape",  examples: ["circle","square","triangle","star","hexagon"] },
+  {
+    name: "cpp",
+    description: "随机返回一个动作词（中文）",
+    attribute: "action",
+    examples: ["睡觉", "奔跑", "喝水", "吃饭", "捕捉", "发呆"],
+  },
+  {
+    name: "typescript",
+    description: "随机返回一个颜色名（英文）",
+    attribute: "color",
+    examples: ["red", "blue", "green", "yellow", "black", "white"],
+  },
+  {
+    name: "rust",
+    description: "随机返回一种材质名（英文）",
+    attribute: "material",
+    examples: ["wood", "metal", "glass", "plastic", "stone"],
+  },
+  {
+    name: "zig",
+    description: "随机返回一个尺寸词（中文）",
+    attribute: "size",
+    examples: ["大", "中", "小"],
+  },
+  {
+    name: "java",
+    description: "随机返回一种动物名（中文）",
+    attribute: "animal",
+    examples: ["猫", "狗", "鸟"],
+  },
+  {
+    name: "python",
+    description: "随机返回 1-100 的整数",
+    attribute: "lengthCm",
+    examples: ["42", "7", "99"],
+  },
+  {
+    name: "go",
+    description: "随机返回一种形状名（英文）",
+    attribute: "toyShape",
+    examples: ["circle", "square", "triangle", "star", "hexagon"],
+  },
 ];
 
 const toolDefs = TOOLS.map((t) => ({

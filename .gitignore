@@ -14,3 +14,10 @@ hermes.env
 .kiro/
 .vscode/
 __pycache__/
+
+# iota-fun local build outputs. Runtime cache lives in $HOME/.iota/iota-fun.
+iota-skill/pet-generator/iota-fun/cpp/random_action
+iota-skill/pet-generator/iota-fun/cpp/random_action_runner
+iota-skill/pet-generator/iota-fun/go/random_shape_runner
+iota-skill/pet-generator/iota-fun/java/*.class
+iota-skill/pet-generator/iota-fun/rust/random_material

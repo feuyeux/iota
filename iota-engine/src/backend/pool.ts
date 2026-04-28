@@ -31,9 +31,10 @@ export class BackendPool {
     private readonly workingDirectory: string,
     private readonly configStore?: RedisConfigStore,
   ) {
-    this.backends.set("claude-code", new ClaudeCodeAdapter());
-    this.backends.set("codex", new CodexAdapter());
-    this.backends.set("gemini", new GeminiAdapter());
+    const mcpServers = config.mcp?.servers ?? [];
+    this.backends.set("claude-code", new ClaudeCodeAdapter(mcpServers));
+    this.backends.set("codex", new CodexAdapter(mcpServers));
+    this.backends.set("gemini", new GeminiAdapter(mcpServers));
     this.backends.set("hermes", new HermesAdapter(config.mcp?.servers ?? []));
     for (const name of this.backends.keys()) {
       this.breakers.set(name, new CircuitBreaker());

@@ -43,15 +43,15 @@ iota-fun/
 
 ## Supported Languages and Functions
 
-| Language | Function | Output Example | File |
-|----------|----------|----------------|------|
-| Python | `random_number()` | `42` | `python/random_number.py` |
-| TypeScript | `randomColor()` | `"blue"` | `typescript/randomColor.ts` |
-| Go | `RandomShape()` | `"circle"` | `go/random_shape.go` |
-| Rust | `random_material()` | `"metal"` | `rust/random_material.rs` |
-| Zig | `randomSize()` | `"large"` | `zig/random_size.zig` |
-| Java | `RandomAnimal.get()` | `"elephant"` | `java/RandomAnimal.java` |
-| C++ | `randomAction()` | `"jump"` | `cpp/random_action.cpp` |
+| Language   | Function             | Output Example | File                        |
+| ---------- | -------------------- | -------------- | --------------------------- |
+| Python     | `random_number()`    | `42`           | `python/random_number.py`   |
+| TypeScript | `randomColor()`      | `"blue"`       | `typescript/randomColor.ts` |
+| Go         | `RandomShape()`      | `"circle"`     | `go/random_shape.go`        |
+| Rust       | `random_material()`  | `"metal"`      | `rust/random_material.rs`   |
+| Zig        | `randomSize()`       | `"large"`      | `zig/random_size.zig`       |
+| Java       | `RandomAnimal.get()` | `"elephant"`   | `java/RandomAnimal.java`    |
+| C++        | `randomAction()`     | `"jump"`       | `cpp/random_action.cpp`     |
 
 ## Usage
 
@@ -71,10 +71,10 @@ const result = await funEngine.execute({
   timeoutMs: 30_000,
 });
 
-console.log(result.value);        // "42"
-console.log(result.command);      // "python3"
-console.log(result.args);         // ["python/random_number.py"]
-console.log(result.exitCode);     // 0
+console.log(result.value); // "42"
+console.log(result.command); // "python3"
+console.log(result.args); // ["python/random_number.py"]
+console.log(result.exitCode); // 0
 ```
 
 ### Method 2: Natural Language Routing via IotaEngine
@@ -96,7 +96,7 @@ const response = await engine.execute({
   prompt: "请用 python 随机生成 1-100 的数字",
 });
 
-console.log(response.output);  // "42"
+console.log(response.output); // "42"
 ```
 
 ### Supported Prompt Patterns
@@ -212,15 +212,15 @@ pub fn random_material() -> &'static str {
 
 To execute these functions, you need the following language runtimes installed:
 
-| Language | Required Runtime | Version Check |
-|----------|-----------------|---------------|
-| Python | `python3` | `python3 --version` |
-| TypeScript | `bun` or `node` + `ts-node` | `bun --version` |
-| Go | `go` | `go version` |
-| Rust | `rustc` | `rustc --version` |
-| Zig | `zig` | `zig version` |
-| Java | `java` + `javac` | `java --version` |
-| C++ | `g++` or `clang++` | `g++ --version` |
+| Language   | Required Runtime            | Version Check       |
+| ---------- | --------------------------- | ------------------- |
+| Python     | `python3`                   | `python3 --version` |
+| TypeScript | `bun` or `node` + `ts-node` | `bun --version`     |
+| Go         | `go`                        | `go version`        |
+| Rust       | `rustc`                     | `rustc --version`   |
+| Zig        | `zig`                       | `zig version`       |
+| Java       | `java` + `javac`            | `java --version`    |
+| C++        | `g++` or `clang++`          | `g++ --version`     |
 
 ## How It Works
 
@@ -236,15 +236,17 @@ To execute these functions, you need the following language runtimes installed:
 
 ### Command Mapping
 
-| Language | Command | Args |
-|----------|---------|------|
-| Python | `python3` | `["python/random_number.py"]` |
-| TypeScript | `bun` | `["typescript/runner.js"]` |
-| Go | `go` | `["run", "go/runner.go"]` |
-| Rust | `rustc` + binary | `["rust/runner.rs", "-o", "/tmp/runner"]` then `["/tmp/runner"]` |
-| Zig | `zig` | `["run", "zig/runner.zig"]` |
-| Java | `javac` + `java` | Compile then `["java", "-cp", "java", "RandomAnimalRunner"]` |
-| C++ | `g++` + binary | `["cpp/random_action_runner.cpp", "-o", "/tmp/runner"]` then `["/tmp/runner"]` |
+| Language   | Command                         | Args                                                                        |
+| ---------- | ------------------------------- | --------------------------------------------------------------------------- |
+| Python     | `python`                        | Inline loader for `python/random_number.py`                                 |
+| TypeScript | `node`                          | `typescript/runner.js`                                                      |
+| Go         | `go build` + cached binary      | Build to `$HOME/.iota/iota-fun`, then run cached binary                     |
+| Rust       | `rustc` + cached binary         | Build to `$HOME/.iota/iota-fun`, then run cached binary                     |
+| Zig        | `zig build-exe` + cached binary | Build to `$HOME/.iota/iota-fun`, then run cached binary                     |
+| Java       | `javac -d` + `java -cp`         | Compile classes under `$HOME/.iota/iota-fun`, then run `RandomAnimalRunner` |
+| C++        | `g++` + cached binary           | Build to `$HOME/.iota/iota-fun`, then run cached binary                     |
+
+Compiled outputs are keyed by source path, source mtime, source size, platform, and architecture. Do not commit local compiled outputs from this source tree.
 
 ## Adding New Languages
 
@@ -309,19 +311,19 @@ python3 python/random_number.py
 bun typescript/runner.js
 
 # Test Go
-go run go/runner.go
+cd go && go build -o "$HOME/.iota/iota-fun/iota-fun-go-manual" random_shape.go runner.go && "$HOME/.iota/iota-fun/iota-fun-go-manual" && cd ..
 
 # Test Rust
-rustc rust/runner.rs -o /tmp/rust_runner && /tmp/rust_runner
+cd rust && rustc runner.rs -o "$HOME/.iota/iota-fun/iota-fun-rust-manual" && "$HOME/.iota/iota-fun/iota-fun-rust-manual" && cd ..
 
 # Test Zig
-zig run zig/runner.zig
+cd zig && zig build-exe runner.zig -O ReleaseFast -femit-bin="$HOME/.iota/iota-fun/iota-fun-zig-manual" && "$HOME/.iota/iota-fun/iota-fun-zig-manual" && cd ..
 
 # Test Java
-cd java && javac RandomAnimal.java RandomAnimalRunner.java && java RandomAnimalRunner
+cd java && javac -encoding UTF-8 -d "$HOME/.iota/iota-fun/java-manual-classes" RandomAnimal.java RandomAnimalRunner.java && java -cp "$HOME/.iota/iota-fun/java-manual-classes" RandomAnimalRunner && cd ..
 
 # Test C++
-g++ cpp/random_action_runner.cpp -o /tmp/cpp_runner && /tmp/cpp_runner
+cd cpp && g++ random_action_runner.cpp -o "$HOME/.iota/iota-fun/iota-fun-cpp-manual" && "$HOME/.iota/iota-fun/iota-fun-cpp-manual" && cd ..
 ```
 
 ### Integration Testing via CLI
@@ -338,22 +340,27 @@ node dist/index.js run --backend claude-code "请用 go 随机生成一种形状
 ### Common Issues
 
 **Issue: "Command not found"**
+
 - **Cause**: Language runtime not installed
 - **Solution**: Install the required runtime (see Prerequisites)
 
 **Issue: "Permission denied"**
+
 - **Cause**: Runner file not executable
 - **Solution**: `chmod +x iota-fun/<language>/runner.*`
 
 **Issue: "Compilation failed"**
+
 - **Cause**: Syntax error or missing dependencies
 - **Solution**: Test the file directly with the language compiler
 
 **Issue: "Timeout"**
+
 - **Cause**: Function takes too long to execute
 - **Solution**: Increase `timeoutMs` parameter
 
 **Issue: "Empty output"**
+
 - **Cause**: Function doesn't print to stdout
 - **Solution**: Ensure function prints result to stdout
 
@@ -404,11 +411,11 @@ Part of the Iota project. See root LICENSE file.
 # From iota-fun/ directory
 python3 python/random_number.py
 bun typescript/runner.js
-go run go/runner.go
-rustc rust/runner.rs -o /tmp/rust_runner && /tmp/rust_runner
-zig run zig/runner.zig
-cd java && javac *.java && java RandomAnimalRunner && cd ..
-g++ cpp/random_action_runner.cpp -o /tmp/cpp_runner && /tmp/cpp_runner
+cd go && go build -o "$HOME/.iota/iota-fun/iota-fun-go-manual" random_shape.go runner.go && "$HOME/.iota/iota-fun/iota-fun-go-manual" && cd ..
+cd rust && rustc runner.rs -o "$HOME/.iota/iota-fun/iota-fun-rust-manual" && "$HOME/.iota/iota-fun/iota-fun-rust-manual" && cd ..
+cd zig && zig build-exe runner.zig -O ReleaseFast -femit-bin="$HOME/.iota/iota-fun/iota-fun-zig-manual" && "$HOME/.iota/iota-fun/iota-fun-zig-manual" && cd ..
+cd java && javac -encoding UTF-8 -d "$HOME/.iota/iota-fun/java-manual-classes" *.java && java -cp "$HOME/.iota/iota-fun/java-manual-classes" RandomAnimalRunner && cd ..
+cd cpp && g++ random_action_runner.cpp -o "$HOME/.iota/iota-fun/iota-fun-cpp-manual" && "$HOME/.iota/iota-fun/iota-fun-cpp-manual" && cd ..
 ```
 
 ### Expected Outputs

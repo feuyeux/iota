@@ -1,8 +1,13 @@
 import { ErrorCode } from "../error/codes.js";
 import { SubprocessBackendAdapter } from "./subprocess.js";
 import { composeEffectivePrompt } from "./prompt-composer.js";
+import {
+  buildClaudeAllowedMcpTools,
+  buildClaudeMcpConfig,
+} from "./mcp-config.js";
 import type {
   BackendName,
+  McpServerDescriptor,
   RuntimeEvent,
   RuntimeRequest,
 } from "../event/types.js";
@@ -16,15 +21,14 @@ import type {
 export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
   private configuredModel?: string;
 
-  constructor() {
+  constructor(private readonly mcpServers: McpServerDescriptor[] = []) {
     super({
       name: "claude-code",
       defaultExecutable: "claude",
       processMode: "per-execution",
       capabilities: {
         sandbox: false,
-        // Per-execution mode cannot receive mid-execution MCP tool_result via stdin
-        mcp: false,
+        mcp: true,
         mcpResponseChannel: false,
         acp: false,
         streaming: true,
@@ -39,18 +43,31 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
         stdoutMode: "ndjson",
         stderrCaptured: true,
       },
-      buildArgs: () => [
-        "--print",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--bare",
-        "--permission-mode",
-        "auto",
-      ],
+      buildArgs: () => this.buildClaudeArgs(),
       buildInput: (request) => composeEffectivePrompt(request, this) + "\n",
       mapNativeEvent: mapClaudeEvent,
     });
+  }
+
+  private buildClaudeArgs(): string[] {
+    const args = [
+      "--print",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--bare",
+      "--permission-mode",
+      "auto",
+    ];
+    const mcpConfig = buildClaudeMcpConfig(this.mcpServers);
+    if (mcpConfig) {
+      args.push("--mcp-config", mcpConfig, "--strict-mcp-config");
+    }
+    const allowedTools = buildClaudeAllowedMcpTools(this.mcpServers);
+    if (allowedTools.length > 0) {
+      args.push("--allowedTools", allowedTools.join(","));
+    }
+    return args;
   }
 
   async init(config: import("./interface.js").BackendConfig): Promise<void> {
@@ -73,7 +90,7 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
         const settingsPath = config.env?.CLAUDE_SETTINGS_PATH ?? "unknown";
         console.warn(
           `[claude-code] Failed to load settings from ${settingsPath}:`,
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error ? error.message : String(error),
         );
       }
     }
@@ -84,7 +101,8 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
     }
 
     // Extract model from env
-    this.configuredModel = config.env?.ANTHROPIC_MODEL || config.env?.CLAUDE_MODEL;
+    this.configuredModel =
+      config.env?.ANTHROPIC_MODEL || config.env?.CLAUDE_MODEL;
 
     return super.init(config);
   }

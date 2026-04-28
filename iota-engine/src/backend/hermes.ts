@@ -28,7 +28,13 @@ function toHermesMcpServer(s: McpServerDescriptor): Record<string, unknown> {
   } else {
     env = [];
   }
-  return { name: s.name, type: "stdio", command: s.command, args: s.args ?? [], env };
+  return {
+    name: s.name,
+    type: "stdio",
+    command: s.command,
+    args: s.args ?? [],
+    env,
+  };
 }
 
 /**
@@ -97,16 +103,18 @@ export class HermesAdapter extends SubprocessBackendAdapter {
         if (!sessionMap.has(request.sessionId)) {
           const newReqId = `${request.executionId}:new`;
           pendingNewSessions.set(newReqId, request.sessionId);
-          const hermesMcpServers = (self.adapter?.mcpServers ?? []).map(toHermesMcpServer);
-          console.debug(`[iota-mcp] session/new mcpServers=[${hermesMcpServers.map((s) => (s as {name:string}).name).join(", ")}] (global hermes config used for tool discovery)`);
+          const hermesMcpServers = (self.adapter?.mcpServers ?? []).map(
+            toHermesMcpServer,
+          );
+          console.debug(
+            `[iota-mcp] session/new mcpServers=[${hermesMcpServers.map((s) => (s as { name: string }).name).join(", ")}] (global hermes config used for tool discovery)`,
+          );
           messages += encodeAcp({
             id: newReqId,
             method: "session/new",
             params: {
               cwd: request.workingDirectory || process.cwd(),
-              // Note: per-session mcpServers may not override global hermes MCP config.
-              // Tools registered via `hermes mcp add` are always available.
-              mcpServers: [],
+              mcpServers: hermesMcpServers,
             },
           });
           // Can't send session/prompt yet — hermes sessionId unknown.
@@ -123,7 +131,12 @@ export class HermesAdapter extends SubprocessBackendAdapter {
           method: "session/prompt",
           params: {
             sessionId: sessionMap.get(request.sessionId)!,
-            prompt: [{ type: "text", text: composeEffectivePrompt(request, self.adapter) }],
+            prompt: [
+              {
+                type: "text",
+                text: composeEffectivePrompt(request, self.adapter),
+              },
+            ],
           },
         });
         return messages;
@@ -465,16 +478,13 @@ function mapHermesEvent(
       backend,
       sequence: 0,
       timestamp:
-        typeof memory.timestamp === "number"
-          ? memory.timestamp
-          : Date.now(),
+        typeof memory.timestamp === "number" ? memory.timestamp : Date.now(),
       data: {
         nativeType:
           typeof memory.nativeType === "string"
             ? memory.nativeType
             : "dialogue_memory",
-        content:
-          typeof memory.content === "string" ? memory.content : "",
+        content: typeof memory.content === "string" ? memory.content : "",
         metadata:
           typeof memory.metadata === "object" && memory.metadata !== null
             ? (memory.metadata as Record<string, unknown>)

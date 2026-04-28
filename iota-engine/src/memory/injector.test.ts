@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MemoryInjector, injectMemory, injectMemoryWithVisibility } from "./injector.js";
+import {
+  MemoryInjector,
+  injectMemory,
+  injectMemoryWithVisibility,
+} from "./injector.js";
 import { MemoryStorage, type MemoryStorageBackend } from "./storage.js";
 import type { MemoryQuery, StoredMemory, MemoryContext } from "./types.js";
 import type { RuntimeContext } from "../event/types.js";
@@ -16,8 +20,15 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
 
   async loadUnifiedMemories(query: MemoryQuery): Promise<StoredMemory[]> {
     return this.memories
-      .filter((m) => m.type === query.type && m.scope === query.scope && m.scopeId === query.scopeId)
-      .filter((m) => !query.minConfidence || m.confidence >= query.minConfidence)
+      .filter(
+        (m) =>
+          m.type === query.type &&
+          m.scope === query.scope &&
+          m.scopeId === query.scopeId,
+      )
+      .filter(
+        (m) => !query.minConfidence || m.confidence >= query.minConfidence,
+      )
       .slice(0, query.limit ?? 100);
   }
 
@@ -27,7 +38,9 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
 
   async touchUnifiedMemories(): Promise<void> {}
 
-  async searchUnifiedMemories(): Promise<Array<StoredMemory & { score?: number }>> {
+  async searchUnifiedMemories(): Promise<
+    Array<StoredMemory & { score?: number }>
+  > {
     return [];
   }
 
@@ -57,7 +70,11 @@ describe("MemoryInjector", () => {
           scope: "session",
           scopeId: "session_1",
           content: "User asked about Redis",
-          source: { backend: "claude-code", nativeType: "conversation_context", executionId: "exec_1" },
+          source: {
+            backend: "claude-code",
+            nativeType: "conversation_context",
+            executionId: "exec_1",
+          },
           metadata: {},
           confidence: 0.9,
           timestamp: now,
@@ -73,7 +90,11 @@ describe("MemoryInjector", () => {
           scope: "project",
           scopeId: "/project",
           content: "Use docker-compose up",
-          source: { backend: "claude-code", nativeType: "code_context", executionId: "exec_2" },
+          source: {
+            backend: "claude-code",
+            nativeType: "code_context",
+            executionId: "exec_2",
+          },
           metadata: {},
           confidence: 0.85,
           timestamp: now,
@@ -89,7 +110,11 @@ describe("MemoryInjector", () => {
           scope: "user",
           scopeId: "user_1",
           content: "User is backend engineer",
-          source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_3" },
+          source: {
+            backend: "claude-code",
+            nativeType: "user_preferences",
+            executionId: "exec_3",
+          },
           metadata: {},
           confidence: 0.95,
           timestamp: now,
@@ -105,7 +130,11 @@ describe("MemoryInjector", () => {
           scope: "project",
           scopeId: "/project",
           content: "Plan to add OpenTelemetry",
-          source: { backend: "claude-code", nativeType: "project_context", executionId: "exec_4" },
+          source: {
+            backend: "claude-code",
+            nativeType: "project_context",
+            executionId: "exec_4",
+          },
           metadata: {},
           confidence: 0.88,
           timestamp: now,
@@ -140,7 +169,11 @@ describe("MemoryInjector", () => {
         scope: "project",
         scopeId: "/working/dir",
         content: "Test memory",
-        source: { backend: "claude-code", nativeType: "code_context", executionId: "exec_1" },
+        source: {
+          backend: "claude-code",
+          nativeType: "code_context",
+          executionId: "exec_1",
+        },
         metadata: {},
         confidence: 0.85,
         timestamp: now,
@@ -169,7 +202,11 @@ describe("MemoryInjector", () => {
         scope: "user",
         scopeId: "default",
         content: "Default user memory",
-        source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_1" },
+        source: {
+          backend: "claude-code",
+          nativeType: "user_preferences",
+          executionId: "exec_1",
+        },
         metadata: {},
         confidence: 0.9,
         timestamp: now,
@@ -202,7 +239,11 @@ describe("MemoryInjector", () => {
             scope: "session",
             scopeId: "session_1",
             content: "User asked about Redis",
-            source: { backend: "claude-code", nativeType: "conversation_context", executionId: "exec_1" },
+            source: {
+              backend: "claude-code",
+              nativeType: "conversation_context",
+              executionId: "exec_1",
+            },
             metadata: {},
             confidence: 0.9,
             timestamp: now,
@@ -220,7 +261,11 @@ describe("MemoryInjector", () => {
             scope: "project",
             scopeId: "/project",
             content: "Use docker-compose up",
-            source: { backend: "claude-code", nativeType: "code_context", executionId: "exec_2" },
+            source: {
+              backend: "claude-code",
+              nativeType: "code_context",
+              executionId: "exec_2",
+            },
             metadata: {},
             confidence: 0.85,
             timestamp: now,
@@ -238,7 +283,11 @@ describe("MemoryInjector", () => {
             scope: "user",
             scopeId: "user_1",
             content: "User is backend engineer",
-            source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_3" },
+            source: {
+              backend: "claude-code",
+              nativeType: "user_preferences",
+              executionId: "exec_3",
+            },
             metadata: {},
             confidence: 0.95,
             timestamp: now,
@@ -256,7 +305,11 @@ describe("MemoryInjector", () => {
             scope: "project",
             scopeId: "/project",
             content: "Plan to add OpenTelemetry",
-            source: { backend: "claude-code", nativeType: "project_context", executionId: "exec_4" },
+            source: {
+              backend: "claude-code",
+              nativeType: "project_context",
+              executionId: "exec_4",
+            },
             metadata: {},
             confidence: 0.88,
             timestamp: now,
@@ -303,7 +356,11 @@ describe("MemoryInjector", () => {
             scope: "session",
             scopeId: "session_1",
             content: "Test memory",
-            source: { backend: "claude-code", nativeType: "conversation_context", executionId: "exec_1" },
+            source: {
+              backend: "claude-code",
+              nativeType: "conversation_context",
+              executionId: "exec_1",
+            },
             metadata: {},
             confidence: 0.9,
             timestamp: now,
@@ -346,7 +403,11 @@ describe("MemoryInjector", () => {
             scope: "user",
             scopeId: "user_1",
             content: "User is backend engineer",
-            source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_1" },
+            source: {
+              backend: "claude-code",
+              nativeType: "user_preferences",
+              executionId: "exec_1",
+            },
             metadata: {},
             confidence: 0.95,
             timestamp: now,
@@ -389,7 +450,11 @@ describe("MemoryInjector", () => {
             scope: "user",
             scopeId: "user_1",
             content: longContent,
-            source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_1" },
+            source: {
+              backend: "claude-code",
+              nativeType: "user_preferences",
+              executionId: "exec_1",
+            },
             metadata: {},
             confidence: 0.95,
             timestamp: now,
@@ -405,7 +470,11 @@ describe("MemoryInjector", () => {
             scope: "user",
             scopeId: "user_1",
             content: longContent,
-            source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_2" },
+            source: {
+              backend: "claude-code",
+              nativeType: "user_preferences",
+              executionId: "exec_2",
+            },
             metadata: {},
             confidence: 0.9,
             timestamp: now,
@@ -448,7 +517,11 @@ describe("MemoryInjector", () => {
             scope: "user",
             scopeId: "user_1",
             content: "Short memory",
-            source: { backend: "claude-code", nativeType: "user_preferences", executionId: "exec_1" },
+            source: {
+              backend: "claude-code",
+              nativeType: "user_preferences",
+              executionId: "exec_1",
+            },
             metadata: {},
             confidence: 0.95,
             timestamp: now,

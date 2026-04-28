@@ -1,8 +1,13 @@
 import { ErrorCode } from "../error/codes.js";
 import { SubprocessBackendAdapter } from "./subprocess.js";
 import { composeEffectivePrompt } from "./prompt-composer.js";
+import {
+  cleanupGeneratedSettings,
+  writeGeminiSystemSettings,
+} from "./mcp-config.js";
 import type {
   BackendName,
+  McpServerDescriptor,
   RuntimeEvent,
   RuntimeRequest,
 } from "../event/types.js";
@@ -14,18 +19,16 @@ import type {
  */
 export class GeminiAdapter extends SubprocessBackendAdapter {
   private configuredModel?: string;
+  private generatedSystemSettingsPath?: string;
 
-  constructor() {
+  constructor(private readonly mcpServers: McpServerDescriptor[] = []) {
     super({
       name: "gemini",
       defaultExecutable: "gemini",
       processMode: "per-execution",
       capabilities: {
         sandbox: false,
-        // Design includes Gemini in MCP Router scope, but per-execution subprocess
-        // cannot receive tool_result mid-execution. Set false until Gemini CLI supports
-        // long-lived/interactive mode with stdin response channel.
-        mcp: false,
+        mcp: true,
         mcpResponseChannel: false,
         acp: false,
         streaming: true,
@@ -40,24 +43,52 @@ export class GeminiAdapter extends SubprocessBackendAdapter {
         stdoutMode: "ndjson",
         stderrCaptured: true,
       },
-      buildArgs: (request) => [
-        "--output-format",
-        "stream-json",
-        "--skip-trust",
-        "--prompt",
-        composeEffectivePrompt(request, this),
-      ],
+      buildArgs: (request) => this.buildGeminiArgs(request),
       mapNativeEvent: mapGeminiEvent,
     });
   }
 
   async init(config: import("./interface.js").BackendConfig): Promise<void> {
+    cleanupGeneratedSettings(this.generatedSystemSettingsPath);
+    this.generatedSystemSettingsPath = writeGeminiSystemSettings(
+      this.mcpServers,
+    );
     this.configuredModel = config.env?.GEMINI_MODEL || config.env?.GOOGLE_MODEL;
-    return super.init(config);
+    return super.init({
+      ...config,
+      env: {
+        ...(config.env ?? {}),
+        ...(this.generatedSystemSettingsPath
+          ? {
+              GEMINI_CLI_SYSTEM_SETTINGS_PATH: this.generatedSystemSettingsPath,
+            }
+          : {}),
+      },
+    });
   }
 
   getModel(): string | undefined {
     return this.configuredModel;
+  }
+
+  async destroy(): Promise<void> {
+    await super.destroy();
+    cleanupGeneratedSettings(this.generatedSystemSettingsPath);
+    this.generatedSystemSettingsPath = undefined;
+  }
+
+  private buildGeminiArgs(request: RuntimeRequest): string[] {
+    const args = [
+      "--output-format",
+      "stream-json",
+      "--skip-trust",
+      "--prompt",
+      composeEffectivePrompt(request, this),
+    ];
+    for (const server of this.mcpServers) {
+      args.push("--allowed-mcp-server-names", server.name);
+    }
+    return args;
   }
 }
 

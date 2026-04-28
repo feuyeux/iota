@@ -1,38 +1,90 @@
 ---
 name: pet-generator
-description: 当用户请求"生成宠物"时，并行调用 iota-skill/pet-generator/iota-fun 下的 7 个多语言工具函数，将真实结果组合成宠物描述。
+description: 当用户请求"生成宠物"时，通过 iota-fun MCP server 并行调用 7 个多语言工具函数，将真实结果组合成宠物描述。
+triggers:
+  - 生成宠物
+  - generate pet
+  - create pet
+execution:
+  mode: mcp
+  server: iota-fun
+  parallel: true
+  tools:
+    - name: fun.cpp
+      as: action
+    - name: fun.typescript
+      as: color
+    - name: fun.rust
+      as: material
+    - name: fun.zig
+      as: size
+    - name: fun.java
+      as: animal
+    - name: fun.python
+      as: lengthCm
+    - name: fun.go
+      as: toyShape
+output:
+  template: |
+    一只正在{{action}}的、{{color}}的、{{material}}感的、{{size}}号的{{animal}}，抱着一个 {{lengthCm}} 厘米、{{toyShape}} 的飞盘。
+
+    属性：
+    - action: {{action}}
+    - color: {{color}}
+    - material: {{material}}
+    - size: {{size}}
+    - animal: {{animal}}
+    - lengthCm: {{lengthCm}}
+    - toyShape: {{toyShape}}
+failurePolicy: report
 ---
 
 # Pet Generator
 
 ## Purpose
 
-当请求中包含"生成宠物"时，通过**并行调用 `fun.*` 工具**获取真实的随机属性值，组合成一只完整的宠物描述。
+当请求中包含"生成宠物"时，通过**并行调用 `fun.*` MCP 工具**获取真实的随机属性值，组合成一只完整的宠物描述。IotaEngine 按 frontmatter 中的 `execution` 结构化声明编排 MCP 调用；backend LLM 只在普通 MCP 请求路径中自行调用工具。
 
 **重要：不要凭空编造属性值，不要使用文档中的示例值。** 每个属性必须来自对应工具的真实调用结果。
 
 ## Available Tools
 
-以下工具位于 `iota-skill/pet-generator/iota-fun/` 目录下，由 iota-engine 提供，可在执行时直接调用：
+以下工具由 `iota-fun` MCP server 暴露。调用工具时只使用 `fun.*` 工具名，工具内部会执行 `iota-skill/pet-generator/iota-fun/` 目录下的真实函数：
 
-| 工具名 | 返回属性 | 示例输出 |
-|--------|---------|---------|
-| `fun.cpp` | action（动作） | `睡觉` / `奔跑` / `喝水` / `吃饭` / `捕捉` / `发呆` |
-| `fun.typescript` | color（颜色） | `red` / `blue` / `green` / `yellow` / `black` / `white` |
-| `fun.rust` | material（材质） | `wood` / `metal` / `glass` / `plastic` / `stone` |
-| `fun.zig` | size（尺寸） | `大` / `中` / `小` |
-| `fun.java` | animal（动物） | `猫` / `狗` / `鸟` |
-| `fun.python` | lengthCm（数字） | `1`–`100` 的随机整数 |
-| `fun.go` | toyShape（形状） | `circle` / `square` / `triangle` / `star` / `hexagon` |
+| 工具名           | 返回属性         | 示例输出                                                |
+| ---------------- | ---------------- | ------------------------------------------------------- |
+| `fun.cpp`        | action（动作）   | `睡觉` / `奔跑` / `喝水` / `吃饭` / `捕捉` / `发呆`     |
+| `fun.typescript` | color（颜色）    | `red` / `blue` / `green` / `yellow` / `black` / `white` |
+| `fun.rust`       | material（材质） | `wood` / `metal` / `glass` / `plastic` / `stone`        |
+| `fun.zig`        | size（尺寸）     | `大` / `中` / `小`                                      |
+| `fun.java`       | animal（动物）   | `猫` / `狗` / `鸟`                                      |
+| `fun.python`     | lengthCm（数字） | `1`–`100` 的随机整数                                    |
+| `fun.go`         | toyShape（形状） | `circle` / `square` / `triangle` / `star` / `hexagon`   |
 
 ## Execution Instructions
 
-**重要：直接在当前会话中调用这些 MCP 工具，不要使用 `terminal`、`execute_code`、`delegate` 或任何 shell 命令来模拟工具调用结果。`fun.*` 工具必须通过 MCP 工具调用执行，不可用 echo 或其他命令替代。**
+获取全部 7 个属性的真实值，然后组合宠物描述：
 
-1. **在当前会话中直接调用** MCP 工具，调用全部 7 个：`fun.cpp`、`fun.typescript`、`fun.rust`、`fun.zig`、`fun.java`、`fun.python`、`fun.go`
-2. 等待所有工具返回真实结果
-3. 用真实结果组合宠物描述（见 Output Contract）
-4. 如某个工具调用失败，在输出中明确标注，不要用默认值替代
+| 工具 / 程序      | 获取属性 | 源文件路径                                      |
+| ---------------- | -------- | ----------------------------------------------- |
+| `fun.cpp`        | action   | `iota-skill/pet-generator/iota-fun/cpp/`        |
+| `fun.typescript` | color    | `iota-skill/pet-generator/iota-fun/typescript/` |
+| `fun.rust`       | material | `iota-skill/pet-generator/iota-fun/rust/`       |
+| `fun.zig`        | size     | `iota-skill/pet-generator/iota-fun/zig/`        |
+| `fun.java`       | animal   | `iota-skill/pet-generator/iota-fun/java/`       |
+| `fun.python`     | lengthCm | `iota-skill/pet-generator/iota-fun/python/`     |
+| `fun.go`         | toyShape | `iota-skill/pet-generator/iota-fun/go/`         |
+
+执行方式：
+
+1. 通用 `SkillRunner` 会按 frontmatter 的 `execution.tools` 调用 `fun.*` MCP 工具。
+2. 普通 backend MCP 路径中，backend LLM 也只能直接调用当前会话中的 `fun.*` MCP 工具。
+3. 不要自己读取源码、编译或执行本地文件；这些工作由 `iota-fun` MCP server 和 `IotaFunEngine` 完成。
+4. 不要用 shell、delegate 子任务或普通文件工具替代 `fun.*` MCP 调用。
+
+**并行执行**全部 7 个，等待所有结果后再组合输出。
+
+如某个执行失败，在输出中明确标注，不要用默认值替代。
 
 ## Output Contract
 

@@ -69,7 +69,9 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
         results.push({ ...memory, score });
       }
     }
-    return results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, limit);
+    return results
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, limit);
   }
 
   getAccessCount(memoryId: string): number {

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import readline from "node:readline";
+import readline, { type Interface as ReadlineInterface } from "node:readline";
 
 export interface McpClient {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -14,6 +14,8 @@ export class NoopMcpClient implements McpClient {
 
 export class StdioMcpClient implements McpClient {
   private child?: ChildProcessWithoutNullStreams;
+  private rl?: ReadlineInterface;
+  private exitPromise?: Promise<void>;
   private nextId = 1;
   private readonly pending = new Map<
     number,
@@ -36,19 +38,32 @@ export class StdioMcpClient implements McpClient {
     if (this.child) {
       return;
     }
-    this.child = spawn(this.command, this.args, {
+    const child = spawn(this.command, this.args, {
       stdio: "pipe",
       env: { ...process.env, ...this.env },
       windowsHide: true,
     });
-    const rl = readline.createInterface({ input: this.child.stdout });
-    rl.on("line", (line) => this.handleLine(line));
-    this.child.once("error", (error) => this.rejectAll(error));
-    this.child.once("exit", (code, signal) => {
-      this.rejectAll(
-        new Error(`MCP server exited with ${code ?? signal ?? "unknown"}`),
-      );
-      this.child = undefined;
+    this.child = child;
+    this.rl = readline.createInterface({ input: child.stdout });
+    this.rl.on("line", (line) => this.handleLine(line));
+    child.once("error", (error) => this.rejectAll(error));
+    this.exitPromise = new Promise<void>((resolve) => {
+      child.once("exit", (code, signal) => {
+        this.rejectAll(
+          new Error(`MCP server exited with ${code ?? signal ?? "unknown"}`),
+        );
+        this.rl?.close();
+        this.rl = undefined;
+        try {
+          child.stdin.destroy();
+        } catch {
+          /* ignore */
+        }
+        if (this.child === child) {
+          this.child = undefined;
+        }
+        resolve();
+      });
     });
 
     await this.request("initialize", {
@@ -94,8 +109,36 @@ export class StdioMcpClient implements McpClient {
   }
 
   async close(): Promise<void> {
-    this.child?.kill("SIGINT");
-    this.child = undefined;
+    const child = this.child;
+    if (!child) {
+      return;
+    }
+    const exit = this.exitPromise;
+    // Try graceful shutdown first: close stdin, then SIGINT.
+    try {
+      child.stdin.end();
+    } catch {
+      /* ignore */
+    }
+    try {
+      child.kill("SIGINT");
+    } catch {
+      /* ignore */
+    }
+    // Force-kill if it doesn't exit promptly.
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }, 500);
+    timer.unref?.();
+    try {
+      await exit;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async ensureStarted(): Promise<void> {

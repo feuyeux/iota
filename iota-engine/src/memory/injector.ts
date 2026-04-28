@@ -1,4 +1,8 @@
-import type { BackendName, MemoryBlock, RuntimeContext } from "../event/types.js";
+import type {
+  BackendName,
+  MemoryBlock,
+  RuntimeContext,
+} from "../event/types.js";
 import { estimateTokens as visEstimateTokens } from "../visibility/token-estimator.js";
 import {
   contentHash,
@@ -127,7 +131,9 @@ export function injectMemoryWithVisibility(
   const normalizedMemoryContext = normalizeMemoryContext(memoryContext);
   const ordered = flattenMemoryContext(normalizedMemoryContext);
   const minScore = options.minScore ?? 0;
-  const existingIds = new Set(context.injectedMemory.map((memory) => memory.id));
+  const existingIds = new Set(
+    context.injectedMemory.map((memory) => memory.id),
+  );
 
   const candidates: MemoryCandidateVisibility[] = ordered.map((memory) =>
     toCandidate(memory, backend, policy, showPreview, previewChars),

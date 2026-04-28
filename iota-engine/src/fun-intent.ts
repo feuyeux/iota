@@ -5,7 +5,10 @@ export interface FunIntent {
 }
 
 const RULES: Array<{ language: FunLanguage; patterns: RegExp[] }> = [
-  { language: "python", patterns: [/\bpython\b/i, /随机.*(1\s*[-~]\s*100|1\s*到\s*100)/i] },
+  {
+    language: "python",
+    patterns: [/\bpython\b/i, /随机.*(1\s*[-~]\s*100|1\s*到\s*100)/i],
+  },
   { language: "typescript", patterns: [/\btypescript\b/i, /随机.*颜色/i] },
   { language: "go", patterns: [/\bgo\b/i, /随机.*形状/i] },
   { language: "rust", patterns: [/\brust\b/i, /随机.*材质/i] },

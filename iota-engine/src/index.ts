@@ -101,7 +101,11 @@ export type { EmbeddingProvider } from "./memory/embedding.js";
 export { memoryMapper, MemoryMapper } from "./memory/mapper.js";
 export { MemoryStorage } from "./memory/storage.js";
 export type { MemoryStorageBackend } from "./memory/storage.js";
-export { MemoryInjector, injectMemory, injectMemoryWithVisibility } from "./memory/injector.js";
+export {
+  MemoryInjector,
+  injectMemory,
+  injectMemoryWithVisibility,
+} from "./memory/injector.js";
 export type { InjectOptions } from "./memory/injector.js";
 export type {
   InjectWithVisibilityOptions,

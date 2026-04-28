@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,10 @@ interface ExecutionPlan {
   args: string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  compileCommand?: string;
+  compileArgs?: string[];
+  compileCwd?: string;
+  compileEnv?: NodeJS.ProcessEnv;
   postCompileCommand?: string;
   postCompileArgs?: string[];
   postCompileEnv?: NodeJS.ProcessEnv;
@@ -46,8 +51,14 @@ export class IotaFunEngine {
   private readonly funRoot: string;
 
   constructor(srcDir: string) {
-    this.engineRoot = path.resolve(srcDir, "..");
-    this.funRoot = path.resolve(this.engineRoot, "..", "iota-skill", "pet-generator", "iota-fun");
+    this.engineRoot = resolveEngineRoot(srcDir);
+    this.funRoot = path.resolve(
+      this.engineRoot,
+      "..",
+      "iota-skill",
+      "pet-generator",
+      "iota-fun",
+    );
   }
 
   buildPlan(language: FunLanguage): ExecutionPlan {
@@ -65,19 +76,11 @@ export class IotaFunEngine {
           cwd: path.join(this.funRoot, "typescript"),
         };
       case "go":
-        return {
-          command: "go",
-          args: ["run", "random_shape.go", "runner.go"],
-          cwd: path.join(this.funRoot, "go"),
-        };
+        return this.goPlan();
       case "rust":
         return this.rustPlan();
       case "zig":
-        return {
-          command: "zig",
-          args: ["run", "runner.zig"],
-          cwd: path.join(this.funRoot, "zig"),
-        };
+        return this.zigPlan();
       case "java":
         return this.javaPlan();
       case "cpp":
@@ -91,6 +94,16 @@ export class IotaFunEngine {
     const plan = this.buildPlan(request.language);
 
     try {
+      if (plan.compileCommand) {
+        await this.run(
+          plan.compileCommand,
+          plan.compileArgs ?? [],
+          plan.compileCwd ?? plan.cwd,
+          request,
+          plan.compileEnv ?? plan.env,
+        );
+      }
+
       let result = await this.run(
         plan.command,
         plan.args,
@@ -207,7 +220,9 @@ export class IotaFunEngine {
   }
 
   private pythonScript(): string {
-    const file = path.join(this.funRoot, "python", "random_number.py").replaceAll("\\", "\\\\");
+    const file = path
+      .join(this.funRoot, "python", "random_number.py")
+      .replaceAll("\\", "\\\\");
     return [
       "import importlib.util",
       `spec = importlib.util.spec_from_file_location('random_number', r'${file}')`,
@@ -221,71 +236,139 @@ export class IotaFunEngine {
     return path.join(this.funRoot, "typescript", "runner.js");
   }
 
+  private goPlan(): ExecutionPlan {
+    const cwd = path.join(this.funRoot, "go");
+    const sources = [
+      path.join(cwd, "random_shape.go"),
+      path.join(cwd, "runner.go"),
+    ];
+    for (const source of sources) this.ensureFile(source);
+    const binary = cachedBinaryPath("go", sources);
+    if (fs.existsSync(binary)) {
+      return { command: binary, args: [], cwd };
+    }
+    return {
+      compileCommand: "go",
+      compileArgs: ["build", "-o", binary, "random_shape.go", "runner.go"],
+      compileCwd: cwd,
+      command: binary,
+      args: [],
+      cwd,
+    };
+  }
+
   private rustPlan(): ExecutionPlan {
     const cwd = path.join(this.funRoot, "rust");
-    const binary = path.join(
-      os.tmpdir(),
-      `iota-fun-rust-${process.pid}${process.platform === "win32" ? ".exe" : ""}`,
-    );
-    this.ensureFile(path.join(cwd, "runner.rs"));
-    this.ensureFile(path.join(cwd, "random_material.rs"));
+    const sources = [
+      path.join(cwd, "runner.rs"),
+      path.join(cwd, "random_material.rs"),
+    ];
+    for (const source of sources) this.ensureFile(source);
+    const binary = cachedBinaryPath("rust", sources);
+    if (fs.existsSync(binary)) {
+      return {
+        command: binary,
+        args: [],
+        cwd,
+      };
+    }
     return {
-      command: "rustc",
-      args: ["runner.rs", "-o", binary],
+      compileCommand: "rustc",
+      compileArgs: ["runner.rs", "-o", binary],
+      compileCwd: cwd,
+      command: binary,
+      args: [],
       cwd,
-      postCompileCommand: binary,
-      postCompileArgs: [],
-      cleanup: () => {
-        if (fs.existsSync(binary)) {
-          fs.unlinkSync(binary);
-        }
-      },
+    };
+  }
+
+  private zigPlan(): ExecutionPlan {
+    const cwd = path.join(this.funRoot, "zig");
+    const sources = [
+      path.join(cwd, "runner.zig"),
+      path.join(cwd, "random_size.zig"),
+    ];
+    for (const source of sources) this.ensureFile(source);
+    const binary = cachedBinaryPath("zig", sources);
+    if (fs.existsSync(binary)) {
+      return { command: binary, args: [], cwd };
+    }
+    return {
+      compileCommand: "zig",
+      compileArgs: [
+        "build-exe",
+        "runner.zig",
+        "-O",
+        "ReleaseFast",
+        `-femit-bin=${binary}`,
+      ],
+      compileCwd: cwd,
+      command: binary,
+      args: [],
+      cwd,
     };
   }
 
   private javaPlan(): ExecutionPlan {
     const cwd = path.join(this.funRoot, "java");
-    this.ensureFile(path.join(cwd, "RandomAnimal.java"));
-    this.ensureFile(path.join(cwd, "RandomAnimalRunner.java"));
+    const sources = [
+      path.join(cwd, "RandomAnimal.java"),
+      path.join(cwd, "RandomAnimalRunner.java"),
+    ];
+    for (const source of sources) this.ensureFile(source);
+    const classDir = cachedClassDirPath("java", sources);
+    const runnerClass = path.join(classDir, "RandomAnimalRunner.class");
+    if (fs.existsSync(runnerClass)) {
+      return {
+        command: "java",
+        args: ["-cp", classDir, "RandomAnimalRunner"],
+        cwd,
+      };
+    }
+    fs.mkdirSync(classDir, { recursive: true });
     return {
-      command: "javac",
-      args: ["-encoding", "UTF-8", "RandomAnimal.java", "RandomAnimalRunner.java"],
+      compileCommand: "javac",
+      compileArgs: [
+        "-encoding",
+        "UTF-8",
+        "-d",
+        classDir,
+        "RandomAnimal.java",
+        "RandomAnimalRunner.java",
+      ],
+      compileCwd: cwd,
+      command: "java",
+      args: ["-cp", classDir, "RandomAnimalRunner"],
       cwd,
-      postCompileCommand: "java",
-      postCompileArgs: ["RandomAnimalRunner"],
-      cleanup: () => {
-        for (const file of ["RandomAnimal.class", "RandomAnimalRunner.class"]) {
-          const target = path.join(cwd, file);
-          if (fs.existsSync(target)) {
-            fs.unlinkSync(target);
-          }
-        }
-      },
     };
   }
 
   private cppPlan(): ExecutionPlan {
     const cwd = path.join(this.funRoot, "cpp");
-    const binary = path.join(
-      os.tmpdir(),
-      `iota-fun-cpp-${process.pid}${process.platform === "win32" ? ".exe" : ""}`,
-    );
     const env = this.buildCppEnv();
-    this.ensureFile(path.join(cwd, "random_action.cpp"));
-    this.ensureFile(path.join(cwd, "random_action_runner.cpp"));
+    const sources = [
+      path.join(cwd, "random_action.cpp"),
+      path.join(cwd, "random_action_runner.cpp"),
+    ];
+    for (const source of sources) this.ensureFile(source);
+    const binary = cachedBinaryPath("cpp", sources);
+    if (fs.existsSync(binary)) {
+      return {
+        command: binary,
+        args: [],
+        cwd,
+        env,
+      };
+    }
     return {
-      command: "g++",
-      args: ["random_action_runner.cpp", "-o", binary],
+      compileCommand: "g++",
+      compileArgs: ["random_action_runner.cpp", "-o", binary],
+      compileCwd: cwd,
+      compileEnv: env,
+      command: binary,
+      args: [],
       cwd,
       env,
-      postCompileCommand: binary,
-      postCompileArgs: [],
-      postCompileEnv: env,
-      cleanup: () => {
-        if (fs.existsSync(binary)) {
-          fs.unlinkSync(binary);
-        }
-      },
     };
   }
 
@@ -316,6 +399,56 @@ export class IotaFunEngine {
       PATH: parts.join(path.delimiter),
     };
   }
+}
+
+function resolveEngineRoot(srcDir: string): string {
+  const resolved = path.resolve(srcDir);
+  const base = path.basename(resolved);
+  if (base === "src" || base === "dist") {
+    return path.dirname(resolved);
+  }
+
+  const parent = path.dirname(resolved);
+  const parentBase = path.basename(parent);
+  if (base === "mcp" && (parentBase === "src" || parentBase === "dist")) {
+    return path.dirname(parent);
+  }
+
+  return resolved;
+}
+
+function cachedBinaryPath(language: string, sources: string[]): string {
+  return cachedPath(
+    language,
+    sources,
+    process.platform === "win32" ? ".exe" : "",
+  );
+}
+
+function cachedClassDirPath(language: string, sources: string[]): string {
+  return cachedPath(language, sources, "-classes");
+}
+
+function cachedPath(
+  language: string,
+  sources: string[],
+  suffix: string,
+): string {
+  const hash = crypto.createHash("sha256");
+  hash.update(process.platform);
+  hash.update(process.arch);
+  for (const source of sources) {
+    const stat = fs.statSync(source);
+    hash.update(source);
+    hash.update(String(stat.mtimeMs));
+    hash.update(String(stat.size));
+  }
+  const cacheDir = path.join(os.homedir(), ".iota", "iota-fun");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  return path.join(
+    cacheDir,
+    `iota-fun-${language}-${hash.digest("hex").slice(0, 16)}${suffix}`,
+  );
 }
 
 function extractValue(stdout: string): string {

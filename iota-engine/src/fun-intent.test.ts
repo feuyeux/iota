@@ -9,9 +9,7 @@ describe("detectFunIntent", () => {
   });
 
   it("detects cpp random action prompts", () => {
-    expect(detectFunIntent("请用 c++ 随机生成一个动作")?.language).toBe(
-      "cpp",
-    );
+    expect(detectFunIntent("请用 c++ 随机生成一个动作")?.language).toBe("cpp");
   });
 
   it("returns null for normal prompts", () => {

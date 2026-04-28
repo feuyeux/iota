@@ -39,10 +39,7 @@ import { MetricsCollector } from "./metrics/collector.js";
 import { McpRouter } from "./mcp/router.js";
 import { MemoryStorage, type MemoryStorageBackend } from "./memory/storage.js";
 import { memoryMapper } from "./memory/mapper.js";
-import type {
-  BackendMemoryEvent,
-  StoredMemory,
-} from "./memory/types.js";
+import type { BackendMemoryEvent, StoredMemory } from "./memory/types.js";
 import {
   AutoApprovalHook,
   type ApprovalHook,
@@ -94,10 +91,9 @@ import type {
 import type { RuntimeRequest } from "./event/types.js";
 import type { IotaConfig } from "./config/schema.js";
 import type { AuditEntry } from "./audit/logger.js";
-import { IotaFunEngine } from "./fun-engine.js";
-import { detectFunIntent } from "./fun-intent.js";
 import { loadSkills, buildSkillPromptSection } from "./skill/loader.js";
 import type { SkillManifest } from "./skill/loader.js";
+import { matchExecutableSkill, runSkillViaMcp } from "./skill/runner.js";
 
 const ENGINE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -154,7 +150,6 @@ export class IotaEngine {
   private visibilityStore?: VisibilityStore;
   private pubsub?: RedisPubSub;
   private configStore?: RedisConfigStore;
-  private readonly funEngine = new IotaFunEngine(ENGINE_DIR);
   private skills: SkillManifest[] = [];
 
   /** Track in-flight executions for multiplexer stream reuse */
@@ -314,10 +309,15 @@ export class IotaEngine {
       });
     }
 
-    // Initialize MCP router with configured servers
+    // Initialize MCP router with configured servers from resolved config
+    // (file defaults plus Redis distributed overrides).
     const mcpServers = this.config.mcp?.servers ?? [];
     if (mcpServers.length > 0) {
       this.mcpRouter = new McpRouter(mcpServers);
+      this.mcpRouter.startHealthChecks();
+      console.debug(
+        `[iota-mcp] configured servers: ${mcpServers.map((s) => s.name).join(", ")}`,
+      );
     }
 
     // Initialize Visibility Store (Section 8)
@@ -336,9 +336,15 @@ export class IotaEngine {
       );
     }
 
-    // Load skills from iota-skill/ directory (sibling of engine root)
-    const skillRoot = path.resolve(ENGINE_DIR, "..", "..", "iota-skill");
-    this.skills = await loadSkills(skillRoot);
+    // Load skills from resolved config. If Redis/file config does not set
+    // skill.roots, keep the repository default next to iota-engine.
+    const skillRoots =
+      this.config.skill.roots.length > 0
+        ? this.config.skill.roots
+        : [path.resolve(ENGINE_DIR, "..", "..", "iota-skill")];
+    this.skills = (
+      await Promise.all(skillRoots.map((skillRoot) => loadSkills(skillRoot)))
+    ).flat();
     if (this.skills.length > 0) {
       console.debug(
         `[iota-engine] skills active: ${this.skills.map((s) => s.name).join(", ")}`,
@@ -725,7 +731,10 @@ export class IotaEngine {
     });
   }
 
-  async createSessionMemory(sessionId: string, content: string): Promise<StoredMemory> {
+  async createSessionMemory(
+    sessionId: string,
+    content: string,
+  ): Promise<StoredMemory> {
     const session = await this.requireStorage().getSession(sessionId);
     if (!session) {
       throw new IotaError({
@@ -740,7 +749,8 @@ export class IotaEngine {
         scope: "session",
         content,
         source: {
-          backend: (session.activeBackend as BackendName | undefined) ?? "claude-code",
+          backend:
+            (session.activeBackend as BackendName | undefined) ?? "claude-code",
           nativeType: "manual_session_note",
           executionId: `manual:${sessionId}`,
         },
@@ -823,7 +833,7 @@ export class IotaEngine {
         activeBackend: currentBackend,
         conversationHistory: this.dialogueMemory.getConversation(sessionId),
         activeTools: [],
-        mcpServers: [],
+        mcpServers: config.mcp.servers,
         fileManifest: [...manifest.values()],
         metadata: {},
       }),
@@ -983,7 +993,7 @@ export class IotaEngine {
         activeBackend: backend.name,
         conversationHistory: this.dialogueMemory.getConversation(sessionId),
         activeTools: [],
-        mcpServers: [],
+        mcpServers: this.requireConfig().mcp.servers,
         fileManifest: [...manifest.values()],
         metadata: {},
       }),
@@ -1032,18 +1042,6 @@ export class IotaEngine {
       const storage = engine.requireStorage();
       const eventStore = engine.requireEventStore();
       const multiplexer = engine.requireMultiplexer();
-      const funIntent = detectFunIntent(request.prompt);
-
-      if (funIntent) {
-        yield* engine.runFunExecution(
-          request,
-          requestHash,
-          existing,
-          lease,
-          funIntent.language,
-        );
-        return;
-      }
 
       const backend = engine
         .requirePool()
@@ -1155,7 +1153,7 @@ export class IotaEngine {
           activeBackend: backend.name,
           conversationHistory: request.context?.conversation ?? [],
           activeTools: [],
-          mcpServers: [],
+          mcpServers: request.context?.mcpServers ?? [],
           fileManifest: [...before.values()],
           metadata: {},
         }),
@@ -1208,155 +1206,126 @@ export class IotaEngine {
         yield evt;
       }
 
-      try {
-        for await (const rawEvent of backend.stream({
-          ...request,
-          backend: backend.name,
-        })) {
-          if (rawEvent.type === "memory") {
-            const stored = await engine.storeBackendMemoryEvent(rawEvent);
-            if (stored && visibilityCollector) {
-              visibilityCollector.recordMemoryExtraction({
-                extracted: true,
-                memoryId: stored.id,
-                type: stored.type,
-                contentHash: contentHash(stored.content),
-                estimatedTokens: Math.ceil(stored.content.length / 4),
-                persistedTo: ["redis"],
-              });
-            }
-            continue;
+      const matchedSkill = engine.matchExecutableSkill(request.prompt);
+      let handledBySkill = false;
+      if (matchedSkill) {
+        handledBySkill = true;
+        const skillExecution = runSkillViaMcp(
+          matchedSkill,
+          request,
+          backend.name,
+          {
+            mcpRouter: engine.mcpRouter,
+            assertFencingValid,
+            visibilityCollector,
+            persistEvent: (event) =>
+              engine.appendAndPublishEvent(
+                eventStore,
+                multiplexer,
+                event,
+                request,
+                assertFencingValid,
+                visibilityCollector,
+              ),
+          },
+        );
+        for (;;) {
+          const next = await skillExecution.next();
+          if (next.done) {
+            output.push(next.value.output);
+            status = next.value.status;
+            errorJson = next.value.errorJson;
+            break;
           }
+          yield next.value;
+        }
+      }
 
-          // Check for approval_request extensions from adapters (native backend approval)
-          if (
-            rawEvent.type === "extension" &&
-            rawEvent.data.name === "approval_request"
-          ) {
-            // Persist and yield the approval_request so subscribers see the request details
-            await assertFencingValid();
-            const approvalReqEvt = await eventStore.append(rawEvent);
-            await multiplexer.publish(approvalReqEvt);
-            visibilityCollector?.backfillLastSequence(approvalReqEvt.sequence);
-            visibilityCollector?.recordEventPersist(approvalReqEvt.sequence);
-            yield approvalReqEvt;
-
-            const gen = engine.handleApprovalExtension(
-              request,
-              rawEvent,
-              assertFencingValid,
-              visibilityCollector,
-            );
-            let decision: "approved" | "denied" = "approved";
-            // Yield intermediate state events (waiting_approval, running) as they happen
-            for (;;) {
-              const { value, done } = await gen.next();
-              if (done) {
-                decision = value;
-                break;
+      try {
+        if (handledBySkill) {
+          // The matched skill has already produced normalized tool and output
+          // events through its configured MCP execution plan.
+        } else {
+          for await (const rawEvent of backend.stream({
+            ...request,
+            backend: backend.name,
+          })) {
+            if (rawEvent.type === "memory") {
+              const stored = await engine.storeBackendMemoryEvent(rawEvent);
+              if (stored && visibilityCollector) {
+                visibilityCollector.recordMemoryExtraction({
+                  extracted: true,
+                  memoryId: stored.id,
+                  type: stored.type,
+                  contentHash: contentHash(stored.content),
+                  estimatedTokens: Math.ceil(stored.content.length / 4),
+                  persistedTo: ["redis"],
+                });
               }
-              yield value; // waiting_approval / running / error yielded immediately
+              continue;
             }
-            // Persist approval_decision BEFORE sending to backend (fencing-first)
-            const requestId = rawEvent.data.payload?.requestId;
-            const approvalDecisionEvt: RuntimeEvent = {
-              type: "extension",
-              sessionId: request.sessionId,
-              executionId: request.executionId,
-              backend: backend.name,
-              sequence: 0,
-              timestamp: Date.now(),
-              data: {
-                name: "approval_decision",
-                payload: { approved: decision === "approved", requestId },
-              },
-            } as RuntimeEvent;
-            await assertFencingValid();
-            const persistedDecision =
-              await eventStore.append(approvalDecisionEvt);
-            await multiplexer.publish(persistedDecision);
-            visibilityCollector?.recordEventPersist(persistedDecision.sequence);
-            // Only send native response after successful persist
-            const nativeWritten = engine.sendBackendNativeResponse(
-              backend,
-              request.executionId,
-              persistedDecision,
-            );
-            if (!nativeWritten) {
-              // Decision (approved or denied) couldn't reach backend — it will stall
-              const stallEvt = await eventStore.append({
-                type: "error",
+
+            // Check for approval_request extensions from adapters (native backend approval)
+            if (
+              rawEvent.type === "extension" &&
+              rawEvent.data.name === "approval_request"
+            ) {
+              // Persist and yield the approval_request so subscribers see the request details
+              await assertFencingValid();
+              const approvalReqEvt = await eventStore.append(rawEvent);
+              await multiplexer.publish(approvalReqEvt);
+              visibilityCollector?.backfillLastSequence(
+                approvalReqEvt.sequence,
+              );
+              visibilityCollector?.recordEventPersist(approvalReqEvt.sequence);
+              yield approvalReqEvt;
+
+              const gen = engine.handleApprovalExtension(
+                request,
+                rawEvent,
+                assertFencingValid,
+                visibilityCollector,
+              );
+              let decision: "approved" | "denied" = "approved";
+              // Yield intermediate state events (waiting_approval, running) as they happen
+              for (;;) {
+                const { value, done } = await gen.next();
+                if (done) {
+                  decision = value;
+                  break;
+                }
+                yield value; // waiting_approval / running / error yielded immediately
+              }
+              // Persist approval_decision BEFORE sending to backend (fencing-first)
+              const requestId = rawEvent.data.payload?.requestId;
+              const approvalDecisionEvt: RuntimeEvent = {
+                type: "extension",
                 sessionId: request.sessionId,
                 executionId: request.executionId,
                 backend: backend.name,
                 sequence: 0,
                 timestamp: Date.now(),
                 data: {
-                  code: ErrorCode.EXECUTION_FAILED,
-                  message: `Approval decision could not be written to ${backend.name} — backend process may be stalled`,
-                  details: { decision },
+                  name: "approval_decision",
+                  payload: { approved: decision === "approved", requestId },
                 },
-              } as RuntimeEvent);
-              await multiplexer.publish(stallEvt);
-              visibilityCollector?.recordEventPersist(stallEvt.sequence);
-              yield persistedDecision;
-              yield stallEvt;
-              status = "failed";
-              errorJson = JSON.stringify(stallEvt.data);
-              continue;
-            }
-            yield persistedDecision;
-            if (decision === "denied") {
-              status = "failed";
-              errorJson = JSON.stringify({
-                code: ErrorCode.APPROVAL_DENIED,
-                message: "Native backend approval denied",
-              });
-            }
-            continue;
-          }
-
-          // Guard: path protection, approval enforcement, MCP routing
-          // guardEvent is an async generator: it yields waiting_approval/running states
-          // before the final event (original, error, or tool_result)
-          let lastGuardEvent: RuntimeEvent = rawEvent;
-          let guardWasTransformed = false;
-          for await (const guardedEvt of engine.guardEvent(
-            request,
-            rawEvent,
-            assertFencingValid,
-            backend.capabilities.mcpResponseChannel,
-            visibilityCollector,
-          )) {
-            if (guardedEvt.type === "state") {
-              // Intermediate state events (waiting_approval, running) — yield immediately
-              yield guardedEvt;
-            } else {
-              lastGuardEvent = guardedEvt;
-              guardWasTransformed = guardedEvt !== rawEvent;
-            }
-          }
-
-          if (guardWasTransformed) {
-            if (lastGuardEvent.type === "tool_result") {
-              // MCP proxy result: persist original tool_call + the tool_result
+              } as RuntimeEvent;
               await assertFencingValid();
-              const toolCallEvt = await eventStore.append(rawEvent);
-              await multiplexer.publish(toolCallEvt);
-              visibilityCollector?.backfillLastSequence(toolCallEvt.sequence);
-              visibilityCollector?.recordEventPersist(toolCallEvt.sequence);
-              yield toolCallEvt;
-              const resultEvt = await eventStore.append(lastGuardEvent);
-              await multiplexer.publish(resultEvt);
-              visibilityCollector?.recordEventPersist(resultEvt.sequence);
-              yield resultEvt;
-              const written = engine.sendBackendNativeResponse(
+              const persistedDecision =
+                await eventStore.append(approvalDecisionEvt);
+              await multiplexer.publish(persistedDecision);
+              visibilityCollector?.recordEventPersist(
+                persistedDecision.sequence,
+              );
+              // Only send native response after successful persist
+              const nativeWritten = engine.sendBackendNativeResponse(
                 backend,
                 request.executionId,
-                lastGuardEvent,
+                persistedDecision,
               );
-              if (!written) {
-                const writeFailEvt = await eventStore.append({
+              if (!nativeWritten) {
+                // Decision (approved or denied) couldn't reach backend — it will stall
+                const stallEvt = await eventStore.append({
                   type: "error",
                   sessionId: request.sessionId,
                   executionId: request.executionId,
@@ -1365,123 +1334,204 @@ export class IotaEngine {
                   timestamp: Date.now(),
                   data: {
                     code: ErrorCode.EXECUTION_FAILED,
-                    message: `MCP tool_result could not be written to ${backend.name} — backend process may be stalled`,
-                    details: {},
+                    message: `Approval decision could not be written to ${backend.name} — backend process may be stalled`,
+                    details: { decision },
                   },
                 } as RuntimeEvent);
-                await multiplexer.publish(writeFailEvt);
-                visibilityCollector?.recordEventPersist(writeFailEvt.sequence);
-                yield writeFailEvt;
+                await multiplexer.publish(stallEvt);
+                visibilityCollector?.recordEventPersist(stallEvt.sequence);
+                yield persistedDecision;
+                yield stallEvt;
                 status = "failed";
-                errorJson = JSON.stringify(writeFailEvt.data);
+                errorJson = JSON.stringify(stallEvt.data);
+                continue;
+              }
+              yield persistedDecision;
+              if (decision === "denied") {
+                status = "failed";
+                errorJson = JSON.stringify({
+                  code: ErrorCode.APPROVAL_DENIED,
+                  message: "Native backend approval denied",
+                });
               }
               continue;
             }
-            // Denial / error — send native denial back so backend doesn't hang
-            await assertFencingValid();
-            const denied = await eventStore.append(lastGuardEvent);
-            await multiplexer.publish(denied);
-            visibilityCollector?.backfillLastSequence(denied.sequence);
-            visibilityCollector?.recordEventPersist(denied.sequence);
-            yield denied;
-            if (rawEvent.type === "tool_call") {
-              const denialWritten = engine.sendBackendNativeResponse(
-                backend,
-                request.executionId,
-                {
-                  type: "tool_result",
-                  sessionId: request.sessionId,
-                  executionId: request.executionId,
-                  backend: backend.name,
-                  sequence: 0,
-                  timestamp: Date.now(),
-                  data: {
-                    toolCallId: rawEvent.data.toolCallId,
-                    status: "error" as const,
-                    output: undefined,
-                    error:
-                      denied.type === "error"
-                        ? denied.data.message
-                        : "Denied by approval policy",
-                  },
-                } as RuntimeEvent,
-              );
-              if (!denialWritten) {
-                const writeFailEvt = await eventStore.append({
-                  type: "error",
-                  sessionId: request.sessionId,
-                  executionId: request.executionId,
-                  backend: backend.name,
-                  sequence: 0,
-                  timestamp: Date.now(),
-                  data: {
-                    code: ErrorCode.EXECUTION_FAILED,
-                    message: `Denial tool_result could not be written to ${backend.name} — backend process may be stalled`,
-                    details: {},
-                  },
-                } as RuntimeEvent);
-                await multiplexer.publish(writeFailEvt);
-                visibilityCollector?.recordEventPersist(writeFailEvt.sequence);
-                await engine.auditAction(
-                  request.sessionId,
-                  request.executionId,
-                  backend.name,
-                  "error",
-                  "failure",
-                  { message: "denial native write failed" },
-                );
-                yield writeFailEvt;
+
+            // Guard: path protection, approval enforcement, MCP routing
+            // guardEvent is an async generator: it yields waiting_approval/running states
+            // before the final event (original, error, or tool_result)
+            let lastGuardEvent: RuntimeEvent = rawEvent;
+            let guardWasTransformed = false;
+            for await (const guardedEvt of engine.guardEvent(
+              request,
+              rawEvent,
+              assertFencingValid,
+              backend.capabilities.mcpResponseChannel,
+              visibilityCollector,
+            )) {
+              if (guardedEvt.type === "state") {
+                // Intermediate state events (waiting_approval, running) — yield immediately
+                yield guardedEvt;
+              } else {
+                lastGuardEvent = guardedEvt;
+                guardWasTransformed = guardedEvt !== rawEvent;
               }
             }
-            status = "failed";
-            errorJson = JSON.stringify(
-              denied.type === "error" ? denied.data : undefined,
-            );
-            continue;
-          }
 
-          await assertFencingValid();
-          const event = await eventStore.append(lastGuardEvent);
-          await multiplexer.publish(event);
-
-          // Backfill runtimeSequence on visibility records (Finding 5)
-          visibilityCollector?.backfillLastSequence(event.sequence);
-          visibilityCollector?.recordEventPersist(event.sequence);
-
-          if (event.type === "output") {
-            output.push(event.data.content);
-            // Extract native usage from backend output events (Section 5.3)
-            if (visibilityCollector && event.data.usage) {
-              const u = event.data.usage as Record<string, unknown>;
-              visibilityCollector.setNativeUsage({
-                backend: backend.name,
-                inputTokens:
-                  typeof u.inputTokens === "number" ? u.inputTokens : undefined,
-                outputTokens:
-                  typeof u.outputTokens === "number"
-                    ? u.outputTokens
-                    : undefined,
-                totalTokens:
-                  typeof u.totalTokens === "number" ? u.totalTokens : undefined,
-                cacheReadTokens:
-                  typeof u.cacheReadTokens === "number"
-                    ? u.cacheReadTokens
-                    : undefined,
-                cacheWriteTokens:
-                  typeof u.cacheWriteTokens === "number"
-                    ? u.cacheWriteTokens
-                    : undefined,
-              });
+            if (guardWasTransformed) {
+              if (lastGuardEvent.type === "tool_result") {
+                // MCP proxy result: persist original tool_call + the tool_result
+                await assertFencingValid();
+                const toolCallEvt = await eventStore.append(rawEvent);
+                await multiplexer.publish(toolCallEvt);
+                visibilityCollector?.backfillLastSequence(toolCallEvt.sequence);
+                visibilityCollector?.recordEventPersist(toolCallEvt.sequence);
+                yield toolCallEvt;
+                const resultEvt = await eventStore.append(lastGuardEvent);
+                await multiplexer.publish(resultEvt);
+                visibilityCollector?.recordEventPersist(resultEvt.sequence);
+                yield resultEvt;
+                const written = engine.sendBackendNativeResponse(
+                  backend,
+                  request.executionId,
+                  lastGuardEvent,
+                );
+                if (!written) {
+                  const writeFailEvt = await eventStore.append({
+                    type: "error",
+                    sessionId: request.sessionId,
+                    executionId: request.executionId,
+                    backend: backend.name,
+                    sequence: 0,
+                    timestamp: Date.now(),
+                    data: {
+                      code: ErrorCode.EXECUTION_FAILED,
+                      message: `MCP tool_result could not be written to ${backend.name} — backend process may be stalled`,
+                      details: {},
+                    },
+                  } as RuntimeEvent);
+                  await multiplexer.publish(writeFailEvt);
+                  visibilityCollector?.recordEventPersist(
+                    writeFailEvt.sequence,
+                  );
+                  yield writeFailEvt;
+                  status = "failed";
+                  errorJson = JSON.stringify(writeFailEvt.data);
+                }
+                continue;
+              }
+              // Denial / error — send native denial back so backend doesn't hang
+              await assertFencingValid();
+              const denied = await eventStore.append(lastGuardEvent);
+              await multiplexer.publish(denied);
+              visibilityCollector?.backfillLastSequence(denied.sequence);
+              visibilityCollector?.recordEventPersist(denied.sequence);
+              yield denied;
+              if (rawEvent.type === "tool_call") {
+                const denialWritten = engine.sendBackendNativeResponse(
+                  backend,
+                  request.executionId,
+                  {
+                    type: "tool_result",
+                    sessionId: request.sessionId,
+                    executionId: request.executionId,
+                    backend: backend.name,
+                    sequence: 0,
+                    timestamp: Date.now(),
+                    data: {
+                      toolCallId: rawEvent.data.toolCallId,
+                      status: "error" as const,
+                      output: undefined,
+                      error:
+                        denied.type === "error"
+                          ? denied.data.message
+                          : "Denied by approval policy",
+                    },
+                  } as RuntimeEvent,
+                );
+                if (!denialWritten) {
+                  const writeFailEvt = await eventStore.append({
+                    type: "error",
+                    sessionId: request.sessionId,
+                    executionId: request.executionId,
+                    backend: backend.name,
+                    sequence: 0,
+                    timestamp: Date.now(),
+                    data: {
+                      code: ErrorCode.EXECUTION_FAILED,
+                      message: `Denial tool_result could not be written to ${backend.name} — backend process may be stalled`,
+                      details: {},
+                    },
+                  } as RuntimeEvent);
+                  await multiplexer.publish(writeFailEvt);
+                  visibilityCollector?.recordEventPersist(
+                    writeFailEvt.sequence,
+                  );
+                  await engine.auditAction(
+                    request.sessionId,
+                    request.executionId,
+                    backend.name,
+                    "error",
+                    "failure",
+                    { message: "denial native write failed" },
+                  );
+                  yield writeFailEvt;
+                }
+              }
+              status = "failed";
+              errorJson = JSON.stringify(
+                denied.type === "error" ? denied.data : undefined,
+              );
+              continue;
             }
-          }
-          if (event.type === "error") {
-            status = "failed";
-            errorJson = JSON.stringify(event.data);
-          }
 
-          // Audit tool calls and errors
-          await engine.auditEvent(request, event);
-          yield event;
+            await assertFencingValid();
+            const event = await eventStore.append(lastGuardEvent);
+            await multiplexer.publish(event);
+
+            // Backfill runtimeSequence on visibility records (Finding 5)
+            visibilityCollector?.backfillLastSequence(event.sequence);
+            visibilityCollector?.recordEventPersist(event.sequence);
+
+            if (event.type === "output") {
+              output.push(event.data.content);
+              // Extract native usage from backend output events (Section 5.3)
+              if (visibilityCollector && event.data.usage) {
+                const u = event.data.usage as Record<string, unknown>;
+                visibilityCollector.setNativeUsage({
+                  backend: backend.name,
+                  inputTokens:
+                    typeof u.inputTokens === "number"
+                      ? u.inputTokens
+                      : undefined,
+                  outputTokens:
+                    typeof u.outputTokens === "number"
+                      ? u.outputTokens
+                      : undefined,
+                  totalTokens:
+                    typeof u.totalTokens === "number"
+                      ? u.totalTokens
+                      : undefined,
+                  cacheReadTokens:
+                    typeof u.cacheReadTokens === "number"
+                      ? u.cacheReadTokens
+                      : undefined,
+                  cacheWriteTokens:
+                    typeof u.cacheWriteTokens === "number"
+                      ? u.cacheWriteTokens
+                      : undefined,
+                });
+              }
+            }
+            if (event.type === "error") {
+              status = "failed";
+              errorJson = JSON.stringify(event.data);
+            }
+
+            // Audit tool calls and errors
+            await engine.auditEvent(request, event);
+            yield event;
+          }
         }
       } catch (error) {
         status = "failed";
@@ -1532,7 +1582,7 @@ export class IotaEngine {
           },
         ],
         activeTools: [],
-        mcpServers: [],
+        mcpServers: request.context?.mcpServers ?? [],
         fileManifest: [...after.values()],
         metadata: {},
       });
@@ -1630,10 +1680,7 @@ export class IotaEngine {
         const finalOutput = output.join("");
         const finalEvents = await eventStore.replay(request.executionId);
         if (finalOutput) {
-          visibilityCollector.addOutputTokens(
-            finalOutput,
-            "assistant_output",
-          );
+          visibilityCollector.addOutputTokens(finalOutput, "assistant_output");
         }
         if (requestSpanId) {
           visibilityCollector.endSpan(requestSpanId, {
@@ -1658,25 +1705,25 @@ export class IotaEngine {
               : undefined,
           })
           .catch((err) => {
-          engine.audit
-            ?.append({
-              timestamp: Date.now(),
-              sessionId: request.sessionId,
-              executionId: request.executionId,
-              backend: backend.name,
-              action: "error",
-              result: "failure",
-              details: {
-                message: "Visibility finalize failed",
-                error: String(err),
-              },
-            })
-            .catch((auditErr: unknown) => {
-              console.warn(
-                "[iota-engine] Audit append after visibility finalize failure:",
-                auditErr,
-              );
-            });
+            engine.audit
+              ?.append({
+                timestamp: Date.now(),
+                sessionId: request.sessionId,
+                executionId: request.executionId,
+                backend: backend.name,
+                action: "error",
+                result: "failure",
+                details: {
+                  message: "Visibility finalize failed",
+                  error: String(err),
+                },
+              })
+              .catch((auditErr: unknown) => {
+                console.warn(
+                  "[iota-engine] Audit append after visibility finalize failure:",
+                  auditErr,
+                );
+              });
           });
       }
 
@@ -1744,184 +1791,24 @@ export class IotaEngine {
     return generator(this);
   }
 
-  private runFunExecution(
+  private matchExecutableSkill(prompt: string): SkillManifest | undefined {
+    return matchExecutableSkill(prompt, this.skills);
+  }
+
+  private async appendAndPublishEvent(
+    eventStore: RuntimeEventStore,
+    multiplexer: EventMultiplexer,
+    event: RuntimeEvent,
     request: RuntimeRequest,
-    requestHash: string,
-    existing: ExecutionRecord | null,
-    lease: LockLease,
-    language: import("./fun-engine.js").FunLanguage,
-  ): AsyncGenerator<RuntimeEvent> {
-    async function* generator(
-      engine: IotaEngine,
-    ): AsyncGenerator<RuntimeEvent> {
-      const storage = engine.requireStorage();
-      const eventStore = engine.requireEventStore();
-      const multiplexer = engine.requireMultiplexer();
-      const backend = request.backend ?? engine.requireConfig().routing.defaultBackend;
-      const startedAt = Date.now();
-      let status: RuntimeResponse["status"] = "completed";
-      let errorJson: string | undefined;
-      let output = "";
-
-      async function assertFencingValid(): Promise<void> {
-        if ("validateFencingToken" in storage) {
-          const valid = await (
-            storage as StorageBackend & {
-              validateFencingToken(
-                key: string,
-                token: number,
-              ): Promise<boolean>;
-            }
-          ).validateFencingToken(lease.key, lease.token);
-          if (!valid) {
-            throw new IotaError({
-              code: ErrorCode.WORKSPACE_LOCKED,
-              message:
-                "Stale fencing token — another execution has superseded this lock",
-            });
-          }
-        }
-      }
-
-      if (!existing) {
-        await assertFencingValid();
-        await storage.createExecution({
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend,
-          status: "queued",
-          requestHash,
-          prompt: request.prompt,
-          workingDirectory: request.workingDirectory,
-          startedAt,
-        });
-
-        await engine.pubsub?.publishExecutionEvent({
-          executionId: request.executionId,
-          sessionId: request.sessionId,
-          action: "started",
-          backend,
-          timestamp: startedAt,
-        });
-      }
-
-      for (const state of ["queued", "starting", "running"] as const) {
-        const evt = await eventStore.appendState(
-          request.sessionId,
-          request.executionId,
-          backend,
-          state,
-        );
-        await multiplexer.publish(evt);
-        yield evt;
-      }
-
-      const toolCall = await eventStore.append({
-        type: "tool_call",
-        sessionId: request.sessionId,
-        executionId: request.executionId,
-        backend,
-        data: {
-          toolCallId: `fun-${request.executionId}`,
-          toolName: `fun.${language}`,
-          rawToolName: `fun.${language}`,
-          arguments: { language },
-          approvalRequired: false,
-        },
-      });
-      await multiplexer.publish(toolCall);
-      yield toolCall;
-      const toolCallId = toolCall.type === "tool_call" ? toolCall.data.toolCallId : `fun-${request.executionId}`;
-
-      try {
-        const result = await engine.funEngine.execute({ language });
-        output = result.value;
-
-        const toolResult = await eventStore.append({
-          type: "tool_result",
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend,
-          data: {
-            toolCallId,
-            status: "success",
-            output: result.value,
-          },
-        });
-        await multiplexer.publish(toolResult);
-        yield toolResult;
-
-        const outEvt = await eventStore.append({
-          type: "output",
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend,
-          data: {
-            role: "assistant",
-            content: result.value,
-            format: "text",
-            final: true,
-          },
-        });
-        await multiplexer.publish(outEvt);
-        yield outEvt;
-      } catch (error) {
-        status = "failed";
-        const runtimeError = toRuntimeError(error);
-        errorJson = JSON.stringify(runtimeError);
-
-        const toolResult = await eventStore.append({
-          type: "tool_result",
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend,
-          data: {
-            toolCallId,
-            status: "error",
-            error: runtimeError.message,
-          },
-        });
-        await multiplexer.publish(toolResult);
-        yield toolResult;
-
-        const errEvt = await eventStore.append({
-          type: "error",
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend,
-          data: runtimeError,
-        });
-        await multiplexer.publish(errEvt);
-        yield errEvt;
-      }
-
-      const finalEvt = await eventStore.appendState(
-        request.sessionId,
-        request.executionId,
-        backend,
-        status,
-      );
-      await multiplexer.publish(finalEvt);
-      yield finalEvt;
-
-      await assertFencingValid();
-      const finishedAt = Date.now();
-      await storage.updateExecution({
-        sessionId: request.sessionId,
-        executionId: request.executionId,
-        backend,
-        status,
-        requestHash,
-        prompt: request.prompt,
-        workingDirectory: request.workingDirectory,
-        output,
-        errorJson,
-        startedAt,
-        finishedAt,
-      });
-    }
-
-    return generator(this);
+    assertFencingValid: () => Promise<void>,
+    vc?: VisibilityCollector,
+  ): Promise<RuntimeEvent> {
+    await assertFencingValid();
+    const persisted = await eventStore.append(event);
+    await multiplexer.publish(persisted);
+    vc?.recordEventPersist(persisted.sequence);
+    await this.auditEvent(request, persisted);
+    return persisted;
   }
 
   // ─── Request building with memory injection (Section 12.2) ────
@@ -1947,6 +1834,11 @@ export class IotaEngine {
       activeFiles: this.workingMemory
         .getActiveFiles(input.sessionId)
         .map((f) => f.path),
+      mcpServers: config.mcp.servers,
+    };
+    context = {
+      ...context,
+      mcpServers: context.mcpServers ?? config.mcp.servers,
     };
 
     // Inject unified memory from session/project/user scopes.
@@ -2200,65 +2092,14 @@ export class IotaEngine {
       }
     }
 
-    // fun.* tool routing: execute via IotaFunEngine and return tool_result
-    if (isFunTool(event.data.toolName)) {
-      const lang = event.data.toolName.slice("fun.".length) as import("./fun-engine.js").FunLanguage;
-      console.debug(`[iota-fun] guardEvent: executing fun.${lang} for tool_call ${event.data.toolCallId}`);
-      try {
-        const result = await this.funEngine.execute({ language: lang });
-        console.debug(`[iota-fun] guardEvent: fun.${lang} → "${result.value}"`);
-        yield {
-          type: "tool_result" as const,
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend: event.backend,
-          sequence: 0,
-          timestamp: Date.now(),
-          data: {
-            toolCallId: event.data.toolCallId,
-            status: "success" as const,
-            output: result.value,
-          },
-        } as RuntimeEvent;
-      } catch (error) {
-        const runtimeError = toRuntimeError(error);
-        console.debug(`[iota-fun] guardEvent: fun.${lang} failed: ${runtimeError.message}`);
-        yield {
-          type: "tool_result" as const,
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend: event.backend,
-          sequence: 0,
-          timestamp: Date.now(),
-          data: {
-            toolCallId: event.data.toolCallId,
-            status: "error" as const,
-            output: undefined,
-            error: runtimeError.message,
-          },
-        } as RuntimeEvent;
-      }
-      return;
-    }
-
     // MCP tool routing: detect MCP-prefixed tools and route through McpRouter
-    // Only proxy if backend supports receiving MCP tool_result responses
-    if (this.mcpRouter && isMcpTool(event.data.toolName)) {
+    // Only proxy if backend supports receiving MCP tool_result responses.
+    // fun.* is also an MCP tool surface exposed by the configured iota-fun server.
+    if (this.mcpRouter && isRoutableMcpTool(event.data.toolName)) {
       if (!backendCanReceiveMcpResult) {
-        // Backend cannot receive tool_result mid-execution; return error so backend doesn't hang
-        yield {
-          type: "error" as const,
-          sessionId: request.sessionId,
-          executionId: request.executionId,
-          backend: event.backend,
-          sequence: 0,
-          timestamp: Date.now(),
-          data: {
-            code: ErrorCode.EXECUTION_FAILED,
-            message: `MCP tool ${event.data.toolName} cannot be proxied: backend ${event.backend} does not support mid-execution response channel`,
-            details: { toolName: event.data.toolName },
-          },
-        } as RuntimeEvent;
+        // Per-execution CLIs run configured MCP servers inside their own process.
+        // Preserve their native tool_call/tool_result events instead of proxying.
+        yield event;
         return;
       }
       const { serverName, toolName } = parseMcpToolName(event.data.toolName);
@@ -2688,7 +2529,11 @@ export class IotaEngine {
     content: string,
   ): BackendMemoryEvent["nativeType"] {
     const lower = content.toLowerCase();
-    if (lower.includes("decided") || lower.includes("plan") || lower.includes("architecture")) {
+    if (
+      lower.includes("decided") ||
+      lower.includes("plan") ||
+      lower.includes("architecture")
+    ) {
       return backend === "claude-code"
         ? "project_context"
         : backend === "codex"
@@ -2697,7 +2542,11 @@ export class IotaEngine {
             ? "goal_tracking"
             : "intention_memory";
     }
-    if (lower.includes("use ") || lower.includes("run ") || lower.includes("command")) {
+    if (
+      lower.includes("use ") ||
+      lower.includes("run ") ||
+      lower.includes("command")
+    ) {
       return backend === "claude-code"
         ? "code_context"
         : backend === "codex"
@@ -2805,7 +2654,7 @@ function hasAuditSink(storage: StorageBackend): storage is StorageBackend & {
 
 function hasUnifiedMemoryStorage(
   storage: StorageBackend,
-) : storage is MemoryStorageBackend {
+): storage is MemoryStorageBackend {
   const candidate = storage as {
     saveUnifiedMemory?: unknown;
     loadUnifiedMemories?: unknown;
@@ -2909,10 +2758,18 @@ function isMcpTool(toolName: string): boolean {
   );
 }
 
+function isRoutableMcpTool(toolName: string): boolean {
+  return isMcpTool(toolName) || isFunTool(toolName);
+}
+
 function parseMcpToolName(toolName: string): {
   serverName: string;
   toolName: string;
 } {
+  if (isFunTool(toolName)) {
+    return { serverName: "iota-fun", toolName };
+  }
+
   // Patterns: mcp__server__tool__name, mcp:server:tool:name, mcp/server/tool/name
   // Split only on the first two separator boundaries so that additional separators
   // within the tool name are preserved (e.g. mcp__fs__read__file → server=fs, tool=read__file).
@@ -2929,7 +2786,10 @@ function parseMcpToolName(toolName: string): {
       // Only server, no tool portion → use server name as tool name
       return { serverName: rest, toolName: rest };
     }
-    return { serverName: rest.slice(0, idx), toolName: rest.slice(idx + sep.length) };
+    return {
+      serverName: rest.slice(0, idx),
+      toolName: rest.slice(idx + sep.length),
+    };
   }
   return { serverName: "unknown", toolName };
 }

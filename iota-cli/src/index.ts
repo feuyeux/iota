@@ -206,8 +206,15 @@ visibility
   .option("--json", "render raw JSON")
   .action(visibilityInteractiveCommand);
 
-program.parseAsync(process.argv).catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exitCode = 1;
-});
+program.parseAsync(process.argv).then(
+  () => {
+    // All commands run to completion; force exit so any lingering
+    // (already-cleaned-up) handles do not keep the CLI alive.
+    process.exit(process.exitCode ?? 0);
+  },
+  (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  },
+);

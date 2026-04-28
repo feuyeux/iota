@@ -1,8 +1,10 @@
 import { SubprocessBackendAdapter } from "./subprocess.js";
 import { composeEffectivePrompt } from "./prompt-composer.js";
+import { buildCodexMcpConfigArgs } from "./mcp-config.js";
 import { ErrorCode } from "../error/codes.js";
 import type {
   BackendName,
+  McpServerDescriptor,
   RuntimeEvent,
   RuntimeRequest,
 } from "../event/types.js";
@@ -16,7 +18,7 @@ import type {
 export class CodexAdapter extends SubprocessBackendAdapter {
   private configuredModel?: string;
 
-  constructor() {
+  constructor(private readonly mcpServers: McpServerDescriptor[] = []) {
     super({
       name: "codex",
       defaultExecutable: "codex",
@@ -46,6 +48,13 @@ export class CodexAdapter extends SubprocessBackendAdapter {
 
   private buildCodexArgs(_request: RuntimeRequest): string[] {
     const args = ["exec", "--json"];
+    if (this.mcpServers.length > 0) {
+      // Codex exec cancels external MCP calls in sandboxed non-interactive runs.
+      // iota-fun is already the configured MCP boundary, so allow the child MCP
+      // server to run its local language runtimes.
+      args.push("--sandbox", "danger-full-access");
+    }
+    args.push(...buildCodexMcpConfigArgs(this.mcpServers));
     try {
       const config = this.requireConfig();
       const env = config.env ?? {};
@@ -125,6 +134,9 @@ function mapCodexEvent(
       typeof value.item === "object" && value.item !== null
         ? (value.item as Record<string, unknown>)
         : {};
+    if (item.type === "mcp_tool_call") {
+      return mapCodexMcpToolCall(backend, request, item);
+    }
     if (item.type === "agent_message") {
       const text = extractCodexText(item);
       if (text) {
@@ -152,6 +164,33 @@ function mapCodexEvent(
       timestamp: Date.now(),
       data: { name: "codex_item", payload: value },
     };
+  }
+
+  if (type === "item.started") {
+    const item =
+      typeof value.item === "object" && value.item !== null
+        ? (value.item as Record<string, unknown>)
+        : {};
+    if (item.type === "mcp_tool_call") {
+      return {
+        type: "tool_call",
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend,
+        sequence: 0,
+        timestamp: Date.now(),
+        data: {
+          toolCallId: stringProp(item, "id") ?? `${request.executionId}:mcp`,
+          toolName: stringProp(item, "tool") ?? "unknown",
+          rawToolName: `${stringProp(item, "server") ?? "unknown"}/${stringProp(item, "tool") ?? "unknown"}`,
+          arguments:
+            typeof item.arguments === "object" && item.arguments !== null
+              ? (item.arguments as Record<string, unknown>)
+              : {},
+          approvalRequired: false,
+        },
+      };
+    }
   }
 
   if (type === "turn.completed") {
@@ -259,6 +298,44 @@ function mapCodexEvent(
 
   // Fall through to generic mapper
   return null;
+}
+
+function mapCodexMcpToolCall(
+  backend: BackendName,
+  request: RuntimeRequest,
+  item: Record<string, unknown>,
+): RuntimeEvent {
+  const error = stringProp(item, "error");
+  return {
+    type: "tool_result",
+    sessionId: request.sessionId,
+    executionId: request.executionId,
+    backend,
+    sequence: 0,
+    timestamp: Date.now(),
+    data: {
+      toolCallId: stringProp(item, "id") ?? `${request.executionId}:mcp`,
+      status: error ? "error" : "success",
+      output: extractCodexMcpResultText(item.result),
+      error: error ?? undefined,
+    },
+  };
+}
+
+function extractCodexMcpResultText(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const content = (result as Record<string, unknown>).content;
+  if (!Array.isArray(content)) return undefined;
+  return content
+    .map((part) =>
+      typeof part === "object" &&
+      part !== null &&
+      typeof (part as Record<string, unknown>).text === "string"
+        ? ((part as Record<string, unknown>).text as string)
+        : "",
+    )
+    .filter(Boolean)
+    .join("\n");
 }
 
 function extractUsage(usage: Record<string, unknown>): {

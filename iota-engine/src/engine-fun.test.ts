@@ -1,13 +1,14 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IotaEngine } from "./engine.js";
+import type { RuntimeBackend } from "./backend/interface.js";
 import type {
   ExecutionRecord,
   LockLease,
   SessionRecord,
   StorageBackend,
 } from "./storage/interface.js";
-import type { RuntimeEvent, RuntimeResponse } from "./event/types.js";
+import type { RuntimeEvent } from "./event/types.js";
 
 class MemoryStorage implements StorageBackend {
   private sessions = new Map<string, SessionRecord>();
@@ -89,7 +90,7 @@ describe("IotaEngine fun integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("routes fun prompt execute() through IotaFunEngine", async () => {
+  it("does not short-circuit fun prompts in the engine", async () => {
     const storage = new MemoryStorage();
     const engine = new IotaEngine({
       storage,
@@ -107,30 +108,303 @@ describe("IotaEngine fun integration", () => {
       updatedAt: Date.now(),
     });
 
-    const executeSpy = vi
-      .spyOn(
-        (engine as unknown as { funEngine: { execute: (input: unknown) => Promise<unknown> } }).funEngine,
-        "execute",
-      )
-      .mockResolvedValue({
-        language: "python",
-        command: "python",
-        args: ["-c", "print(42)"],
-        stdout: "42\n",
-        stderr: "",
-        exitCode: 0,
-        value: "42",
-      });
+    const backend: RuntimeBackend = {
+      name: "claude-code",
+      capabilities: {
+        sandbox: false,
+        mcp: true,
+        mcpResponseChannel: false,
+        acp: false,
+        streaming: true,
+        thinking: true,
+        multimodal: false,
+        maxContextTokens: 200_000,
+        promptOnlyInput: true,
+      },
+      async init() {},
+      async *stream(request) {
+        yield {
+          type: "output",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend: "claude-code",
+          sequence: 0,
+          timestamp: Date.now(),
+          data: {
+            role: "assistant",
+            content: "backend handled fun prompt",
+            format: "text",
+            final: true,
+          },
+        };
+      },
+      async execute() {
+        throw new Error("not used");
+      },
+      async interrupt() {},
+      async snapshot(sessionId) {
+        return {
+          sessionId,
+          backend: "claude-code",
+          createdAt: Date.now(),
+          payload: {},
+        };
+      },
+      async probe() {
+        return {
+          healthy: true,
+          status: "ready",
+          uptimeMs: 0,
+          activeExecutions: 0,
+        };
+      },
+      async destroy() {},
+    };
+    (engine as unknown as { pool: { get: () => RuntimeBackend } }).pool = {
+      get: () => backend,
+    };
+    (
+      engine as unknown as {
+        memoryStorage: { store: () => Promise<null> };
+      }
+    ).memoryStorage = {
+      store: async () => null,
+    };
 
     const response = await engine.execute({
       sessionId,
       prompt: "请用 python 随机生成 1-100 的数字",
     });
 
-    expect(executeSpy).toHaveBeenCalledWith({ language: "python" });
     expect(response.status).toBe("completed");
-    expect(response.output).toBe("42");
-    expect(response.events.some((event) => event.type === "tool_call")).toBe(true);
-    expect(response.events.some((event) => event.type === "tool_result")).toBe(true);
+    expect(response.output).toBe("backend handled fun prompt");
+    expect(response.events.some((event) => event.type === "tool_call")).toBe(
+      false,
+    );
+    expect(response.events.some((event) => event.type === "tool_result")).toBe(
+      false,
+    );
+  });
+
+  it("runs pet-generator through the configured iota-fun MCP server", async () => {
+    const storage = new MemoryStorage();
+    const engine = new IotaEngine({
+      storage,
+      cwd: path.resolve(__dirname, ".."),
+      workingDirectory: path.resolve(__dirname, ".."),
+    });
+    await engine.init();
+
+    const sessionId = "session-pet";
+    await storage.createSession({
+      id: sessionId,
+      workingDirectory: path.resolve(__dirname, ".."),
+      activeBackend: "claude-code",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const backend: RuntimeBackend = {
+      name: "claude-code",
+      capabilities: {
+        sandbox: false,
+        mcp: true,
+        mcpResponseChannel: false,
+        acp: false,
+        streaming: true,
+        thinking: true,
+        multimodal: false,
+        maxContextTokens: 200_000,
+        promptOnlyInput: true,
+      },
+      async init() {},
+      stream() {
+        throw new Error("backend stream should not be used for pet skill");
+      },
+      async execute() {
+        throw new Error("not used");
+      },
+      async interrupt() {},
+      async snapshot(sessionId) {
+        return {
+          sessionId,
+          backend: "claude-code",
+          createdAt: Date.now(),
+          payload: {},
+        };
+      },
+      async probe() {
+        return {
+          healthy: true,
+          status: "ready",
+          uptimeMs: 0,
+          activeExecutions: 0,
+        };
+      },
+      async destroy() {},
+    };
+    (engine as unknown as { pool: { get: () => RuntimeBackend } }).pool = {
+      get: () => backend,
+    };
+    (
+      engine as unknown as {
+        memoryStorage: { store: () => Promise<null> };
+      }
+    ).memoryStorage = {
+      store: async () => null,
+    };
+    (
+      engine as unknown as {
+        mcpRouter: {
+          listServers: () => Array<{ name: string; command: string }>;
+          callTool: (call: {
+            toolName: string;
+          }) => Promise<Record<string, unknown>>;
+        };
+      }
+    ).mcpRouter = {
+      listServers: () => [{ name: "iota-fun", command: "node" }],
+      callTool: async ({ toolName }) => ({
+        content: [
+          {
+            type: "text",
+            text:
+              {
+                "fun.cpp": "睡觉",
+                "fun.typescript": "red",
+                "fun.rust": "wood",
+                "fun.zig": "小",
+                "fun.java": "猫",
+                "fun.python": "42",
+                "fun.go": "circle",
+              }[toolName] ?? "unknown",
+          },
+        ],
+      }),
+    };
+
+    const response = await engine.execute({
+      sessionId,
+      prompt: "生成宠物",
+    });
+
+    expect(response.status).toBe("completed");
+    expect(response.output).toContain(
+      "一只正在睡觉的、red的、wood感的、小号的猫",
+    );
+    expect(
+      response.events.filter((event) => event.type === "tool_call"),
+    ).toHaveLength(7);
+    expect(
+      response.events.filter((event) => event.type === "tool_result"),
+    ).toHaveLength(7);
+  });
+
+  it("fails pet-generator when the iota-fun MCP server returns an error result", async () => {
+    const storage = new MemoryStorage();
+    const engine = new IotaEngine({
+      storage,
+      cwd: path.resolve(__dirname, ".."),
+      workingDirectory: path.resolve(__dirname, ".."),
+    });
+    await engine.init();
+
+    const sessionId = "session-pet-failure";
+    await storage.createSession({
+      id: sessionId,
+      workingDirectory: path.resolve(__dirname, ".."),
+      activeBackend: "claude-code",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const backend: RuntimeBackend = {
+      name: "claude-code",
+      capabilities: {
+        sandbox: false,
+        mcp: true,
+        mcpResponseChannel: false,
+        acp: false,
+        streaming: true,
+        thinking: true,
+        multimodal: false,
+        maxContextTokens: 200_000,
+        promptOnlyInput: true,
+      },
+      async init() {},
+      stream() {
+        throw new Error("backend stream should not be used for pet skill");
+      },
+      async execute() {
+        throw new Error("not used");
+      },
+      async interrupt() {},
+      async snapshot(sessionId) {
+        return {
+          sessionId,
+          backend: "claude-code",
+          createdAt: Date.now(),
+          payload: {},
+        };
+      },
+      async probe() {
+        return {
+          healthy: true,
+          status: "ready",
+          uptimeMs: 0,
+          activeExecutions: 0,
+        };
+      },
+      async destroy() {},
+    };
+    (engine as unknown as { pool: { get: () => RuntimeBackend } }).pool = {
+      get: () => backend,
+    };
+    (
+      engine as unknown as {
+        memoryStorage: { store: () => Promise<null> };
+      }
+    ).memoryStorage = {
+      store: async () => null,
+    };
+    (
+      engine as unknown as {
+        mcpRouter: {
+          listServers: () => Array<{ name: string; command: string }>;
+          callTool: (call: {
+            toolName: string;
+          }) => Promise<Record<string, unknown>>;
+        };
+      }
+    ).mcpRouter = {
+      listServers: () => [{ name: "iota-fun", command: "node" }],
+      callTool: async ({ toolName }) => {
+        if (toolName === "fun.zig") {
+          return {
+            content: [{ type: "text", text: "ERROR: zig not installed" }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+        };
+      },
+    };
+
+    const response = await engine.execute({
+      sessionId,
+      prompt: "生成宠物",
+    });
+
+    expect(response.status).toBe("failed");
+    expect(response.output).toContain("pet-generator 执行失败");
+    expect(response.output).toContain("fun.zig: ERROR: zig not installed");
+    expect(
+      response.events.filter(
+        (event) =>
+          event.type === "tool_result" && event.data.status === "error",
+      ),
+    ).toHaveLength(1);
   });
 });

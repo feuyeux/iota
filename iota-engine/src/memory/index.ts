@@ -1,6 +1,10 @@
 export { MemoryMapper, memoryMapper } from "./mapper.js";
 export { MemoryStorage, type MemoryStorageBackend } from "./storage.js";
-export { MemoryInjector, injectMemory, injectMemoryWithVisibility } from "./injector.js";
+export {
+  MemoryInjector,
+  injectMemory,
+  injectMemoryWithVisibility,
+} from "./injector.js";
 export type {
   BackendMemoryEvent,
   MemoryContext,

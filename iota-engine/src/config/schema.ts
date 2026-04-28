@@ -54,6 +54,9 @@ export interface IotaConfig {
   mcp: {
     servers: McpServerDescriptor[];
   };
+  skill: {
+    roots: string[];
+  };
 }
 
 export interface RedisSection {
@@ -142,6 +145,9 @@ export const DEFAULT_CONFIG: IotaConfig = {
   },
   mcp: {
     servers: [],
+  },
+  skill: {
+    roots: [],
   },
 };
 

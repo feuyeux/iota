@@ -61,4 +61,3 @@ export interface MemoryStorageBackend extends StorageBackend {
     scope?: { scope: MemoryScope; scopeId: string },
   ): Promise<Array<StoredMemory & { score?: number }>>;
 }
-

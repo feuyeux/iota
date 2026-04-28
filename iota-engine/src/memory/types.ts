@@ -63,4 +63,3 @@ export interface MemoryContext {
   factual: StoredMemory[];
   strategic: StoredMemory[];
 }
-

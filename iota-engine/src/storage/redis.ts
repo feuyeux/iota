@@ -253,7 +253,9 @@ export class RedisStorage implements StorageBackend {
     const key = `iota:memory:${memory.type}:${memory.id}`;
     const score = getMemoryIndexScore(memory);
     const tags = Array.isArray(memory.metadata.tags)
-      ? memory.metadata.tags.filter((tag): tag is string => typeof tag === "string")
+      ? memory.metadata.tags.filter(
+          (tag): tag is string => typeof tag === "string",
+        )
       : [];
     await this.client
       .multi()
@@ -277,11 +279,7 @@ export class RedisStorage implements StorageBackend {
         expiresAt: String(memory.expiresAt),
       })
       .pexpire(key, Math.max(memory.expiresAt - Date.now(), 1))
-      .zadd(
-        `iota:memories:${memory.type}:${memory.scopeId}`,
-        score,
-        memory.id,
-      )
+      .zadd(`iota:memories:${memory.type}:${memory.scopeId}`, score, memory.id)
       .sadd(`iota:memory:by-backend:${memory.source.backend}`, memory.id)
       .exec();
 
@@ -301,7 +299,10 @@ export class RedisStorage implements StorageBackend {
     for (const id of ids) {
       const data = await this.client.hgetall(`iota:memory:${query.type}:${id}`);
       if (!data.id) {
-        await this.client.zrem(`iota:memories:${query.type}:${query.scopeId}`, id);
+        await this.client.zrem(
+          `iota:memories:${query.type}:${query.scopeId}`,
+          id,
+        );
         continue;
       }
       const memory = deserializeStoredMemory(data);
@@ -409,7 +410,9 @@ export class RedisStorage implements StorageBackend {
       }
     }
 
-    return results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, limit);
+    return results
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, limit);
   }
 
   async gc(
@@ -777,7 +780,11 @@ function getMemoryIndexScore(memory: StoredMemory): number {
   if (memory.type === "episodic") {
     return memory.timestamp;
   }
-  return getTypeWeight(memory.type) + memory.confidence * 1000 + memory.timestamp / 1_000_000;
+  return (
+    getTypeWeight(memory.type) +
+    memory.confidence * 1000 +
+    memory.timestamp / 1_000_000
+  );
 }
 
 function getMemoryTypeFromIndexKey(key: string): MemoryKind {
@@ -786,7 +793,7 @@ function getMemoryTypeFromIndexKey(key: string): MemoryKind {
 }
 
 function escapeScanPattern(value: string): string {
-  return value.replace(/([*?\[\]\\])/g, "\\$1");
+  return value.replace(/([*?[\]\\])/g, "\\$1");
 }
 
 function serializeExecution(r: ExecutionRecord): Record<string, string> {

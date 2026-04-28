@@ -2,7 +2,9 @@ import type { McpServerDescriptor } from "../event/types.js";
 import { StdioMcpClient, type McpClient } from "./client.js";
 
 /** Normalize env to Record<string,string> regardless of input form. */
-function normalizeEnv(env?: Record<string, string> | string[]): Record<string, string> {
+function normalizeEnv(
+  env?: Record<string, string> | string[],
+): Record<string, string> {
   if (!env) return {};
   if (Array.isArray(env)) {
     const result: Record<string, string> = {};
@@ -26,6 +28,7 @@ export interface McpServerStatus {
 export class McpServerManager {
   private readonly servers = new Map<string, McpServerDescriptor>();
   private readonly clients = new Map<string, McpClient>();
+  private readonly pendingClients = new Map<string, Promise<McpClient>>();
   private readonly toolCache = new Map<string, string[]>();
   private readonly serverErrors = new Map<string, string>();
   private healthCheckTimer?: ReturnType<typeof setInterval>;
@@ -64,31 +67,41 @@ export class McpServerManager {
     if (existing) {
       return existing;
     }
+    const inflight = this.pendingClients.get(serverName);
+    if (inflight) {
+      return inflight;
+    }
     const descriptor = this.servers.get(serverName);
     if (!descriptor) {
       throw new Error(`MCP server ${serverName} is not registered`);
     }
-    try {
-      const client = new StdioMcpClient(
-        descriptor.command,
-        descriptor.args,
-        normalizeEnv(descriptor.env),
-      );
-      // List tools on connect and cache them
-      const toolsResult = (await client.request("tools/list")) as
-        | { tools?: Array<{ name: string }> }
-        | undefined;
-      const toolNames = toolsResult?.tools?.map((t) => t.name) ?? [];
-      this.toolCache.set(serverName, toolNames);
-      this.serverErrors.delete(serverName);
-      this.clients.set(serverName, client);
-      return client;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connection failed";
-      this.serverErrors.set(serverName, message);
-      throw error;
-    }
+    const promise = (async (): Promise<McpClient> => {
+      try {
+        const client = new StdioMcpClient(
+          descriptor.command,
+          descriptor.args,
+          normalizeEnv(descriptor.env),
+        );
+        // List tools on connect and cache them
+        const toolsResult = (await client.request("tools/list")) as
+          | { tools?: Array<{ name: string }> }
+          | undefined;
+        const toolNames = toolsResult?.tools?.map((t) => t.name) ?? [];
+        this.toolCache.set(serverName, toolNames);
+        this.serverErrors.delete(serverName);
+        this.clients.set(serverName, client);
+        return client;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Connection failed";
+        this.serverErrors.set(serverName, message);
+        throw error;
+      } finally {
+        this.pendingClients.delete(serverName);
+      }
+    })();
+    this.pendingClients.set(serverName, promise);
+    return promise;
   }
 
   /** List available tools across all connected servers */
@@ -157,6 +170,10 @@ export class McpServerManager {
 
   async close(): Promise<void> {
     this.stopHealthChecks();
+    // Wait for any in-flight client connections to settle so we don't leak
+    // their child processes.
+    await Promise.allSettled([...this.pendingClients.values()]);
+    this.pendingClients.clear();
     await Promise.all(
       [...this.clients.values()].map((client) => client.close?.()),
     );

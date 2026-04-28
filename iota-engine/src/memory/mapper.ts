@@ -1,5 +1,9 @@
 import type { BackendName, MemoryKind } from "../event/types.js";
-import type { BackendMemoryEvent, MemoryScope, UnifiedMemory } from "./types.js";
+import type {
+  BackendMemoryEvent,
+  MemoryScope,
+  UnifiedMemory,
+} from "./types.js";
 
 interface MappingRule {
   unifiedType: MemoryKind;
@@ -255,4 +259,3 @@ export class MemoryMapper {
 }
 
 export const memoryMapper = new MemoryMapper();
-

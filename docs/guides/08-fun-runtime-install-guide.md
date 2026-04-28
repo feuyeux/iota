@@ -4,23 +4,23 @@
 
 ## 当前状态
 
--  `python`: 已安装，已验证 `Python 3.14.3`
--  `node`: 已安装，已验证 `v24.13.1`
--  `go`: 已安装，已验证 `go1.26.2`
--  `rustc`: 已安装，已验证 `rustc 1.92.0`
--  `javac`: 已安装，已验证 `javac 21.0.3`
--  `zig`: 已安装，已验证 `0.16.0`
--  `g++`: 已安装在 `C:\ProgramData\mingw64\mingw64\bin\g++.exe`；编译还需要将该目录添加到 `PATH` 以便解析 MinGW 辅助二进制文件
+- `python`: 已安装，已验证 `Python 3.14.3`
+- `node`: 已安装，已验证 `v24.13.1`
+- `go`: 已安装，已验证 `go1.26.2`
+- `rustc`: 已安装，已验证 `rustc 1.92.0`
+- `javac`: 已安装，已验证 `javac 21.0.3`
+- `zig`: 已安装，已验证 `0.16.0`
+- `g++`: 已安装在 `C:\ProgramData\mingw64\mingw64\bin\g++.exe`；编译还需要将该目录添加到 `PATH` 以便解析 MinGW 辅助二进制文件
 
 ## 已验证的执行
 
--  Python 函数从 `iota-skill/pet-generator/iota-fun/python/random_number.py` 成功执行
--  TypeScript 函数从 `iota-skill/pet-generator/iota-fun/typescript/randomColor.ts` 成功执行
--  Go 函数在对齐 `iota-skill/pet-generator/iota-fun/go/` 中的包名后成功执行
--  Rust 函数在移除外部 `rand` crate 依赖后成功执行
--  Java 源代码可以编译和运行，但由于控制台编码问题，此终端仍显示中文输出乱码
--  Zig 运行时已安装；示例运行器已调整以兼容 Zig 0.16
--  C++ 函数在将 `C:\ProgramData\mingw64\mingw64\bin` 添加到 `PATH` 前面后成功执行
+- Python 函数从 `iota-skill/pet-generator/iota-fun/python/random_number.py` 成功执行
+- TypeScript 函数从 `iota-skill/pet-generator/iota-fun/typescript/randomColor.ts` 成功执行
+- Go 函数在对齐 `iota-skill/pet-generator/iota-fun/go/` 中的包名后成功执行
+- Rust 函数在移除外部 `rand` crate 依赖后成功执行
+- Java 源代码可以编译和运行，但由于控制台编码问题，此终端仍显示中文输出乱码
+- Zig 运行时已安装；示例运行器已调整以兼容 Zig 0.16
+- C++ 函数在将 `C:\ProgramData\mingw64\mingw64\bin` 添加到 `PATH` 前面后成功执行
 
 ## 已安装的工具链
 
@@ -52,10 +52,12 @@ refreshenv
 
 ## 安装尝试记录
 
--  `winget install --id zig.zig` 后来确认已安装；`zig version` 现在返回 `0.16.0`。
--  `choco install mingw -y` 后来成功完成，并将 MinGW 部署到 `C:\ProgramData\mingw64\mingw64\bin`。
+- `winget install --id zig.zig` 后来确认已安装；`zig version` 现在返回 `0.16.0`。
+- `choco install mingw -y` 后来成功完成，并将 MinGW 部署到 `C:\ProgramData\mingw64\mingw64\bin`。
 
 ## 执行命令
+
+`IotaFunEngine` 的正式执行路径会把 Go / Rust / Zig / Java / C++ 编译产物写入 `$HOME/.iota/iota-fun`，缓存 key 包含源码路径、mtime、size、平台和架构。下面命令只用于手工验证本地工具链；不要把手工编译产物提交到 `iota-skill/pet-generator/iota-fun/` 源码目录。
 
 ### Python
 
@@ -73,40 +75,49 @@ node -e "const fs=require('node:fs'); let source=fs.readFileSync('D:/coding/crea
 
 ```powershell
 cd D:\coding\creative\iota\iota-fun\go
-go run random_shape.go runner.go
+$cache = Join-Path $HOME '.iota\iota-fun'
+New-Item -ItemType Directory -Force $cache | Out-Null
+go build -o (Join-Path $cache 'iota-fun-go-manual.exe') random_shape.go runner.go
+& (Join-Path $cache 'iota-fun-go-manual.exe')
 ```
 
 ### Rust
 
 ```powershell
 cd D:\coding\creative\iota\iota-fun\rust
-rustc runner.rs -o $env:TEMP\iota-fun-rust.exe
-& $env:TEMP\iota-fun-rust.exe
-Remove-Item $env:TEMP\iota-fun-rust.exe
+$cache = Join-Path $HOME '.iota\iota-fun'
+New-Item -ItemType Directory -Force $cache | Out-Null
+rustc runner.rs -o (Join-Path $cache 'iota-fun-rust-manual.exe')
+& (Join-Path $cache 'iota-fun-rust-manual.exe')
 ```
 
 ### Java
 
 ```powershell
 cd D:\coding\creative\iota\iota-fun\java
-javac -encoding UTF-8 RandomAnimal.java RandomAnimalRunner.java
-cmd /c "java RandomAnimalRunner"
-Remove-Item RandomAnimal.class, RandomAnimalRunner.class
+$cache = Join-Path $HOME '.iota\iota-fun\java-manual-classes'
+New-Item -ItemType Directory -Force $cache | Out-Null
+javac -encoding UTF-8 -d $cache RandomAnimal.java RandomAnimalRunner.java
+cmd /c "java -cp $cache RandomAnimalRunner"
 ```
 
 ### Zig
 
 ```powershell
 cd D:\coding\creative\iota\iota-fun\zig
-zig run runner.zig
+$cache = Join-Path $HOME '.iota\iota-fun'
+New-Item -ItemType Directory -Force $cache | Out-Null
+zig build-exe runner.zig -O ReleaseFast -femit-bin=(Join-Path $cache 'iota-fun-zig-manual.exe')
+& (Join-Path $cache 'iota-fun-zig-manual.exe')
 ```
 
 ### C++
 
 ```powershell
 cd D:\coding\creative\iota\iota-fun\cpp
-& 'C:\ProgramData\mingw64\mingw64\bin\g++.exe' random_action_runner.cpp -o random_action_runner.exe
+$cache = Join-Path $HOME '.iota\iota-fun'
+New-Item -ItemType Directory -Force $cache | Out-Null
+& 'C:\ProgramData\mingw64\mingw64\bin\g++.exe' random_action_runner.cpp -o (Join-Path $cache 'iota-fun-cpp-manual.exe')
 $env:PATH = 'C:\ProgramData\mingw64\mingw64\bin;' + $env:PATH
-cmd /c random_action_runner.exe
-Remove-Item .\random_action_runner.exe
+& (Join-Path $cache 'iota-fun-cpp-manual.exe')
 ```

@@ -162,11 +162,9 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
   async init(config: BackendConfig): Promise<void> {
     this.config = config;
     this.startedAt = Date.now();
-
-    // Pre-warm long-lived backends
-    if (this.options.processMode === "long-lived") {
-      await this.ensureWarmProcess();
-    }
+    // Long-lived backends are warmed lazily on first stream(). Engine startup
+    // initializes every adapter, so eager warm-up would make unrelated backend
+    // executions pay Hermes ACP startup cost.
   }
 
   async *stream(request: RuntimeRequest): AsyncIterable<RuntimeEvent> {
@@ -673,16 +671,12 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     const config = this.requireConfig();
     const executable = config.executable ?? this.options.defaultExecutable;
     const resolvedExecutable = await resolveExecutable(executable, config.env);
-    const child = spawn(
-      resolvedExecutable,
-      this.options.buildArgs(request),
-      {
-        stdio: "pipe",
-        cwd: request.workingDirectory,
-        env: buildBackendProcessEnv(config.env),
-        windowsHide: true,
-      },
-    ) as ChildProcessWithoutNullStreams;
+    const child = spawn(resolvedExecutable, this.options.buildArgs(request), {
+      stdio: "pipe",
+      cwd: request.workingDirectory,
+      env: buildBackendProcessEnv(config.env),
+      windowsHide: true,
+    }) as ChildProcessWithoutNullStreams;
     this.active.set(request.executionId, child);
 
     // Record link visibility: command and process info

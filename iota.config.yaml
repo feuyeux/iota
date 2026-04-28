@@ -11,3 +11,6 @@ mcp:
       args:
         - /Users/han/codingx/iota/iota-engine/dist/mcp/fun-server.js
       env: []
+skill:
+  roots:
+    - /Users/han/codingx/iota/iota-skill

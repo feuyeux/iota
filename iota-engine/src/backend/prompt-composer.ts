@@ -18,7 +18,9 @@ export function composeEffectivePrompt(
 
   // Inject skill definitions so the backend LLM can match and execute them
   if (request.systemPrompt) {
-    const skillMatch = request.systemPrompt.match(/<iota_skills>([\s\S]*?)<\/iota_skills>/);
+    const skillMatch = request.systemPrompt.match(
+      /<iota_skills>([\s\S]*?)<\/iota_skills>/,
+    );
     const skillNames = skillMatch
       ? [...skillMatch[1].matchAll(/^## (.+)$/gm)].map((m) => m[1]).join(", ")
       : null;

@@ -244,6 +244,12 @@ function normalizeConfig(
       ...config.engine,
       workingDirectory,
     },
+    skill: {
+      ...config.skill,
+      roots: config.skill.roots.map((root) =>
+        path.resolve(cwd, expandHome(root)),
+      ),
+    },
     storage: {
       ...config.storage,
       development: {
