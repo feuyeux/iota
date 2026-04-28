@@ -96,6 +96,8 @@ import type { IotaConfig } from "./config/schema.js";
 import type { AuditEntry } from "./audit/logger.js";
 import { IotaFunEngine } from "./fun-engine.js";
 import { detectFunIntent } from "./fun-intent.js";
+import { loadSkills, buildSkillPromptSection } from "./skill/loader.js";
+import type { SkillManifest } from "./skill/loader.js";
 
 const ENGINE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -153,6 +155,7 @@ export class IotaEngine {
   private pubsub?: RedisPubSub;
   private configStore?: RedisConfigStore;
   private readonly funEngine = new IotaFunEngine(ENGINE_DIR);
+  private skills: SkillManifest[] = [];
 
   /** Track in-flight executions for multiplexer stream reuse */
   private readonly runningExecutions = new Set<string>();
@@ -330,6 +333,15 @@ export class IotaEngine {
     } else {
       this.visibilityStore = new LocalVisibilityStore(
         path.resolve(this.iotaHome(), "visibility"),
+      );
+    }
+
+    // Load skills from iota-skill/ directory (sibling of engine root)
+    const skillRoot = path.resolve(ENGINE_DIR, "..", "..", "iota-skill");
+    this.skills = await loadSkills(skillRoot);
+    if (this.skills.length > 0) {
+      console.debug(
+        `[iota-engine] skills active: ${this.skills.map((s) => s.name).join(", ")}`,
       );
     }
   }
@@ -1030,6 +1042,12 @@ export class IotaEngine {
           lease,
           funIntent.language,
         );
+        return;
+      }
+
+      // Pet skill: run all 7 fun languages, inject results into prompt, let LLM compose
+      if (/生成宠物/.test(request.prompt)) {
+        yield* engine.runPetSkillExecution(request, requestHash, existing, lease);
         return;
       }
 
@@ -1912,6 +1930,222 @@ export class IotaEngine {
     return generator(this);
   }
 
+  // ─── Pet skill execution: run all 7 fun languages then compose with LLM ──
+
+  private runPetSkillExecution(
+    request: RuntimeRequest,
+    requestHash: string,
+    existing: ExecutionRecord | null,
+    lease: LockLease,
+  ): AsyncGenerator<RuntimeEvent> {
+    const PET_LANGUAGES: import("./fun-engine.js").FunLanguage[] = [
+      "cpp", "typescript", "rust", "zig", "java", "python", "go",
+    ];
+    const ATTR_LABELS: Record<string, string> = {
+      cpp: "action",
+      typescript: "color",
+      rust: "material",
+      zig: "size",
+      java: "animal",
+      python: "lengthCm",
+      go: "toyShape",
+    };
+
+    async function* generator(engine: IotaEngine): AsyncGenerator<RuntimeEvent> {
+      const storage = engine.requireStorage();
+      const eventStore = engine.requireEventStore();
+      const multiplexer = engine.requireMultiplexer();
+      const backendName = request.backend ?? engine.requireConfig().routing.defaultBackend;
+      const startedAt = Date.now();
+      let status: RuntimeResponse["status"] = "completed";
+      let errorJson: string | undefined;
+      let output = "";
+
+      async function assertFencingValid(): Promise<void> {
+        if ("validateFencingToken" in storage) {
+          const valid = await (
+            storage as StorageBackend & { validateFencingToken(key: string, token: number): Promise<boolean> }
+          ).validateFencingToken(lease.key, lease.token);
+          if (!valid) {
+            throw new IotaError({
+              code: ErrorCode.WORKSPACE_LOCKED,
+              message: "Stale fencing token — another execution has superseded this lock",
+            });
+          }
+        }
+      }
+
+      if (!existing) {
+        await assertFencingValid();
+        await storage.createExecution({
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend: backendName,
+          status: "queued",
+          requestHash,
+          prompt: request.prompt,
+          workingDirectory: request.workingDirectory,
+          startedAt,
+        });
+      }
+
+      for (const state of ["queued", "starting", "running"] as const) {
+        const evt = await eventStore.appendState(
+          request.sessionId,
+          request.executionId,
+          backendName,
+          state,
+        );
+        await multiplexer.publish(evt);
+        yield evt;
+      }
+
+      // Step 1: run all 7 fun languages in parallel, emit tool_call/tool_result for each
+      const attrs: Record<string, string> = {};
+      const failures: string[] = [];
+
+      console.debug(`[iota-pet] starting parallel fun execution for ${PET_LANGUAGES.join(", ")}`);
+
+      const funResults = await Promise.allSettled(
+        PET_LANGUAGES.map((lang) => engine.funEngine.execute({ language: lang })),
+      );
+
+      for (let i = 0; i < PET_LANGUAGES.length; i++) {
+        const lang = PET_LANGUAGES[i];
+        const result = funResults[i];
+        const toolCallId = `pet-${lang}-${request.executionId}`;
+
+        const toolCall = await eventStore.append({
+          type: "tool_call",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend: backendName,
+          data: {
+            toolCallId,
+            toolName: `fun.${lang}`,
+            rawToolName: `fun.${lang}`,
+            arguments: { language: lang },
+            approvalRequired: false,
+          },
+        });
+        await multiplexer.publish(toolCall);
+        yield toolCall;
+
+        if (result.status === "fulfilled") {
+          attrs[lang] = result.value.value;
+          console.debug(`[iota-pet] fun.${lang} → "${result.value.value}"`);
+          const toolResult = await eventStore.append({
+            type: "tool_result",
+            sessionId: request.sessionId,
+            executionId: request.executionId,
+            backend: backendName,
+            data: { toolCallId, status: "success", output: result.value.value },
+          });
+          await multiplexer.publish(toolResult);
+          yield toolResult;
+        } else {
+          const errMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+          failures.push(`${lang}: ${errMsg}`);
+          console.debug(`[iota-pet] fun.${lang} failed: ${errMsg}`);
+          const toolResult = await eventStore.append({
+            type: "tool_result",
+            sessionId: request.sessionId,
+            executionId: request.executionId,
+            backend: backendName,
+            data: { toolCallId, status: "error", error: errMsg },
+          });
+          await multiplexer.publish(toolResult);
+          yield toolResult;
+        }
+      }
+
+      // Step 2: build a prompt for the LLM with the real values already filled in
+      const attrLines = PET_LANGUAGES.map((lang) => {
+        const label = ATTR_LABELS[lang] ?? lang;
+        const val = attrs[lang] ?? `<${lang} failed>`;
+        return `- ${label} (${lang}): ${val}`;
+      }).join("\n");
+
+      const failureNote = failures.length > 0
+        ? `\n\n以下语言运行时调用失败，请在输出中明确标注：\n${failures.map((f) => `- ${f}`).join("\n")}`
+        : "";
+
+      const composedPrompt =
+        `以下是从 iota-fun 各语言函数获取的真实属性值：\n${attrLines}${failureNote}\n\n` +
+        `请用这些真实值组合成一只宠物描述，格式：\n` +
+        `1. 一段自然语言描述（保留属性的原始词形，不要翻译）\n` +
+        `2. 属性清单`;
+
+      console.debug(`[iota-pet] sending composed prompt to LLM backend "${backendName}"`);
+
+      // Step 3: send composed prompt to LLM (no skill section needed — values are already resolved)
+      const backend = engine.requirePool().get(backendName);
+      const llmRequest: RuntimeRequest = {
+        ...request,
+        prompt: composedPrompt,
+        systemPrompt: undefined, // no skill injection — values already pre-computed
+      };
+
+      try {
+        for await (const event of backend.stream(llmRequest)) {
+          const stored = await eventStore.append(event);
+          await multiplexer.publish(stored);
+          yield stored;
+          if (event.type === "output" && event.data.content) {
+            output += event.data.content;
+          }
+          if (event.type === "state" && event.data.state === "failed") {
+            status = "failed";
+          }
+          if (event.type === "error") {
+            status = "failed";
+            errorJson = JSON.stringify(event.data);
+          }
+        }
+      } catch (error) {
+        status = "failed";
+        const runtimeError = toRuntimeError(error);
+        errorJson = JSON.stringify(runtimeError);
+        const errEvt = await eventStore.append({
+          type: "error",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend: backendName,
+          data: runtimeError,
+        });
+        await multiplexer.publish(errEvt);
+        yield errEvt;
+      }
+
+      const finalEvt = await eventStore.appendState(
+        request.sessionId,
+        request.executionId,
+        backendName,
+        status,
+      );
+      await multiplexer.publish(finalEvt);
+      yield finalEvt;
+
+      await assertFencingValid();
+      const finishedAt = Date.now();
+      await storage.updateExecution({
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend: backendName,
+        status,
+        requestHash,
+        prompt: request.prompt,
+        workingDirectory: request.workingDirectory,
+        output,
+        errorJson,
+        startedAt,
+        finishedAt,
+      });
+    }
+
+    return generator(this);
+  }
+
   // ─── Request building with memory injection (Section 12.2) ────
 
   private async buildRequest(input: StreamInput): Promise<RuntimeRequest> {
@@ -1971,7 +2205,7 @@ export class IotaEngine {
       sessionId: input.sessionId,
       executionId: input.executionId ?? crypto.randomUUID(),
       prompt: input.prompt,
-      systemPrompt: input.systemPrompt,
+      systemPrompt: buildSkillSystemPrompt(this.skills, input.systemPrompt),
       backend,
       workingDirectory: path.resolve(
         input.workingDirectory ??
@@ -2875,4 +3109,16 @@ function parseMcpToolName(toolName: string): {
     return { serverName: rest.slice(0, idx), toolName: rest.slice(idx + sep.length) };
   }
   return { serverName: "unknown", toolName };
+}
+
+function buildSkillSystemPrompt(
+  skills: SkillManifest[],
+  base?: string,
+): string | undefined {
+  const skillSection = buildSkillPromptSection(skills);
+  if (!skillSection && !base) return undefined;
+  const parts: string[] = [];
+  if (base) parts.push(base);
+  if (skillSection) parts.push(skillSection);
+  return parts.join("\n\n");
 }

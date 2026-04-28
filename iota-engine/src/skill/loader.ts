@@ -17,12 +17,19 @@ export async function loadSkills(skillRoot: string): Promise<SkillManifest[]> {
       if (!entry.isDirectory()) continue;
       const filePath = path.join(skillRoot, entry.name, "SKILL.md");
       const content = await fs.readFile(filePath, "utf8").catch(() => null);
-      if (!content) continue;
-      manifests.push(parseSkillManifest(filePath, content, entry.name));
+      if (!content) {
+        console.debug(`[iota-skill] skipped ${entry.name}: SKILL.md not found`);
+        continue;
+      }
+      const manifest = parseSkillManifest(filePath, content, entry.name);
+      manifests.push(manifest);
+      console.debug(`[iota-skill] loaded skill "${manifest.name}" from ${filePath}`);
     }
 
+    console.debug(`[iota-skill] total skills loaded: ${manifests.length}`);
     return manifests;
-  } catch {
+  } catch (err) {
+    console.debug(`[iota-skill] skill root not found or unreadable: ${skillRoot} (${String(err)})`);
     return [];
   }
 }

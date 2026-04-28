@@ -74,4 +74,10 @@ export interface RuntimeBackend {
     collector: VisibilityCollector | undefined,
     executionId?: string,
   ): void;
+
+  /**
+   * Optional: get the configured model name for this backend.
+   * Returns the model identifier (e.g., "claude-sonnet-4", "gpt-4", "gemini-2.0-flash").
+   */
+  getModel?(): string | undefined;
 }

@@ -13,6 +13,8 @@ import type {
  * Maps init, message, tool_use, tool_result, result to RuntimeEvent.
  */
 export class GeminiAdapter extends SubprocessBackendAdapter {
+  private configuredModel?: string;
+
   constructor() {
     super({
       name: "gemini",
@@ -43,10 +45,19 @@ export class GeminiAdapter extends SubprocessBackendAdapter {
         "stream-json",
         "--skip-trust",
         "--prompt",
-        composeEffectivePrompt(request),
+        composeEffectivePrompt(request, this),
       ],
       mapNativeEvent: mapGeminiEvent,
     });
+  }
+
+  async init(config: import("./interface.js").BackendConfig): Promise<void> {
+    this.configuredModel = config.env?.GEMINI_MODEL || config.env?.GOOGLE_MODEL;
+    return super.init(config);
+  }
+
+  getModel(): string | undefined {
+    return this.configuredModel;
   }
 }
 

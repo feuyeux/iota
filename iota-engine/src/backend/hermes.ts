@@ -27,6 +27,7 @@ import type {
  */
 export class HermesAdapter extends SubprocessBackendAdapter {
   private generatedHermesHome?: string;
+  private configuredModel?: string;
 
   constructor() {
     // Shared state between closures: maps our sessionId → hermes sessionId
@@ -90,7 +91,7 @@ export class HermesAdapter extends SubprocessBackendAdapter {
           // Deferred: mapNativeEvent will send it when session/new responds.
           deferredPrompts.set(request.sessionId, {
             id: request.executionId,
-            prompt: composeEffectivePrompt(request),
+            prompt: composeEffectivePrompt(request, self.adapter),
           });
           return messages;
         }
@@ -100,7 +101,7 @@ export class HermesAdapter extends SubprocessBackendAdapter {
           method: "session/prompt",
           params: {
             sessionId: sessionMap.get(request.sessionId)!,
-            prompt: [{ type: "text", text: composeEffectivePrompt(request) }],
+            prompt: [{ type: "text", text: composeEffectivePrompt(request, self.adapter) }],
           },
         });
         return messages;
@@ -180,7 +181,12 @@ export class HermesAdapter extends SubprocessBackendAdapter {
     this.cleanupGeneratedHermesHome();
     const prepared = prepareHermesBackendConfig(config);
     this.generatedHermesHome = prepared.generatedHermesHome;
+    this.configuredModel = prepared.model;
     return super.init(prepared.config);
+  }
+
+  getModel(): string | undefined {
+    return this.configuredModel;
   }
 
   async destroy(): Promise<void> {
@@ -198,11 +204,12 @@ export class HermesAdapter extends SubprocessBackendAdapter {
 export function prepareHermesBackendConfig(config: BackendConfig): {
   config: BackendConfig;
   generatedHermesHome?: string;
+  model?: string;
 } {
   const env = { ...(config.env ?? {}) };
   const hermesConfig = resolveHermesDistributedConfig(env);
   if (!hermesConfig) {
-    return { config };
+    return { config, model: undefined };
   }
 
   const hermesHome = fs.mkdtempSync(path.join(os.tmpdir(), "iota-hermes-"));
@@ -229,6 +236,7 @@ export function prepareHermesBackendConfig(config: BackendConfig): {
 
   return {
     generatedHermesHome: hermesHome,
+    model: hermesConfig.model,
     config: {
       ...config,
       env: {

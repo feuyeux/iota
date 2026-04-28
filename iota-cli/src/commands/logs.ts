@@ -108,6 +108,9 @@ function formatEventData(event: RuntimeEvent): string {
   if (event.type === "error") {
     return `${event.data.code}: ${event.data.message}`;
   }
+  if (event.type === "memory") {
+    return truncate(event.data.content, 240);
+  }
   return `${event.data.name} ${JSON.stringify(event.data.payload)}`;
 }
 

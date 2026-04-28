@@ -14,6 +14,8 @@ import type {
  * Maps SDKMessage, system, result, tool_use, tool_result to RuntimeEvent.
  */
 export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
+  private configuredModel?: string;
+
   constructor() {
     super({
       name: "claude-code",
@@ -46,7 +48,7 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
         "--permission-mode",
         "auto",
       ],
-      buildInput: (request) => composeEffectivePrompt(request) + "\n",
+      buildInput: (request) => composeEffectivePrompt(request, this) + "\n",
       mapNativeEvent: mapClaudeEvent,
     });
   }
@@ -80,7 +82,15 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
     if (config.env?.ANTHROPIC_AUTH_TOKEN && !config.env.ANTHROPIC_API_KEY) {
       config.env.ANTHROPIC_API_KEY = config.env.ANTHROPIC_AUTH_TOKEN;
     }
+
+    // Extract model from env
+    this.configuredModel = config.env?.ANTHROPIC_MODEL || config.env?.CLAUDE_MODEL;
+
     return super.init(config);
+  }
+
+  getModel(): string | undefined {
+    return this.configuredModel;
   }
 }
 

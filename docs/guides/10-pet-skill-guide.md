@@ -13,15 +13,19 @@
 
 技能文件位于：
 
-- [pet-generator SKILL.md](/abs/path/D:/coding/creative/iota/iota-skill/pet-generator/SKILL.md)
+- [`iota-skill/pet-generator/SKILL.md`](../../iota-skill/pet-generator/SKILL.md)
 
 技能目录说明位于：
 
-- [iota-skill/README.md](/abs/path/D:/coding/creative/iota/iota-skill/README.md)
+- [`iota-skill/README.md`](../../iota-skill/README.md)
 
 ## 3. 触发条件
 
-当用户请求中包含 `生成宠物` 时，应匹配这个 skill。
+当用户请求中包含 `生成宠物` 时，engine 自动触发本 skill（在 `runPetSkillExecution` 路径中执行，不经过 backend approval）。
+
+```bash
+bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
+```
 
 示例：
 
@@ -38,8 +42,7 @@
 
 ### `cpp` 动作
 
-文件：[
-random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.cpp)
+文件：[`iota-fun/cpp/random_action.cpp`](../../iota-fun/cpp/random_action.cpp)
 
 真实输出集合：
 
@@ -52,7 +55,7 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `typescript` 颜色
 
-文件：[randomColor.ts](/abs/path/D:/coding/creative/iota/iota-fun/typescript/randomColor.ts)
+文件：[`iota-fun/typescript/randomColor.ts`](../../iota-fun/typescript/randomColor.ts)
 
 真实输出集合：
 
@@ -65,7 +68,7 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `rust` 材质
 
-文件：[random_material.rs](/abs/path/D:/coding/creative/iota/iota-fun/rust/random_material.rs)
+文件：[`iota-fun/rust/random_material.rs`](../../iota-fun/rust/random_material.rs)
 
 真实输出集合：
 
@@ -77,7 +80,9 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `zig` 尺寸
 
-文件：[random_size.zig](/abs/path/D:/coding/creative/iota/iota-fun/zig/random_size.zig)
+文件：[`iota-fun/zig/random_size.zig`](../../iota-fun/zig/random_size.zig)
+
+> **运行时状态：** 需要安装 `zig` 编译器。当前开发环境未安装，调用会失败并在输出中明确标注，不静默补默认值。
 
 真实输出集合：
 
@@ -87,7 +92,7 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `java` 动物
 
-文件：[RandomAnimal.java](/abs/path/D:/coding/creative/iota/iota-fun/java/RandomAnimal.java)
+文件：[`iota-fun/java/RandomAnimal.java`](../../iota-fun/java/RandomAnimal.java)
 
 真实输出集合：
 
@@ -97,7 +102,7 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `python` 数字
 
-文件：[random_number.py](/abs/path/D:/coding/creative/iota/iota-fun/python/random_number.py)
+文件：[`iota-fun/python/random_number.py`](../../iota-fun/python/random_number.py)
 
 真实输出范围：
 
@@ -105,7 +110,7 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ### `go` 形状
 
-文件：[random_shape.go](/abs/path/D:/coding/creative/iota/iota-fun/go/random_shape.go)
+文件：[`iota-fun/go/random_shape.go`](../../iota-fun/go/random_shape.go)
 
 真实输出集合：
 
@@ -221,26 +226,38 @@ random_action.cpp](/abs/path/D:/coding/creative/iota/iota-fun/cpp/random_action.
 
 ## 8. 当前实现状态
 
-当前仓库里：
+| 语言 | 可执行文件 | 本机状态 | 属性 |
+|------|-----------|---------|------|
+| cpp | `g++` | ✅ Apple clang 21.0 | action |
+| typescript | `node` | ✅ v25.9.0 | color |
+| rust | `rustc` | ✅ 1.95.0 | material |
+| zig | `zig` | ❌ 未安装 | size |
+| java | `javac` / `java` | ✅ 25 | animal |
+| python | `python3` | ✅ 3.14.4 | lengthCm |
+| go | `go` | ✅ 1.26.2 | toyShape |
 
-- 已创建 skill 规范文件
-- 尚未把 `iota-skill/` 自动发现、匹配、执行接入 `iota-engine`
+zig 未安装时，size 属性会在输出中明确标注失败，不静默补默认值。
 
-这意味着现在它还是一个技能规范，而不是已经自动生效的 runtime feature。
+## 9. 接入原理
 
-## 9. 后续接入建议
+Engine 在 `init()` 时调用 `loadSkills(skillRoot)` 读取 `iota-skill/` 下所有子目录的 `SKILL.md`，构建 `<iota_skills>` 区块并存入 `this.skills`。
 
-要让这个 skill 真正生效，下一步通常需要补这几层：
+当 `runExecution` 检测到 prompt 包含 `生成宠物` 时，走独立的 `runPetSkillExecution` 路径，**不**把 skill 区块注入给 LLM（避免 LLM 试图自行执行 shell 命令）：
 
-1. `iota-engine` 增加 skill 目录发现逻辑
-2. 增加基于请求文本的 skill 匹配逻辑
-3. 为 `pet-generator` 增加实际执行器
-4. 执行器内部顺序调用 7 个 `iota-fun` 函数
-5. 把组合结果回填到标准 `RuntimeEvent` / `tool_call` / `tool_result` 流程
+```
+prompt 包含"生成宠物"
+  → runPetSkillExecution()
+  → 并发调用 IotaFunEngine × 7 个语言（emit tool_call / tool_result 事件）
+  → 把真实属性值拼成结构化 prompt
+  → 交给 backend LLM 做纯文字组合（无 skill 区块，无 shell 调用）
+  → output 事件流回 CLI
+```
 
 ## 10. 相关文档
 
-- [iota-fun README](/abs/path/D:/coding/creative/iota/iota-fun/README.md)
-- [fun-intent.ts](/abs/path/D:/coding/creative/iota/iota-engine/src/fun-intent.ts)
-- [fun-engine.ts](/abs/path/D:/coding/creative/iota/iota-engine/src/fun-engine.ts)
-- [pet-generator SKILL.md](/abs/path/D:/coding/creative/iota/iota-skill/pet-generator/SKILL.md)
+- [`iota-fun/README.md`](../../iota-fun/README.md)
+- [`iota-engine/src/fun-intent.ts`](../../iota-engine/src/fun-intent.ts)
+- [`iota-engine/src/fun-engine.ts`](../../iota-engine/src/fun-engine.ts)
+- [`iota-engine/src/skill/loader.ts`](../../iota-engine/src/skill/loader.ts)
+- [`iota-engine/src/backend/prompt-composer.ts`](../../iota-engine/src/backend/prompt-composer.ts)
+- [`iota-skill/pet-generator/SKILL.md`](../../iota-skill/pet-generator/SKILL.md)

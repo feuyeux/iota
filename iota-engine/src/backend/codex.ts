@@ -14,6 +14,8 @@ import type {
  * Secrets must stay in process env so they do not appear in the child process argv.
  */
 export class CodexAdapter extends SubprocessBackendAdapter {
+  private configuredModel?: string;
+
   constructor() {
     super({
       name: "codex",
@@ -37,7 +39,7 @@ export class CodexAdapter extends SubprocessBackendAdapter {
         stderrCaptured: true,
       },
       buildArgs: (request) => this.buildCodexArgs(request),
-      buildInput: (request) => composeEffectivePrompt(request),
+      buildInput: (request) => composeEffectivePrompt(request, this),
       mapNativeEvent: mapCodexEvent,
     });
   }
@@ -50,6 +52,7 @@ export class CodexAdapter extends SubprocessBackendAdapter {
 
       if (env.OPENAI_MODEL) {
         args.push("-c", `model=${env.OPENAI_MODEL}`);
+        this.configuredModel = env.OPENAI_MODEL;
       }
 
       // Prefer a named provider registered in ~/.codex/config.toml
@@ -66,6 +69,10 @@ export class CodexAdapter extends SubprocessBackendAdapter {
       // Config not initialized yet — fall back to defaults
     }
     return args;
+  }
+
+  getModel(): string | undefined {
+    return this.configuredModel;
   }
 }
 
