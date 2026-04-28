@@ -19,12 +19,13 @@ import {
 
 export const WorkspaceExplorer: React.FC = () => {
   const { 
-    sessionId, 
-    activeFiles, 
-    setActiveFiles, 
+    sessionId,
+    activeFiles,
+    setActiveFiles,
     upsertActiveFile,
     workingDirectory,
-    sessionSnapshot
+    sessionSnapshot,
+    activeExecution
   } = useSessionStore();
   
   const [isExpanded, setIsExpanded] = useState(true);
@@ -215,12 +216,12 @@ export const WorkspaceExplorer: React.FC = () => {
             <span className="text-[10px] font-bold text-iota-accent">128k max</span>
          </div>
          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
-            <div className="h-full bg-iota-accent/80 w-[42%]" />
-            <div className="h-full bg-amber-400/50 w-[15%]" />
+            <div className="h-full bg-iota-accent/80 transition-all" style={{ width: `${Math.min(100, Math.round((activeExecution?.memory?.selectedCount ?? 0) * 3))}%` }} />
+            <div className="h-full bg-amber-400/50 transition-all" style={{ width: `${Math.min(50, Math.round((activeExecution?.memory?.trimmedCount ?? 0) * 5))}%` }} />
          </div>
          <div className="flex justify-between text-[8px] font-bold text-iota-text/30 uppercase">
-            <span>42% Persistent</span>
-            <span>15% Ephemeral</span>
+            <span>{activeExecution?.memory?.selectedCount ?? 0} Persistent</span>
+            <span>{activeExecution?.memory?.trimmedCount ?? 0} Ephemeral</span>
          </div>
       </div>
     </div>

@@ -1,21 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { AlertCircle } from 'lucide-react'
 import { useSessionStore } from './store/useSessionStore'
 import { api } from './lib/api'
 import { useWebSocket } from './hooks/useWebSocket'
-import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { ChatTimeline } from './components/chat/ChatTimeline'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
-import { ExecutionReplayModal } from './components/inspector/ExecutionReplayModal'
-import { WorkspaceExplorer } from './components/workspace/WorkspaceExplorer'
-import { OperationsDrawer } from './components/admin/OperationsDrawer'
 
 function App() {
   const { sessionId, setSessionId, updateSnapshot } = useSessionStore();
-  const [operationsOpen, setOperationsOpen] = useState(false);
-  const [replayExecutionId, setReplayExecutionId] = useState<string | null>(null);
-  
+
   // 1. Initialize centralized WebSocket logic
   useWebSocket();
   
@@ -28,7 +23,22 @@ function App() {
     }
   }, [setSessionId]);
 
-  // 3. Fetch initial snapshot
+  // 3. Auto-create session if none exists
+  const sessionCreatingRef = useRef(false);
+  useEffect(() => {
+    if (!sessionId && !sessionCreatingRef.current) {
+      sessionCreatingRef.current = true;
+      api.createSession('D:/coding/creative/iota').then(({ sessionId: newId }) => {
+        setSessionId(newId);
+        window.history.replaceState(null, '', `?session=${newId}`);
+      }).catch(e => {
+        console.error('Failed to create session', e);
+        sessionCreatingRef.current = false;
+      });
+    }
+  }, [sessionId, setSessionId]);
+
+  // 4. Fetch initial snapshot
   const { data: snapshot, isLoading, error } = useQuery({
     queryKey: ['session-snapshot', sessionId],
     queryFn: () => sessionId ? api.getSessionSnapshot(sessionId) : null,
@@ -42,26 +52,6 @@ function App() {
       updateSnapshot(snapshot);
     }
   }, [snapshot, updateSnapshot]);
-
-  if (!sessionId) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-iota-bg">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-iota-accent rounded-2xl mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-xl shadow-iota-accent/20 cursor-default">I</div>
-          <h1 className="text-xl font-semibold text-iota-heading">Iota Agent Engine</h1>
-          <button 
-            onClick={async () => {
-              const { sessionId } = await api.createSession('/Users/han/codingx/iota');
-              window.location.search = `?session=${sessionId}`;
-            }}
-            className="px-6 py-2 bg-iota-accent text-white rounded-xl font-medium hover:bg-iota-accent/90 transition-all shadow-lg shadow-iota-accent/10"
-          >
-            Create New Session
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -90,24 +80,21 @@ function App() {
   return (
     <>
       <div className="flex h-screen w-full bg-iota-bg text-iota-text overflow-hidden selection:bg-iota-accent/20">
-        <Sidebar onOpenOperations={() => setOperationsOpen(true)} onOpenReplay={(executionId) => setReplayExecutionId(executionId)} />
-        <WorkspaceExplorer />
-
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
 
           <div className="flex-1 flex overflow-hidden">
-            <ChatTimeline />
-            <InspectorPanel />
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <ChatTimeline />
+            </div>
+            <div className="flex-[2] min-w-0 overflow-hidden">
+              <InspectorPanel />
+            </div>
           </div>
         </div>
       </div>
-      <OperationsDrawer open={operationsOpen} onClose={() => setOperationsOpen(false)} />
-      <ExecutionReplayModal executionId={replayExecutionId} onClose={() => setReplayExecutionId(null)} />
     </>
   )
 }
-
-import { AlertCircle } from 'lucide-react';
 
 export default App

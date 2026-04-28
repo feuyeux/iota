@@ -40,7 +40,6 @@ export class StdioMcpClient implements McpClient {
       stdio: "pipe",
       env: { ...process.env, ...this.env },
       windowsHide: true,
-      shell: process.platform === "win32",
     });
     const rl = readline.createInterface({ input: this.child.stdout });
     rl.on("line", (line) => this.handleLine(line));

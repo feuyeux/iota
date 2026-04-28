@@ -24,6 +24,8 @@
 
 本指南介绍 Iota 交互式 TUI（Terminal User Interface，终端用户界面）模式，它提供了一个 REPL 风格的对话式 AI 交互界面。TUI 通过 `iota interactive` 启动，支持会话（Session）持续性、后端切换、审批工作流和流式输出。
 
+当前实现中，TUI 是 `iota-cli` 的本地交互模式，不走 `iota-agent`。执行路径是 `iota-cli -> IotaEngine -> backend subprocess`，因此它和普通 CLI 命令一样直接进入 Engine。
+
 ### 目标受众
 
 - 偏好命令行对话式交互的用户
@@ -55,6 +57,8 @@ graph LR
 | Engine 库 | 执行和状态管理 | TypeScript 导入 |
 | Redis | 会话持久化和事件流 | Redis 协议/TCP |
 | 终端 | ANSI 转义码渲染 | stdin/stdout |
+
+> 说明：Agent 的 HTTP / WebSocket 接口服务于 App 和远程客户端，不参与 `iota interactive` 的本地执行路径。
 
 ### 通信协议
 
@@ -104,6 +108,8 @@ export REDIS_PORT="6379"
 
 后端身份验证从 Redis 分布式配置中读取，例如 `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`。
 
+后端发现建议优先使用仓库根目录的 `deployment/scripts/ensure-backends.sh --check-only`。它比零散的 `which`、`where` 或 `Get-Command` 示例更适合作为跨平台检查入口。
+
 ---
 
 ## 4. 安装与设置
@@ -116,6 +122,8 @@ bash start-storage.sh
 redis-cli ping
 # 预期输出：PONG
 ```
+
+在 Windows 上，`bash` 和 `redis-cli` 可能默认不存在。文档中的命令是示例；实际操作应以你本机可用的 shell、Redis 客户端或仓库脚本为准。
 
 ### 步骤 2：构建包
 
@@ -162,7 +170,7 @@ iota> run "What is 2+2?"
 
 **行为**：
 - 用户输入提示词并按 Enter
-- Engine 逐字符流式传输响应
+- Engine 按收到的 `output` 事件块实时写出响应
 - 输出通过 `process.stdout.write()` 实时显示
 - 每个 `output` 类型的 RuntimeEvent 直接打印
 
@@ -259,6 +267,29 @@ iota> metrics
 
 ---
 
+### 功能：垃圾回收命令
+
+**目的**：清理过期的执行记录和可见性数据。
+
+**会话内命令**：
+```
+iota> gc
+```
+
+**作用**：
+- 清理超过 `eventRetentionHours` 的过期事件
+- 清理孤立的后端进程
+- 清理过期的可见性数据
+
+**CLI 等效命令**：
+```bash
+iota gc
+```
+
+**详细文档**：参见 [01-cli-guide.md](./01-cli-guide.md) 中的 `iota gc` 命令说明。
+
+---
+
 ### 功能：审批工作流
 
 **目的**：当后端请求审批时（例如执行 shell 命令），TUI 显示等待状态。
@@ -271,7 +302,7 @@ iota> metrics
 **审批钩子行为**（`CliApprovalHook`）：
 - 根据配置的策略自动批准或拒绝
 - `approval.shell = "auto"` → 自动批准 shell 命令
-- `approval.shell = "ask"` → 提示用户（非交互模式不支持）
+- `approval.shell = "ask"` → 在当前 CLI/TUI 中进行交互式确认
 
 **验证**：
 ```bash
@@ -289,7 +320,7 @@ iota> run "rm /tmp/test"  # 可能触发审批提示
 | 按键 | 操作 |
 |-----|--------|
 | Enter | 提交提示词 |
-| Ctrl+C | 中断当前执行（向后端子进程发送 SIGINT） |
+| Ctrl+C | 中断当前输入或终止 TUI 进程；当前 `interactive.ts` 没有单独实现“只中断当前 execution 并继续留在 REPL”的处理 |
 | Ctrl+D | 退出交互模式 |
 | ↑ / ↓ | 命令历史（readline） |
 
@@ -319,6 +350,29 @@ iota> What is my favorite color?
 redis-cli XRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" - + | jq '.[].type'
 # 预期输出：包含多个用户消息和输出
 ```
+
+---
+
+### 功能：Trace 追踪和 Visibility 可见性查询
+
+**目的**：在交互模式中检查执行追踪和可见性数据。
+
+**会话内命令**（需在外部终端执行）：
+```bash
+# 查询执行追踪
+iota trace --execution <executionId>
+
+# 查询可见性数据
+iota visibility --execution <executionId>
+iota visibility --execution <executionId> --summary
+iota visibility --execution <executionId> --memory
+iota visibility --execution <executionId> --tokens
+
+# 列出会话的可见性记录
+iota visibility list --session <sessionId>
+```
+
+**详细文档**：完整的追踪和可见性数据结构说明参见 [06-visibility-trace-guide.md](./06-visibility-trace-guide.md)。
 
 ---
 
@@ -424,7 +478,7 @@ iota logs --session $SESSION_ID --limit 100
 
 **成功标准**：
 - ✅ 交互提示符出现
-- ✅ 流式输出逐字符渲染
+- ✅ 流式输出按事件块实时渲染
 - ✅ 在 Redis 中创建会话
 - ✅ 事件存储在 Redis 中
 - ✅ `exit` 命令干净地终止
@@ -615,7 +669,7 @@ iota config get approval.shell
 # 设置为自动批准
 iota config set approval.shell "auto"
 
-# 或使用 Ctrl+C 中断
+# 或结束当前 TUI 进程后重启
 ```
 
 ---
@@ -637,6 +691,25 @@ iota status
 # 或确保后端在 PATH 中
 export PATH="/path/to/backend:$PATH"
 ```
+
+### 问题：运行时出现 `DEP0190` 警告
+
+**症状**：
+- 执行 `iota run`、`iota interactive` 或 `iota status` 时出现 Node 的 `DEP0190` 警告
+
+**原因**：
+- 旧实现为了兼容 Windows 使用了 `spawn(..., { shell: true })`，Node 会警告参数只是拼接而非安全转义
+
+**当前状态**：
+- 当前实现已改为直接执行已解析的可执行文件路径，不再依赖 `shell: true`
+
+**如果仍看到该警告**：
+```bash
+cd iota-engine && bun run build
+cd ../iota-cli && bun run build
+```
+
+然后重新运行 `iota` 命令，确认使用的是最新构建产物。
 
 ---
 
@@ -684,4 +757,6 @@ bash stop-storage.sh
 
 | 版本 | 日期 | 变更 |
 |---------|------|---------|
+| 1.2 | 2026 年 4 月 | 添加 gc 命令说明；添加 trace/visibility 命令交叉引用；增强分布式特性章节 |
+| 1.1 | 2026 年 4 月 | 澄清 TUI 不经过 Agent；修正流式输出、审批和 Ctrl+C 行为描述 |
 | 1.0 | 2026 年 4 月 | 初始版本 |

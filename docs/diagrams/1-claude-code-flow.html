@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Iota Engine - Claude Code Backend 实际执行流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;padding:24px;line-height:1.6}
+h1{color:#58a6ff;font-size:1.35em;margin-bottom:16px}
+.meta{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:20px;font-size:.82em;line-height:2}
+.meta b{color:#8b949e}
+.meta code{background:#1f2937;padding:1px 5px;border-radius:3px;color:#7ee787;font-size:.95em}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:.78em}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}
+.chart{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;overflow-x:auto}
+</style>
+</head>
+<body>
+<h1>🔷 Claude Code Backend — Iota Engine 内部实际执行流程</h1>
+<div class="meta">
+<b>Trace ID:</b> <code>c0f48d4b-8d21-48c1-b42a-f73a6c763902</code> &nbsp;|&nbsp;
+<b>Execution ID:</b> <code>3a016eba-85fc-43c2-9a3a-a1b26036ed90</code> &nbsp;|&nbsp;
+<b>Session ID:</b> <code>ee96e2d9-866d-4301-b13a-40d0a80bf04f</code><br>
+<b>Backend:</b> claude-code &nbsp;|&nbsp; <b>Protocol:</b> stream-json (NDJSON) &nbsp;|&nbsp; <b>Process Model:</b> per-execution (spawn → exit)<br>
+<b>Command:</b> <code>claude.EXE --print --output-format stream-json --verbose --bare --permission-mode auto</code><br>
+<b>Duration:</b> 3,720ms &nbsp;|&nbsp; <b>Tokens:</b> input=15, output=18, total=33 (native) &nbsp;|&nbsp; <b>Model:</b> MiniMax-M2.7<br>
+<b>Env:</b> <code>ANTHROPIC_AUTH_TOKEN=redacted</code>, <code>ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic</code>, <code>CLAUDE_SETTINGS_PATH=settings-minimax.json</code><br>
+<b>Memory:</b> search=0 candidates → inject=0 → extract=episodic (memoryId: <code>fc9be327</code>, 16 tokens, hash: <code>328a9db1</code>)
+</div>
+<div class="legend">
+<span><i style="background:#58a6ff"></i>Engine Core</span>
+<span><i style="background:#7ee787"></i>Memory System</span>
+<span><i style="background:#d2a8ff"></i>Backend Process</span>
+<span><i style="background:#f0883e"></i>Adapter/Parser</span>
+<span><i style="background:#f85149"></i>Redis Persistence</span>
+</div>
+<div class="chart">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant CLI as CLI<br/>(iota-cli)
+    participant ENG as Engine<br/>(engine.request)
+    participant CTX as Context Builder
+    participant MEM as Memory<br/>(Redis ZSET)
+    participant WS as Workspace<br/>Scanner
+    participant RDS as Redis<br/>(:6379)
+    participant PROC as claude.EXE<br/>(pid 9744)
+    participant ADP as Adapter<br/>(claude-code_native_mapper)
+
+    rect rgba(88,166,255,0.05)
+    Note over CLI,RDS: Phase 1 — Session & Context Preparation (T+0ms ~ T+120ms)
+    CLI->>ENG: stream("What is 2+2?", backend=claude-code)
+    activate ENG
+    ENG->>RDS: HSET iota:session:ee96e2d9 (create)
+    ENG->>CTX: build context
+    activate CTX
+    Note right of CTX: 0ms — no prior context
+    CTX-->>ENG: ready
+    deactivate CTX
+    ENG->>MEM: search(promptHash=510a2e9e, ~10 tokens)
+    activate MEM
+    Note right of MEM: 0ms — candidateCount=0
+    MEM-->>ENG: [] empty
+    deactivate MEM
+    ENG->>MEM: inject(selected=0, excluded=0)
+    MEM-->>ENG: prompt unchanged
+    ENG->>WS: scan("D:\coding\creative\iota")
+    activate WS
+    Note right of WS: 58ms — 202 files indexed
+    WS-->>ENG: fileCount=202
+    deactivate WS
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 2 — State Events (T+69ms ~ T+70ms)
+    ENG->>RDS: XADD events {state:queued} seq=1
+    ENG->>RDS: XADD events {state:starting} seq=2
+    ENG->>RDS: XADD events {state:running} seq=3
+    end
+
+    rect rgba(210,168,255,0.05)
+    Note over ENG,ADP: Phase 3 — Backend Subprocess (T+120ms ~ T+3625ms, per-execution spawn)
+    ENG->>PROC: spawn(claude.EXE --print --output-format stream-json ...)
+    activate PROC
+    ENG->>PROC: stdin.write(41 bytes) prompt text
+    Note right of PROC: stdin closed after write
+
+    PROC-->>ADP: stdout line 1: {type:system, subtype:init, model:MiniMax-M2.7}
+    activate ADP
+    Note right of ADP: T+480ms | 770 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=4)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:claude_system} seq=4
+
+    PROC-->>ADP: stdout line 2: {type:assistant, content:[{type:thinking}]}
+    activate ADP
+    Note right of ADP: T+3568ms | 648 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=5)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:native_event} seq=5
+
+    PROC-->>ADP: stdout line 3: {type:assistant, content:[{type:text, text:"4"}]}
+    activate ADP
+    Note right of ADP: T+3574ms | 495 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=6)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:native_event} seq=6
+
+    PROC-->>ADP: stdout line 4: {type:result, result:"4", duration_ms:3105}
+    activate ADP
+    Note right of ADP: T+3576ms | 946 chars → output (final=true)
+    ADP-->>ENG: RuntimeEvent(output, seq=7, content="4")
+    deactivate ADP
+    ENG->>RDS: XADD events {output, final} seq=7
+
+    PROC-->>ENG: exit(0) — stderr: 0 bytes
+    deactivate PROC
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 4 — Completion & Visibility Persistence (T+3625ms ~ T+3720ms)
+    ENG->>RDS: XADD events {state:completed} seq=8
+    ENG->>RDS: HSET iota:exec:3a016eba status=completed output="4"
+    ENG->>RDS: SET visibility:tokens {in:15, out:18, total:33}
+    ENG->>RDS: RPUSH visibility:spans (15 spans)
+    ENG->>RDS: HSET visibility:chain (15 entries)
+    ENG->>RDS: RPUSH visibility:mapping (4 native→runtime mappings, all lossy=false)
+    ENG->>RDS: SET visibility:context {1 segment, budgetUsed=0.005%}
+    ENG->>RDS: SET visibility:link {command, process, protocol, 5 nativeEventRefs}
+    end
+
+    rect rgba(126,231,135,0.05)
+    Note over ENG,MEM: Phase 5 — Memory Extraction (T+3713ms ~ T+3718ms)
+    ENG->>MEM: extract(output="4")
+    activate MEM
+    Note right of MEM: 5ms — episodic<br/>memoryId=fc9be327<br/>hash=328a9db1, 16 tokens
+    MEM->>RDS: ZADD iota:memories:ee96e2d9
+    MEM->>RDS: SET visibility:memory (extraction record)
+    MEM-->>ENG: persisted
+    deactivate MEM
+    end
+
+    ENG-->>CLI: output="4", status=completed
+    deactivate ENG
+    Note over CLI,ADP: ✅ Total: 3,720ms | Events: 8 (3 state + 3 extension + 1 output + 1 completed) | Spans: 15 | Memory: 1 episodic
+</pre>
+</div>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'dark',sequence:{mirrorActors:false,actorMargin:50,messageMargin:35,noteMargin:10,useMaxWidth:false}});
+</script>
+</body>
+</html>

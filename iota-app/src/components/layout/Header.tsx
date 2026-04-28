@@ -5,7 +5,7 @@ import { api } from '../../lib/api';
 import { AlertTriangle } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { activeBackend, setActiveBackend, wsConnected, backends, setBackends, sessionSnapshot } = useSessionStore();
+  const { activeBackend, setActiveBackend, wsConnected, backends, setBackends } = useSessionStore();
 
   // Supplement backends from snapshot with fresh status
   const { data: statusData } = useQuery({
@@ -14,20 +14,17 @@ export const Header: React.FC = () => {
     refetchInterval: 5000, // Poll every 5s
   });
 
-  // Sync fresh status to store backends
+  // Sync fresh status to store backends (always, even without a session)
   useEffect(() => {
-    if (statusData?.backends && sessionSnapshot) {
+    if (statusData?.backends) {
        const updatedBackends = statusData.backends.map(b => {
          const existing = backends.find(eb => eb.backend === b.backend);
          return { ...b, active: b.backend === activeBackend || existing?.active || false };
        });
-       // Only update if something actually changed to avoid infinite loops if not careful, 
-       // but Zustand's set is usually fine if values are the same.
-       // For simplicity, we just set it.
        setBackends(updatedBackends);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusData, sessionSnapshot, activeBackend]);
+  }, [statusData, activeBackend]);
 
   const getStatusColor = (status: string) => {
     switch (status) {

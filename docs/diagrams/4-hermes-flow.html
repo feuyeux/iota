@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Iota Engine - Hermes Agent Backend</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;padding:24px;line-height:1.6}
+h1{color:#d2a8ff;font-size:1.35em;margin-bottom:16px}
+.meta{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:20px;font-size:.82em;line-height:2}
+.meta b{color:#8b949e}
+.meta code{background:#1f2937;padding:1px 5px;border-radius:3px;color:#7ee787;font-size:.95em}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:.78em}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}
+.chart{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;overflow-x:auto}
+.diff{background:#1c2128;border:1px solid #f0883e;border-radius:6px;padding:12px 16px;margin-bottom:18px;font-size:.82em;line-height:1.8}
+.diff b{color:#f0883e}
+</style>
+</head>
+<body>
+<h1>🟣 Hermes Agent Backend — Iota Engine 内部实际执行流程</h1>
+<div class="diff">
+<b>⚡ 与其他 3 个 Backend 的关键差异:</b><br>
+① <b>Long-lived 进程</b> — 不是 spawn→exit，而是复用已有 warm process (pid 23396)，通过 <code>backend.resolve</code> 而非 <code>backend.spawn</code><br>
+② <b>ACP JSON-RPC 2.0 协议</b> — 先 <code>session/new</code> 创建会话，再 <code>session/prompt</code> 发送请求，通过 <code>session/update</code> notification 接收流式响应<br>
+③ <b>双阶段 stdin</b> — 第 1 次写 session/new (init)，收到 sessionId 后第 2 次写 session/prompt (执行)<br>
+④ <b>init 响应被标记为 ignored</b> — agentCapabilities 和 session/new result 不映射到 runtime 事件
+</div>
+<div class="meta">
+<b>Trace ID:</b> <code>57fc31bb-89fb-4761-829e-1a5840a490b3</code> &nbsp;|&nbsp;
+<b>Execution ID:</b> <code>201c5287-afc2-4a5a-b5a6-5b6662db8015</code> &nbsp;|&nbsp;
+<b>Session ID:</b> <code>a16a558b-09e3-4115-ad14-eb3abf2c5094</code><br>
+<b>Backend:</b> hermes &nbsp;|&nbsp; <b>Protocol:</b> ACP JSON-RPC 2.0 &nbsp;|&nbsp; <b>Process Model:</b> long-lived (warm process reuse)<br>
+<b>Command:</b> <code>hermes acp</code> &nbsp;|&nbsp; <b>Warm PID:</b> 23396 (reusedWarmProcess=true)<br>
+<b>Duration:</b> 7,456ms &nbsp;|&nbsp; <b>Tokens:</b> input=7,932, output=22, total=7,954 (native) &nbsp;|&nbsp; <b>Model:</b> MiniMax-M2.7<br>
+<b>Env:</b> <code>HERMES_API_KEY=redacted</code>, <code>HERMES_BASE_URL=https://api.minimaxi.com/anthropic</code>, <code>HERMES_PROVIDER=minimax-cn</code>, <code>HERMES_HOME=isolated</code><br>
+<b>Memory:</b> search=0 → inject=0 → extract=episodic (memoryId: <code>20455430</code>, 16 tokens, hash: <code>328a9db1</code>)<br>
+<b>Hermes Agent:</b> v0.8.0 &nbsp;|&nbsp; <b>Hermes Session:</b> <code>fe84f957-0320-4e17-8a57-9df644d51d88</code>
+</div>
+<div class="legend">
+<span><i style="background:#58a6ff"></i>Engine Core</span>
+<span><i style="background:#7ee787"></i>Memory System</span>
+<span><i style="background:#d2a8ff"></i>Backend Process (long-lived)</span>
+<span><i style="background:#f0883e"></i>Adapter/Parser</span>
+<span><i style="background:#f85149"></i>Redis Persistence</span>
+</div>
+<div class="chart">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant CLI as CLI<br/>(iota-cli)
+    participant ENG as Engine<br/>(engine.request)
+    participant CTX as Context Builder
+    participant MEM as Memory<br/>(Redis ZSET)
+    participant WS as Workspace<br/>Scanner
+    participant RDS as Redis<br/>(:6379)
+    participant RSV as Process<br/>Resolver
+    participant PROC as hermes acp<br/>(pid 23396, warm)
+    participant ADP as Adapter<br/>(hermes_native_mapper)
+
+    rect rgba(210,168,255,0.05)
+    Note over CLI,RDS: Phase 1 — Session & Context Preparation (T+0ms ~ T+97ms)
+    CLI->>ENG: stream("What is 2+2?", backend=hermes)
+    activate ENG
+    ENG->>RDS: HSET iota:session:a16a558b (create)
+    ENG->>CTX: build context
+    activate CTX
+    Note right of CTX: 0ms — no prior context
+    CTX-->>ENG: ready
+    deactivate CTX
+    ENG->>MEM: search(promptHash=510a2e9e, ~10 tokens)
+    activate MEM
+    Note right of MEM: 0ms — candidateCount=0
+    MEM-->>ENG: [] empty
+    deactivate MEM
+    ENG->>MEM: inject(selected=0, excluded=0)
+    MEM-->>ENG: prompt unchanged
+    ENG->>WS: scan("D:\coding\creative\iota")
+    activate WS
+    Note right of WS: 82ms — 202 files indexed
+    WS-->>ENG: fileCount=202
+    deactivate WS
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 2 — State Events (T+94ms ~ T+96ms)
+    ENG->>RDS: XADD events {state:queued} seq=1
+    ENG->>RDS: XADD events {state:starting} seq=2
+    ENG->>RDS: XADD events {state:running} seq=3
+    end
+
+    rect rgba(210,168,255,0.08)
+    Note over ENG,ADP: Phase 3 — Backend Process Resolution (T+97ms, LONG-LIVED, not spawn)
+    ENG->>RSV: resolve backend process
+    activate RSV
+    Note right of RSV: backend.resolve (scope=process)<br/>processMode=long-lived<br/>warmPid=23396, warmState=ready<br/>reusedWarmProcess=true
+    RSV-->>ENG: warm process pid=23396
+    deactivate RSV
+    Note over ENG,PROC: No spawn! Reusing existing warm hermes acp process
+    end
+
+    rect rgba(210,168,255,0.12)
+    Note over ENG,ADP: Phase 4 — ACP JSON-RPC Session Init (T+97ms ~ T+4540ms)
+    activate PROC
+    ENG->>PROC: stdin: {jsonrpc:2.0, method:session/new, params:{cwd:...}} (227 bytes)
+
+    PROC-->>ADP: stdout: {id:init-0, result:{agentCapabilities:...}}
+    activate ADP
+    Note right of ADP: 388 chars → IGNORED<br/>hermes-agent v0.8.0<br/>capabilities: loadSession, fork, list, resume
+    ADP-->>ENG: (ignored — not mapped to runtime event)
+    deactivate ADP
+
+    PROC-->>ADP: stdout: {id:...:new, result:{sessionId:fe84f957}}
+    activate ADP
+    Note right of ADP: 127 chars → IGNORED<br/>Hermes session created
+    ADP-->>ENG: (ignored — session/new response)
+    deactivate ADP
+
+    Note over ENG,PROC: Hermes sessionId obtained: fe84f957
+    end
+
+    rect rgba(210,168,255,0.15)
+    Note over ENG,ADP: Phase 5 — ACP Prompt Execution (T+4540ms ~ T+7394ms)
+    ENG->>PROC: stdin: {jsonrpc:2.0, method:session/prompt, params:{sessionId:fe84f957, prompt:[...]}}
+
+    PROC-->>ADP: stdout: {method:session/update, update:{availableCommands:[...]}}
+    activate ADP
+    Note right of ADP: T+4541ms | 692 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=4)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension} seq=4
+
+    PROC-->>ADP: stdout: {method:session/update, update:{agent_thought_chunk}}
+    activate ADP
+    Note right of ADP: T+4559ms | 218 chars → extension<br/>thinking indicator
+    ADP-->>ENG: RuntimeEvent(extension, seq=5)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension} seq=5
+
+    PROC-->>ADP: stdout: {method:session/update, update:{agent_message_chunk, text:"4"}}
+    activate ADP
+    Note right of ADP: T+7392ms | 191 chars → output
+    ADP-->>ENG: RuntimeEvent(output, seq=6, content="4")
+    deactivate ADP
+    ENG->>RDS: XADD events {output} seq=6
+
+    PROC-->>ADP: stdout: {id:201c5287, result:{stopReason:end_turn, usage:{in:7932,out:22}}}
+    activate ADP
+    Note right of ADP: T+7393ms | 201 chars → output (final=true)
+    ADP-->>ENG: RuntimeEvent(output, seq=7, final=true)
+    deactivate ADP
+    ENG->>RDS: XADD events {output, final} seq=7
+
+    Note over PROC: Process stays alive (long-lived)<br/>warmState → ready for next execution
+    deactivate PROC
+    end
+
+    rect rgba(210,168,255,0.05)
+    Note over ENG,RSV: backend.resolve (scope=execution) closes
+    ENG->>RSV: execution done
+    activate RSV
+    Note right of RSV: warmState: busy → ready<br/>executionDone=true
+    RSV-->>ENG: execution released
+    deactivate RSV
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 6 — Completion & Visibility Persistence (T+7394ms ~ T+7452ms)
+    ENG->>RDS: XADD events {state:completed} seq=8
+    ENG->>RDS: HSET iota:exec:201c5287 status=completed output="4"
+    ENG->>RDS: SET visibility:tokens {in:7932, out:22, total:7954}
+    ENG->>RDS: RPUSH visibility:spans (16 spans)
+    ENG->>RDS: HSET visibility:chain (16 entries)
+    ENG->>RDS: RPUSH visibility:mapping (6 native→runtime: 2 ignored + 2 extension + 2 output)
+    ENG->>RDS: SET visibility:context {1 segment, budgetUsed:0.005%}
+    ENG->>RDS: SET visibility:link {command, process(no exitedAt), 8 nativeEventRefs}
+    end
+
+    rect rgba(126,231,135,0.05)
+    Note over ENG,MEM: Phase 7 — Memory Extraction (T+7452ms ~ T+7455ms)
+    ENG->>MEM: extract(output="4")
+    activate MEM
+    Note right of MEM: 3ms — episodic<br/>memoryId=20455430<br/>hash=328a9db1, 16 tokens
+    MEM->>RDS: ZADD iota:memories:a16a558b
+    MEM->>RDS: SET visibility:memory
+    MEM-->>ENG: persisted
+    deactivate MEM
+    end
+
+    ENG-->>CLI: output="4", status=completed
+    deactivate ENG
+    Note over CLI,ADP: ✅ Total: 7,456ms | Events: 8 | Spans: 16 | Memory: 1 episodic | Process: stays alive (no exit)
+</pre>
+</div>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'dark',sequence:{mirrorActors:false,actorMargin:50,messageMargin:35,noteMargin:10,useMaxWidth:false}});
+</script>
+</body>
+</html>

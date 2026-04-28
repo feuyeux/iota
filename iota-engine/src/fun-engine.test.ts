@@ -21,6 +21,15 @@ describe("IotaFunEngine", () => {
     expect(plan.args[1]).toContain("random_number.py");
   });
 
+  it("builds typescript plan without eval", () => {
+    const plan = engine.buildPlan("typescript");
+
+    expect(plan.command).toBe("node");
+    expect(plan.args).toHaveLength(1);
+    expect(plan.args[0]).toContain(path.join("iota-fun", "typescript", "runner.js"));
+    expect(plan.cwd).toContain(path.join("iota-fun", "typescript"));
+  });
+
   it("builds java compile and run plan", () => {
     const plan = engine.buildPlan("java");
 

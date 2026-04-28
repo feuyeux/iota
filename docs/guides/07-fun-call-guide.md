@@ -188,4 +188,4 @@ bun run test -- src/fun-engine.test.ts src/fun-intent.test.ts src/engine-fun.tes
 -  `iota-engine/src/fun-intent.ts`
 -  `iota-engine/src/engine.ts`
 -  `iota-engine/src/engine-fun.test.ts`
--  `docs/guides/fun-runtime-install.md`
+-  `docs/guides/08-fun-runtime-install-guide.md`

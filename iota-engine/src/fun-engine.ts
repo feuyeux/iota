@@ -61,8 +61,8 @@ export class IotaFunEngine {
       case "typescript":
         return {
           command: "node",
-          args: ["-e", this.typescriptScript()],
-          cwd: this.engineRoot,
+          args: [this.typescriptRunnerPath()],
+          cwd: path.join(this.funRoot, "typescript"),
         };
       case "go":
         return {
@@ -217,19 +217,16 @@ export class IotaFunEngine {
     ].join("; ");
   }
 
-  private typescriptScript(): string {
-    const file = path.join(this.funRoot, "typescript", "randomColor.ts").replaceAll("\\", "\\\\");
-    return [
-      "const fs = require('node:fs');",
-      `let source = fs.readFileSync('${file}', 'utf8');`,
-      "source = source.replace('export function randomColor(): string {', 'function randomColor() {');",
-      "eval(source + '\nconsole.log(randomColor());');",
-    ].join(" ");
+  private typescriptRunnerPath(): string {
+    return path.join(this.funRoot, "typescript", "runner.js");
   }
 
   private rustPlan(): ExecutionPlan {
     const cwd = path.join(this.funRoot, "rust");
-    const binary = path.join(os.tmpdir(), `iota-fun-rust-${process.pid}.exe`);
+    const binary = path.join(
+      os.tmpdir(),
+      `iota-fun-rust-${process.pid}${process.platform === "win32" ? ".exe" : ""}`,
+    );
     this.ensureFile(path.join(cwd, "runner.rs"));
     this.ensureFile(path.join(cwd, "random_material.rs"));
     return {
@@ -269,12 +266,11 @@ export class IotaFunEngine {
 
   private cppPlan(): ExecutionPlan {
     const cwd = path.join(this.funRoot, "cpp");
-    const binary = path.join(os.tmpdir(), `iota-fun-cpp-${process.pid}.exe`);
-    const mingwBin = "C:\\ProgramData\\mingw64\\mingw64\\bin";
-    const env = {
-      ...process.env,
-      PATH: `${mingwBin}${path.delimiter}${process.env.PATH ?? ""}`,
-    };
+    const binary = path.join(
+      os.tmpdir(),
+      `iota-fun-cpp-${process.pid}${process.platform === "win32" ? ".exe" : ""}`,
+    );
+    const env = this.buildCppEnv();
     this.ensureFile(path.join(cwd, "random_action.cpp"));
     this.ensureFile(path.join(cwd, "random_action_runner.cpp"));
     return {
@@ -301,6 +297,24 @@ export class IotaFunEngine {
         details: { filePath },
       });
     }
+  }
+
+  private buildCppEnv(): NodeJS.ProcessEnv {
+    if (process.platform !== "win32") {
+      return { ...process.env };
+    }
+
+    const mingwBin = "C:\\ProgramData\\mingw64\\mingw64\\bin";
+    const pathValue = process.env.PATH ?? "";
+    const parts = pathValue.split(path.delimiter);
+    if (!parts.includes(mingwBin)) {
+      parts.unshift(mingwBin);
+    }
+
+    return {
+      ...process.env,
+      PATH: parts.join(path.delimiter),
+    };
   }
 }
 

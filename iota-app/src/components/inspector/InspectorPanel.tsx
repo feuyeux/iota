@@ -46,7 +46,7 @@ export const InspectorPanel: React.FC = () => {
   const caps = currentBackend?.capabilities;
 
   return (
-    <aside className="w-96 flex flex-col overflow-hidden bg-white border-l border-iota-border">
+    <aside className="h-full w-full flex flex-col overflow-hidden bg-white border-l border-iota-border">
       {/* Tabs */}
       <div className="h-10 border-b border-iota-border flex bg-gray-50/50">
         <TabButton 
@@ -524,7 +524,7 @@ const MemoryView: React.FC<{ memory?: MemoryPanelView }> = ({ memory }) => {
 };
 
 const ContextView: React.FC = () => {
-  const { sessionId, activeFiles, setActiveFiles } = useSessionStore();
+  const { sessionId, activeFiles, setActiveFiles, activeExecution } = useSessionStore();
 
   const handleTogglePin = async (path: string) => {
     const newFiles = activeFiles.map(f => 
@@ -582,10 +582,10 @@ const ContextView: React.FC = () => {
       <div className="p-3 bg-iota-accent/5 border border-iota-accent/10 rounded-lg">
          <div className="flex justify-between items-center mb-1">
             <span className="text-[9px] font-bold uppercase text-iota-accent/60">Context Budget</span>
-            <span className="text-[9px] font-bold text-iota-accent">12%</span>
+            <span className="text-[9px] font-bold text-iota-accent">{activeExecution?.tokens?.totalTokens ? `${Math.round(activeExecution.tokens.totalTokens / 1000)}k` : '—'}</span>
          </div>
          <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full bg-iota-accent w-[12%]" />
+            <div className="h-full bg-iota-accent transition-all" style={{ width: `${Math.min(100, Math.round((activeExecution?.tokens?.totalTokens ?? 0) / 1280))}%` }} />
          </div>
       </div>
     </div>

@@ -39,7 +39,7 @@
 graph TB
     subgraph "用户界面层 (User Interface Layer)"
         CLI[CLI<br/>iota-cli<br/>命令行工具]
-        TUI[TUI<br/>交互模式<br/>终端UI]
+        TUI[TUI<br/>交互模式<br/>终端UI<br/>通过 iota-cli 启动]
         Browser[浏览器<br/>Web客户端]
     end
 
@@ -108,7 +108,7 @@ graph TB
 | 组件 | 类型 | 端口 | 描述 |
 |-----------|------|------|-------------|
 | **CLI** | 命令行工具 | N/A | 直接执行命令，导入 Engine 库 |
-| **TUI** | 交互式终端 | N/A | 通过 CLI 启动的交互模式，导入 Engine 库 |
+| **TUI** | 交互式终端 | N/A | 通过 `iota-cli` 启动的本地交互模式，和 CLI 一样直接导入 Engine 库，不经过 Agent |
 | **Browser** | Web 客户端 | N/A | 用户访问 App 前端的 Web 浏览器 |
 
 ### 第 2 层：服务层 (Service Layer)
@@ -947,9 +947,10 @@ graph TB
 **设置步骤**：
 1. 启动 Redis：`cd deployment/scripts && bash start-storage.sh`
 2. 构建包：`cd iota-engine && bun run build && cd ../iota-cli && bun run build`
-3. 启动 Agent（可选）：`cd iota-agent && bun run dev`
+3. 启动 Agent（仅 App / 远程 API 需要）：`cd iota-agent && bun run dev`
 4. 启动 App（可选）：`cd iota-app && bun run dev`
 5. 使用 CLI：`bun iota-cli/dist/index.js run "test prompt"`
+6. 使用 TUI：`bun iota-cli/dist/index.js interactive`
 
 **特性**：
 - 所有组件在同一台机器上
@@ -1176,5 +1177,6 @@ docker-compose up -d
 ---
 
 **版本历史**：
+- v1.2 (2026年4月)：澄清 TUI 通过 `iota-cli` 直接调用 Engine，不经过 Agent
 - v1.1 (2026年4月)：添加实现成熟度矩阵；修正 approval_response→approval_decision 术语；澄清存储层必需/可选状态
 - v1.0 (2026年4月)：初始架构概览，包含完整图表和流程描述

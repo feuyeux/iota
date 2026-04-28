@@ -26,15 +26,6 @@ else
 fi
 
 echo ""
-echo "=== Milvus Health ==="
-if curl -sf http://localhost:9091/healthz &> /dev/null; then
-    echo "✓ Milvus is healthy"
-    curl -s http://localhost:9091/healthz
-else
-    echo "✗ Milvus is unhealthy"
-fi
-
-echo ""
 echo "=== MinIO Health ==="
 if curl -sf http://localhost:9002/minio/health/live &> /dev/null; then
     echo "✓ MinIO is healthy"
@@ -46,4 +37,4 @@ fi
 echo ""
 echo "=== Docker Resource Usage ==="
 docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" \
-    iota-redis iota-milvus iota-minio 2>/dev/null || echo "Unable to get stats"
+    iota-redis iota-minio 2>/dev/null || echo "Unable to get stats"

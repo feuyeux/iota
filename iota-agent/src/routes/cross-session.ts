@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { BackendName } from "@iota/engine";
+import type { BackendName, RuntimeEvent } from "@iota/engine";
 
 /**
  * Cross-session data access routes
@@ -34,7 +34,7 @@ export const crossSessionRoutes: FastifyPluginAsync = async (fastify) => {
             sessionId: { type: "string" },
             executionId: { type: "string" },
             backend: { type: "string" },
-            eventType: { type: "string" },
+            eventType: { type: "string", enum: ["error", "output", "state", "tool_call", "tool_result", "file_delta", "extension", "memory"] },
             since: { type: "string" },
             until: { type: "string" },
             limit: { type: "string" },
@@ -49,7 +49,7 @@ export const crossSessionRoutes: FastifyPluginAsync = async (fastify) => {
           sessionId: request.query.sessionId,
           executionId: request.query.executionId,
           backend: request.query.backend as BackendName | undefined,
-          eventType: request.query.eventType as any,
+          eventType: request.query.eventType as RuntimeEvent["type"] | undefined,
           since: request.query.since ? Number(request.query.since) : undefined,
           until: request.query.until ? Number(request.query.until) : undefined,
           limit: request.query.limit ? Number(request.query.limit) : undefined,

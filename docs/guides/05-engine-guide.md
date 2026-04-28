@@ -190,7 +190,7 @@ iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id herme
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
-已验证的 Hermes 配置与 Claude Code 使用相同的 provider 值，但使用 Hermes 专属的 Redis 键。Iota 在启动 `hermes acp` 前将 Redis 中的值转换为隔离的 Hermes 运行时目录。
+已验证的 Hermes 配置与 Claude Code 使用相同的 provider 值，但使用 Hermes 专属的 Redis 键。Iota 在启动 `hermes acp` 前将 Redis 中的值转换为隔离的 Hermes 运行时目录和进程环境变量；当前实现不再写临时 `.env` 文件。
 
 **Hermes Agent**：
 ```bash
@@ -403,14 +403,18 @@ iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id herme
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
-当这些 Redis 字段存在时，Iota 不依赖用户的全局 Hermes 配置进行 Backend 认证或模型选择。适配器会创建隔离的 `HERMES_HOME`，写入 Hermes 原生的 `config.yaml` 和 `.env`，并将 `HERMES_API_KEY`/`HERMES_BASE_URL` 映射为 provider 专属键（如 `MINIMAX_CN_API_KEY`/`MINIMAX_CN_BASE_URL`）。
+当这些 Redis 字段存在时，Iota 不依赖用户的全局 Hermes 配置进行 Backend 认证或模型选择。适配器会创建隔离的 `HERMES_HOME`，写入 Hermes 原生的 `config.yaml`，并把 `HERMES_API_KEY`/`HERMES_BASE_URL` 映射为 provider 专属进程环境变量（如 `MINIMAX_CN_API_KEY`/`MINIMAX_CN_BASE_URL`）。
 
 **Hermes 配置验证**（关键步骤）：
 
 1. **检查 Hermes 配置**：
    ```bash
+   set PYTHONIOENCODING=utf-8
+   set PYTHONUTF8=1
    hermes config show
    ```
+
+   在 Windows GBK 控制台下，`hermes config show` 可能因 Unicode 输出触发 `UnicodeEncodeError`。遇到该情况时，先设置 UTF-8 相关环境变量，或改用 UTF-8 终端后再执行。
 
 2. **验证 model provider**：
    - 若 `model.provider: custom` → 需要本地网关正在运行

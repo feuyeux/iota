@@ -1,6 +1,6 @@
 # CLI 命令行接口指南
 
-**版本:** 1.0
+**版本:** 1.1
 **最后更新:** 2026 年 4 月
 
 ## 目录
@@ -268,6 +268,8 @@ iota run --backend claude-code "What is 2+2?"
 
 **目的**: 启动带流式输出的交互式 REPL Session 会话。
 
+**架构说明**: `iota interactive` 由 `iota-cli` 在本地进程内创建 `IotaEngine` 实例并直接调用 `engine.stream()`。它不通过 `iota-agent`，因此运行 TUI 不需要先启动 Agent，审批也使用 CLI 侧的 `CliApprovalHook` 而不是 Agent 的 WebSocket 流程。
+
 **命令语法**:
 ```bash
 iota interactive
@@ -471,10 +473,10 @@ iota logs [options]
 iota logs --limit 50
 
 # 获取特定 Session 会话的日志
-iota logs --session a1b2c3d4-5678-90ab-cdef-1234567890ab --limit 20
+iota logs --session 4afe5990-d7be-4899-83ae-b2bb48a2c0dc --limit 20
 
 # 获取特定 Execution 执行的日志
-iota logs --execution e1f2g3h4-5678-90ab-cdef-345678901234
+iota logs --execution exec_2278345f-7d23-4b91-8c43-06bea200718e
 
 # 按 Backend 后端过滤
 iota logs --backend claude-code --limit 20
@@ -514,10 +516,10 @@ iota trace [options]
 **示例**:
 ```bash
 # 显示单个 Execution 执行 Trace 追踪
-iota trace --execution e1f2g3h4-5678-90ab-cdef-345678901234
+iota trace --execution exec_2278345f-7d23-4b91-8c43-06bea200718e
 
 # 聚合 Session 会话的 Trace 追踪
-iota trace --session a1b2c3d4-5678-90ab-cdef-1234567890ab
+iota trace --session 4afe5990-d7be-4899-83ae-b2bb48a2c0dc
 ```
 
 ---
@@ -549,22 +551,22 @@ iota vis [options]           # 简写
 **示例**:
 ```bash
 # 显示 Execution 执行的完整 Visibility 可见性
-iota visibility --execution e1f2g3h4-5678-90ab-cdef-345678901234
+iota visibility --execution exec_2278345f-7d23-4b91-8c43-06bea200718e
 
 # 列出 Session 会话 Visibility 可见性记录
-iota visibility list --session a1b2c3d4-5678-90ab-cdef-1234567890ab
+iota visibility list --session 4afe5990-d7be-4899-83ae-b2bb48a2c0dc
 
 # 导出为 JSON
-iota visibility --execution e1f2g3h4 --export visibility.json --format json
+iota visibility --execution exec_2278345f-7d23-4b91-8c43-06bea200718e --export visibility.json --format json
 
 # 仅 Memory 可见性
-iota visibility --execution e1f2g3h4 --memory
+iota visibility --execution exec_2278345f-7d23-4b91-8c43-06bea200718e --memory
 
 # 仅 Token 可见性
-iota visibility --execution e1f2g3h4 --tokens
+iota visibility --execution exec_2278345f-7d23-4b91-8c43-06bea200718e --tokens
 
 # 仅 Chain（spans）可见性
-iota visibility --execution e1f2g3h4 --chain
+iota visibility --execution exec_2278345f-7d23-4b91-8c43-06bea200718e --chain
 ```
 
 #### `iota visibility list` — 列出 Visibility 可见性记录
@@ -1025,4 +1027,5 @@ bash stop-storage.sh
 
 | 版本 | 日期 | 变更 |
 |---------|------|---------|
+| 1.1 | 2026 年 4 月 | 统一示例 ID 为实际 UUID 格式；增强命令交叉引用 |
 | 1.0 | 2026 年 4 月 | 初始版本 |

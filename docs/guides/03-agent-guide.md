@@ -1,6 +1,6 @@
 # Agent 服务指南
 
-**版本:** 1.1
+**版本:** 1.2
 **最后更新:** 2026 年 4 月
 
 ## 目录
@@ -189,10 +189,12 @@ curl -X POST http://localhost:9666/api/v1/sessions \
 **响应** (201)：
 ```json
 {
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "createdAt": 1714067200000
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
+  "createdAt": 1777360839048
 }
 ```
+
+> **注意**：Session ID 为标准 UUID v4 格式。
 
 ---
 
@@ -200,13 +202,13 @@ curl -X POST http://localhost:9666/api/v1/sessions \
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+curl http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc
 ```
 
 **响应** (200)：
 ```json
 {
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "workingDirectory": "/tmp",
   "createdAt": 1714067200000,
   "updatedAt": 1714067250000
@@ -219,10 +221,12 @@ curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 **请求**：
 ```bash
-curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+curl -X DELETE http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc
 ```
 
 **响应** (204)：空
+
+> **注意**：重复删除已删除的 Session 会返回 404。
 
 ---
 
@@ -230,7 +234,7 @@ curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1
 
 **请求**：
 ```bash
-curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/context \
+curl -X PUT http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/context \
   -H "Content-Type: application/json" \
   -d '{"activeFiles":[{"path":"/tmp/test.txt","pinned":true}]}'
 ```
@@ -246,7 +250,7 @@ curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/workspace/file?path=src/index.ts"
+curl "http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/workspace/file?path=src/index.ts"
 ```
 
 **响应** (200)：
@@ -265,7 +269,7 @@ curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 **请求**：
 ```bash
-curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/workspace/file \
+curl -X PUT http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/workspace/file \
   -H "Content-Type: application/json" \
   -d '{"path":"src/index.ts","content":"console.log(\"hello\");"}'
 ```
@@ -285,7 +289,7 @@ curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories?limit=50"
+curl "http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/memories?limit=50"
 ```
 
 **查询参数**：`limit`（默认 50）
@@ -306,7 +310,7 @@ curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 **请求**：
 ```bash
-curl -X POST http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories \
+curl -X POST http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/memories \
   -H "Content-Type: application/json" \
   -d '{"content":"User prefers TypeScript"}'
 ```
@@ -319,7 +323,7 @@ curl -X POST http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef123
 
 **请求**：
 ```bash
-curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories/mem_1
+curl -X DELETE http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/memories/mem_1
 ```
 
 **响应** (204)：空
@@ -330,7 +334,7 @@ curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/app-snapshot
+curl http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/app-snapshot
 ```
 
 **响应** (200)：完整的 Session 会话级 App 读取模型快照，包括对话历史、内存、令牌和追踪。
@@ -345,14 +349,14 @@ curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/
 ```bash
 curl -X POST http://localhost:9666/api/v1/execute \
   -H "Content-Type: application/json" \
-  -d '{"sessionId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","prompt":"What is 2+2?","backend":"claude-code"}'
+  -d '{"sessionId":"4afe5990-d7be-4899-83ae-b2bb48a2c0dc","prompt":"What is 2+2?","backend":"claude-code"}'
 ```
 
 **响应** (202)：
 ```json
 {
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "status": "queued"
 }
 ```
@@ -363,7 +367,7 @@ curl -X POST http://localhost:9666/api/v1/execute \
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e
 ```
 
 **响应** (200)：Execution 执行记录对象，包含 `prompt`、`output`、`status`、`backend`、`createdAt`、`completedAt`。
@@ -374,13 +378,13 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/events?offset=0&limit=100"
+curl "http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/events?offset=0&limit=100"
 ```
 
 **响应** (200)：
 ```json
 {
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "offset": 0,
   "limit": 100,
   "count": 5,
@@ -400,12 +404,12 @@ curl "http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-3456789012
 
 **请求**：
 ```bash
-curl -X POST http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/interrupt
+curl -X POST http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/interrupt
 ```
 
 **响应** (200)：
 ```json
-{"executionId":"e1f2g3h4-5678-90ab-cdef-345678901234","status":"interrupted"}
+{"executionId":"exec_2278345f-7d23-4b91-8c43-06bea200718e","status":"interrupted"}
 ```
 
 ---
@@ -416,14 +420,14 @@ curl -X POST http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/config?backend=claude-code&sessionId=a1b2c3d4&userId=user_01"
+curl "http://localhost:9666/api/v1/config?backend=claude-code&sessionId=4afe5990-d7be-4899-83ae-b2bb48a2c0dc&userId=user_01"
 ```
 
-**查询参数**：`backend`（可选）、`sessionId`（可选）、`userId`（可选）
+**查询参数**：`backend`、`sessionId`、`userId`（三选一，至少提供一个以获取有意义的合并结果）
 
 **解析顺序**（优先级从高到低）：`user > session > backend > global`
 
-**响应** (200)：从所有作用域合并的配置对象。
+**响应** (200)：从指定作用域链合并的配置对象。例如传入 `backend=claude-code` 会合并 global + backend.claude-code 的配置。
 
 ---
 
@@ -504,7 +508,7 @@ curl -X DELETE http://localhost:9666/api/v1/config/user/user_01/theme
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/logs?sessionId=a1b2c3d4&backend=claude-code&limit=10"
+curl "http://localhost:9666/api/v1/logs?sessionId=4afe5990-d7be-4899-83ae-b2bb48a2c0dc&backend=claude-code&limit=10"
 ```
 
 **查询参数**：`sessionId`、`executionId`、`backend`、`eventType`、`since`、`until`、`offset`、`limit`
@@ -565,7 +569,7 @@ curl "http://localhost:9666/api/v1/sessions/all?limit=100"
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/visibility
 ```
 
 **响应** (200)：完整的 Visibility 可见性包，包括令牌、内存、上下文、链。
@@ -576,7 +580,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/tokens
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/visibility/tokens
 ```
 
 ---
@@ -585,7 +589,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/memory
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/visibility/memory
 ```
 
 ---
@@ -594,7 +598,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/chain
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/visibility/chain
 ```
 
 **响应** (200)：
@@ -612,7 +616,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/trace
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/trace
 ```
 
 ---
@@ -621,7 +625,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/app-snapshot
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/app-snapshot
 ```
 
 ---
@@ -630,7 +634,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/replay
+curl http://localhost:9666/api/v1/executions/exec_2278345f-7d23-4b91-8c43-06bea200718e/replay
 ```
 
 **响应** (200)：Execution 执行回放数据，包括有序事件、Visibility 可见性快照和用于回放重建的时间信息。
@@ -643,7 +647,7 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/traces/aggregate?sessionId=a1b2c3d4&backend=claude-code"
+curl "http://localhost:9666/api/v1/traces/aggregate?sessionId=4afe5990-d7be-4899-83ae-b2bb48a2c0dc&backend=claude-code"
 ```
 
 **响应** (200)：跨 Execution 执行的聚合追踪统计。
@@ -654,7 +658,7 @@ curl "http://localhost:9666/api/v1/traces/aggregate?sessionId=a1b2c3d4&backend=c
 
 **请求**：
 ```bash
-curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/visibility?limit=50"
+curl "http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/visibility?limit=50"
 ```
 
 ---
@@ -663,7 +667,7 @@ curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 **请求**：
 ```bash
-curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/visibility/summary
+curl http://localhost:9666/api/v1/sessions/4afe5990-d7be-4899-83ae-b2bb48a2c0dc/visibility/summary
 ```
 
 **响应** (200)：
@@ -795,12 +799,14 @@ wscat -c ws://localhost:9666/api/v1/stream
 # 已连接（按 Ctrl+C 退出）
 ```
 
-**使用浏览器开发者工具验证**：
-1. 打开开发者工具（F12）→ Network 标签
-2. 按 "WS"（WebSocket）过滤
-3. 导航到 `http://localhost:9888`（App）或直接连接
-4. 点击 WebSocket 连接查看帧列表
-5. 切换到 "Messages" 标签检查 JSON 帧
+**使用 wscat 验证 WebSocket 连接**：
+```bash
+npm install -g wscat
+wscat -c ws://localhost:9666/api/v1/stream
+# 已连接（按 Ctrl+C 退出）
+```
+
+**注意**：不要用 `curl -I` 检测 WebSocket 端点，会返回 500（因为 WebSocket 需要升级协议，curl 的 HEAD 请求无法完成握手）。
 
 ---
 
@@ -812,7 +818,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "execute",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "prompt": "What is 2+2?",
   "backend": "claude-code",
   "approvals": {}
@@ -829,7 +835,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribe_app_session",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "include": ["conversation", "tracing", "memory", "tokens", "summary"]
 }
 ```
@@ -838,7 +844,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribed",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "include": ["conversation", "tracing", "memory", "tokens", "summary"]
 }
 ```
@@ -853,7 +859,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribe_visibility",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "kinds": ["memory", "tokens", "chain", "summary"]
 }
 ```
@@ -862,7 +868,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribed_visibility",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "kinds": ["memory", "tokens", "chain", "summary"]
 }
 ```
@@ -883,7 +889,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "interrupt",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234"
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e"
 }
 ```
 
@@ -924,7 +930,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "event",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "event": {
     "type": "output",
     "data": {"content": "2"}
@@ -941,7 +947,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "complete",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234"
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e"
 }
 ```
 
@@ -952,7 +958,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "error",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "error": "Backend failed: ..."
 }
 ```
@@ -964,7 +970,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribed",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "include": ["conversation", "tracing"]
 }
 ```
@@ -976,7 +982,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "subscribed_visibility",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "kinds": ["memory", "tokens"]
 }
 ```
@@ -988,7 +994,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "app_delta",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "delta": {
     "type": "conversation_delta",
     "executionId": "e1f2g3h4-...",
@@ -1012,7 +1018,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "app_snapshot",
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sessionId": "4afe5990-d7be-4899-83ae-b2bb48a2c0dc",
   "snapshot": {...}
 }
 ```
@@ -1024,7 +1030,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 ```json
 {
   "type": "visibility_snapshot",
-  "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
+  "executionId": "exec_2278345f-7d23-4b91-8c43-06bea200718e",
   "sessionId": "a1b2c3d4-...",
   "visibility": {...}
 }
@@ -1463,6 +1469,7 @@ cd deployment/scripts && bash stop-storage.sh
 
 | 版本 | 日期 | 变更 |
 |---------|------|---------|
+| 1.3 | 2026 年 4 月 | 修正 Session/Execution ID 示例为实际 UUID 格式；更正 Config 查询参数说明（需至少提供一个）；更新 WebSocket 验证说明（避免 curl -I）；添加删除 Session 幂等性说明；统一示例 ID |
 | 1.2 | 2026 年 4 月 | 记录 approval_decision WS 消息；阐明 Visibility 可见性订阅混合机制；添加订阅类型比较表；阐明回放为 REST 查询；更新版本 |
 | 1.1 | 2026 年 4 月 | 注册跨 Session 会话插件；记录 8 个缺失的路由（workspace、memories、replay、traces/aggregate、session app-snapshot）；添加 user 配置作用域；记录 pubsub_event WebSocket 类型 |
 | 1.0 | 2026 年 4 月 | 初始版本 |

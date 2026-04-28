@@ -17,6 +17,19 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function formatRelativeTime(ts?: number): string {
+  if (!ts) return '';
+  const diff = Math.max(0, Date.now() - ts);
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export const Sidebar: React.FC<{
   onOpenOperations: () => void;
   onOpenReplay: (executionId: string) => void;
@@ -67,6 +80,7 @@ export const Sidebar: React.FC<{
                 key={c.executionId ? `exec-${c.executionId}` : `sess-${c.sessionId}-${i}`} 
                 title={c.title || 'Untitled Session'} 
                 active={c.executionId === activeExecution?.executionId}
+                timestamp={c.updatedAt}
                 onClick={() => window.location.search = `?session=${c.sessionId}${c.executionId ? `&execution=${c.executionId}` : ''}`}
                 onReplay={c.executionId ? () => onOpenReplay(c.executionId as string) : undefined}
               />
@@ -107,7 +121,7 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean
   </button>
 );
 
-const SessionItem: React.FC<{ title: string; active?: boolean; onClick: () => void; onReplay?: () => void }> = ({ title, active, onClick, onReplay }) => (
+const SessionItem: React.FC<{ title: string; active?: boolean; timestamp?: number; onClick: () => void; onReplay?: () => void }> = ({ title, active, timestamp, onClick, onReplay }) => (
   <div 
     onClick={onClick}
     className={cn(
@@ -123,7 +137,7 @@ const SessionItem: React.FC<{ title: string; active?: boolean; onClick: () => vo
     )}>
       {title}
     </div>
-    <div className="text-[8px] text-iota-text/30 uppercase mt-0.5 font-bold">2m ago</div>
+    <div className="text-[8px] text-iota-text/30 uppercase mt-0.5 font-bold">{formatRelativeTime(timestamp)}</div>
     {onReplay && (
       <button
         onClick={(event) => {

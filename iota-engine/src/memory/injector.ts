@@ -314,12 +314,13 @@ function normalizeCandidateSource(
 ): MemoryCandidateVisibility["source"] {
   switch (scope) {
     case "project":
-      return "store";
+      return "redis";
     case "user":
       return "redis";
     case "session":
+      return "dialogue";
     default:
-      return "in_memory";
+      return "store";
   }
 }
 

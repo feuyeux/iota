@@ -12,7 +12,6 @@ export default defineConfig({
     alias: {
       '@': '/src',
     },
-    tsconfigPaths: true,
   },
   server: {
     port: 9888,

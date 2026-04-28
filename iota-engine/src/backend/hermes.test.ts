@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import type { BackendConfig } from "./interface.js";
 describe("HermesAdapter distributed config", () => {
   const baseConfig: BackendConfig = {
     executable: "hermes",
-    workingDirectory: "/tmp",
+    workingDirectory: os.tmpdir(),
     timeoutMs: 60_000,
     env: {},
   };
@@ -36,6 +37,10 @@ describe("HermesAdapter distributed config", () => {
         prepared.generatedHermesHome,
       );
       expect(prepared.config.env?.HERMES_INFERENCE_PROVIDER).toBe("minimax-cn");
+      expect(prepared.config.env?.MINIMAX_CN_API_KEY).toBe("test-key");
+      expect(prepared.config.env?.MINIMAX_CN_BASE_URL).toBe(
+        "https://api.minimaxi.com/anthropic",
+      );
 
       const home = prepared.generatedHermesHome!;
       const configYaml = yaml.load(
@@ -46,12 +51,7 @@ describe("HermesAdapter distributed config", () => {
         provider: "minimax-cn",
         base_url: "https://api.minimaxi.com/anthropic",
       });
-
-      const dotenv = fs.readFileSync(path.join(home, ".env"), "utf8");
-      expect(dotenv).toContain('MINIMAX_CN_API_KEY="test-key"');
-      expect(dotenv).toContain(
-        'MINIMAX_CN_BASE_URL="https://api.minimaxi.com/anthropic"',
-      );
+      expect(fs.existsSync(path.join(home, ".env"))).toBe(false);
     } finally {
       if (prepared.generatedHermesHome) {
         fs.rmSync(prepared.generatedHermesHome, {

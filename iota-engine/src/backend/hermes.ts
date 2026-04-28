@@ -226,11 +226,6 @@ export function prepareHermesBackendConfig(config: BackendConfig): {
     ),
     { mode: 0o600 },
   );
-  fs.writeFileSync(
-    path.join(hermesHome, ".env"),
-    renderHermesDotenv(hermesConfig),
-    { mode: 0o600 },
-  );
 
   return {
     generatedHermesHome: hermesHome,
@@ -240,6 +235,7 @@ export function prepareHermesBackendConfig(config: BackendConfig): {
         ...env,
         HERMES_HOME: hermesHome,
         HERMES_INFERENCE_PROVIDER: hermesConfig.provider,
+        ...renderHermesProviderEnv(hermesConfig),
       },
     },
   };
@@ -297,41 +293,40 @@ function defaultHermesBaseUrl(provider: string): string {
   }
 }
 
-function renderHermesDotenv(config: HermesDistributedConfig): string {
-  const entries: Array<[string, string]> = [
-    ["HERMES_INFERENCE_PROVIDER", config.provider],
-    ["HERMES_MODEL", config.model],
-  ];
+function renderHermesProviderEnv(
+  config: HermesDistributedConfig,
+): Record<string, string> {
+  const env: Record<string, string> = {
+    HERMES_INFERENCE_PROVIDER: config.provider,
+    HERMES_MODEL: config.model,
+  };
 
   if (config.provider === "minimax-cn") {
-    entries.push(["MINIMAX_CN_API_KEY", config.apiKey]);
-    entries.push(["MINIMAX_CN_BASE_URL", config.baseUrl]);
+    env.MINIMAX_CN_API_KEY = config.apiKey;
+    env.MINIMAX_CN_BASE_URL = config.baseUrl;
   } else if (config.provider === "minimax") {
-    entries.push(["MINIMAX_API_KEY", config.apiKey]);
-    entries.push(["MINIMAX_BASE_URL", config.baseUrl]);
+    env.MINIMAX_API_KEY = config.apiKey;
+    env.MINIMAX_BASE_URL = config.baseUrl;
   } else if (config.provider === "anthropic") {
-    entries.push(["ANTHROPIC_API_KEY", config.apiKey]);
-    entries.push(["ANTHROPIC_TOKEN", config.apiKey]);
-    entries.push(["ANTHROPIC_BASE_URL", config.baseUrl]);
+    env.ANTHROPIC_API_KEY = config.apiKey;
+    env.ANTHROPIC_TOKEN = config.apiKey;
+    env.ANTHROPIC_BASE_URL = config.baseUrl;
   } else {
-    entries.push(["OPENAI_API_KEY", config.apiKey]);
-    entries.push(["OPENAI_BASE_URL", config.baseUrl]);
+    env.OPENAI_API_KEY = config.apiKey;
+    env.OPENAI_BASE_URL = config.baseUrl;
   }
 
-  return (
-    entries
-      .filter(([, value]) => value.length > 0)
-      .map(([key, value]) => `${key}=${dotenvQuote(value)}`)
-      .join("\n") + "\n"
-  );
+  for (const [key, value] of Object.entries(env)) {
+    if (value.length === 0) {
+      delete env[key];
+    }
+  }
+
+  return env;
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string {
   return values.find((value) => value && value.trim().length > 0)?.trim() ?? "";
-}
-
-function dotenvQuote(value: string): string {
-  return JSON.stringify(value);
 }
 
 function mapHermesEvent(

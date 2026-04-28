@@ -57,7 +57,6 @@ wait_for() {
 echo "Waiting for services to be healthy..."
 
 wait_for "Redis"  "iota-redis"        "docker exec iota-redis redis-cli ping"                 60
-wait_for "Milvus" "iota-milvus"       "curl -sf http://localhost:9091/healthz"                300
 wait_for "MinIO"  "iota-minio"        "curl -sf http://localhost:9002/minio/health/live"      60
 
 # Create MinIO bucket for Iota
@@ -69,10 +68,9 @@ echo ""
 echo "All services are ready!"
 echo ""
 echo "Service endpoints:"
-echo "  Redis:        localhost:6379"
+echo "  Redis:          localhost:6379"
 echo "  Redis Sentinel: localhost:26379"
-echo "  Milvus:       localhost:19530"
-echo "  MinIO:        localhost:9002 (console: localhost:9003)"
+echo "  MinIO:          localhost:9002 (console: localhost:9003)"
 echo ""
 echo "MinIO credentials:"
 echo "  User:     iota"

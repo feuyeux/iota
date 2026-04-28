@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import {
   expandHome,
   loadConfig,
@@ -96,6 +97,8 @@ import type { AuditEntry } from "./audit/logger.js";
 import { IotaFunEngine } from "./fun-engine.js";
 import { detectFunIntent } from "./fun-intent.js";
 
+const ENGINE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 export interface IotaEngineOptions extends LoadConfigOptions {
   workingDirectory?: string;
   storage?: StorageBackend;
@@ -149,7 +152,7 @@ export class IotaEngine {
   private visibilityStore?: VisibilityStore;
   private pubsub?: RedisPubSub;
   private configStore?: RedisConfigStore;
-  private readonly funEngine = new IotaFunEngine(__dirname);
+  private readonly funEngine = new IotaFunEngine(ENGINE_DIR);
 
   /** Track in-flight executions for multiplexer stream reuse */
   private readonly runningExecutions = new Set<string>();
@@ -288,18 +291,22 @@ export class IotaEngine {
         if (message.type === "session_update") {
           // Invalidate any local caches on remote session changes
           // Currently dialogue/working memory are per-instance; log for observability
-          console.debug(
-            `[iota-engine] Remote session update: ${message.action} ${message.sessionId}`,
-          );
+          if (process.env.IOTA_DEBUG_PUBSUB === "true") {
+            console.debug(
+              `[iota-engine] Remote session update: ${message.action} ${message.sessionId}`,
+            );
+          }
         }
       });
 
       // Subscribe to execution events for multi-instance coordination (Section 4.2)
       await this.pubsub.subscribe("iota:execution:events", async (message) => {
         if (message.type === "execution_event") {
-          console.debug(
-            `[iota-engine] Remote execution event: ${message.action} ${message.executionId}`,
-          );
+          if (process.env.IOTA_DEBUG_PUBSUB === "true") {
+            console.debug(
+              `[iota-engine] Remote execution event: ${message.action} ${message.executionId}`,
+            );
+          }
         }
       });
     }
@@ -2845,16 +2852,23 @@ function parseMcpToolName(toolName: string): {
   serverName: string;
   toolName: string;
 } {
-  // Patterns: mcp__server__tool, mcp:server:tool, mcp/server/tool
-  const separators = [/__/, /:/, /\//];
-  for (const sep of separators) {
-    const parts = toolName.split(sep).filter(Boolean);
-    if (parts.length >= 3 && parts[0] === "mcp") {
-      return { serverName: parts[1], toolName: parts.slice(2).join("_") };
+  // Patterns: mcp__server__tool__name, mcp:server:tool:name, mcp/server/tool/name
+  // Split only on the first two separator boundaries so that additional separators
+  // within the tool name are preserved (e.g. mcp__fs__read__file → server=fs, tool=read__file).
+  const prefixes: Array<{ prefix: string; sep: string }> = [
+    { prefix: "mcp__", sep: "__" },
+    { prefix: "mcp:", sep: ":" },
+    { prefix: "mcp/", sep: "/" },
+  ];
+  for (const { prefix, sep } of prefixes) {
+    if (!toolName.startsWith(prefix)) continue;
+    const rest = toolName.slice(prefix.length); // after "mcp<sep>"
+    const idx = rest.indexOf(sep);
+    if (idx < 0) {
+      // Only server, no tool portion → use server name as tool name
+      return { serverName: rest, toolName: rest };
     }
-    if (parts.length >= 2 && parts[0] === "mcp") {
-      return { serverName: parts[1], toolName: parts[1] };
-    }
+    return { serverName: rest.slice(0, idx), toolName: rest.slice(idx + sep.length) };
   }
   return { serverName: "unknown", toolName };
 }

@@ -11,6 +11,15 @@ import { buildAppExecutionSnapshot } from "@iota/engine";
 
 interface JsonWebSocket {
   send(data: string): void;
+  readyState: number;
+}
+
+/** Safely send data over WebSocket, ignoring sends if socket is not open. */
+function safeSend(ws: JsonWebSocket, data: string): void {
+  // readyState 1 = OPEN
+  if (ws.readyState === 1) {
+    ws.send(data);
+  }
 }
 
 interface StreamRequestMessage {
@@ -95,7 +104,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             // Only forward if client is subscribed to this session
             for (const [_sessionId, include] of appSessionSubscriptions) {
               if (include.size > 0) {
-                ws.send(
+                safeSend(ws, 
                   JSON.stringify({
                     type: "pubsub_event",
                     channel: "iota:execution:events",
@@ -115,7 +124,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             if (message.type !== "session_update") return;
             // Forward session updates if client subscribes to this session
             if (appSessionSubscriptions.has(message.sessionId)) {
-              ws.send(
+              safeSend(ws, 
                 JSON.stringify({
                   type: "pubsub_event",
                   channel: "iota:session:updates",
@@ -130,7 +139,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
         const unsubConfig = await pubsub.subscribe(
           "iota:config:changes",
           (message) => {
-            ws.send(
+            safeSend(ws, 
               JSON.stringify({
                 type: "pubsub_event",
                 channel: "iota:config:changes",
@@ -164,7 +173,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             ],
           );
           appSessionSubscriptions.set(message.sessionId, include);
-          ws.send(
+          safeSend(ws, 
             JSON.stringify({
               type: "subscribed",
               sessionId: message.sessionId,
@@ -181,7 +190,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             message.kinds ?? ["memory", "tokens", "chain", "summary"],
           );
           visibilitySubscriptions.set(execId, kinds);
-          ws.send(
+          safeSend(ws, 
             JSON.stringify({
               type: "subscribed_visibility",
               executionId: execId,
@@ -230,7 +239,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
                   for (const delta of deltas) {
                     if (!shouldSendVisibilityDelta(delta, kinds)) continue;
                     deltaRevision++;
-                    ws.send(
+                    safeSend(ws, 
                       JSON.stringify({
                         type: "app_delta",
                         sessionId: sid,
@@ -264,7 +273,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
 
         if (message.type === "interrupt") {
           await fastify.engine.interrupt(message.executionId);
-          ws.send(
+          safeSend(ws, 
             JSON.stringify({
               type: "complete",
               executionId: message.executionId,
@@ -277,11 +286,28 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
           const executionId =
             message.executionId ?? `exec_${crypto.randomUUID()}`;
 
+          // Validate working directory through the same path as REST routes
+          let workingDir = message.workingDirectory ?? process.cwd();
+          if (message.workingDirectory) {
+            const { validateWorkingDirectory } = await import("./session.js");
+            const result = await validateWorkingDirectory(message.workingDirectory);
+            if (!result.valid) {
+              const errorMsg: StreamResponseMessage = {
+                type: "error",
+                executionId,
+                error: result.error,
+              };
+              safeSend(ws, JSON.stringify(errorMsg));
+              return;
+            }
+            workingDir = result.normalized;
+          }
+
           const runtimeRequest: RuntimeRequest = {
             sessionId: message.sessionId,
             executionId,
             prompt: message.prompt,
-            workingDirectory: message.workingDirectory ?? process.cwd(),
+            workingDirectory: workingDir,
             backend: message.backend,
             approvals: message.approvals,
           };
@@ -294,7 +320,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
                 executionId,
                 event,
               };
-              ws.send(JSON.stringify(response));
+              safeSend(ws, JSON.stringify(response));
 
               // Push app deltas to subscribers of this session
               const include = appSessionSubscriptions.get(message.sessionId);
@@ -309,7 +335,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
                     delta,
                     revision: deltaRevision,
                   };
-                  ws.send(JSON.stringify(deltaMsg));
+                  safeSend(ws, JSON.stringify(deltaMsg));
                 }
               }
             }
@@ -336,14 +362,14 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
               type: "complete",
               executionId,
             };
-            ws.send(JSON.stringify(completeMsg));
+            safeSend(ws, JSON.stringify(completeMsg));
           } catch (error) {
             const errorMsg: StreamResponseMessage = {
               type: "error",
               executionId,
               error: error instanceof Error ? error.message : String(error),
             };
-            ws.send(JSON.stringify(errorMsg));
+            safeSend(ws, JSON.stringify(errorMsg));
           }
         }
       } catch (error) {
@@ -352,7 +378,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
           error:
             error instanceof Error ? error.message : "Invalid message format",
         };
-        ws.send(JSON.stringify(errorMsg));
+        safeSend(ws, JSON.stringify(errorMsg));
       }
     });
 
@@ -393,7 +419,7 @@ async function pushSessionSnapshot(
       url: `/api/v1/sessions/${encodeURIComponent(sessionId)}/app-snapshot`,
     });
     if (res.statusCode >= 400) return;
-    ws.send(
+    safeSend(ws, 
       JSON.stringify({
         type: "app_snapshot",
         sessionId,
@@ -414,7 +440,7 @@ async function pushExecutionVisibilitySnapshot(
     const visibility = await fastify.engine.getExecutionVisibility(executionId);
     if (!visibility) return;
     const record = await fastify.engine.getExecution(executionId);
-    ws.send(
+    safeSend(ws, 
       JSON.stringify({
         type: "visibility_snapshot",
         executionId,
@@ -562,7 +588,7 @@ function sendDelta(
   kinds: Set<VisibilitySubscriptionKind>,
 ): void {
   if (!shouldSendVisibilityDelta(delta, kinds)) return;
-  ws.send(
+  safeSend(ws, 
     JSON.stringify({
       type: "app_delta",
       sessionId,

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Iota Engine - Gemini CLI Backend 实际执行流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;padding:24px;line-height:1.6}
+h1{color:#f0883e;font-size:1.35em;margin-bottom:16px}
+.meta{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:20px;font-size:.82em;line-height:2}
+.meta b{color:#8b949e}
+.meta code{background:#1f2937;padding:1px 5px;border-radius:3px;color:#7ee787;font-size:.95em}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:.78em}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}
+.chart{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;overflow-x:auto}
+</style>
+</head>
+<body>
+<h1>🟠 Gemini CLI Backend — Iota Engine 内部实际执行流程</h1>
+<div class="meta">
+<b>Trace ID:</b> <code>0f49b384-a983-4120-be8f-220dc0002a2d</code> &nbsp;|&nbsp;
+<b>Execution ID:</b> <code>663e1c7c-9662-48ff-937d-2daf535e90cc</code> &nbsp;|&nbsp;
+<b>Session ID:</b> <code>c7bc533d-82ef-49c7-9c4c-0f2a19ab56b3</code><br>
+<b>Backend:</b> gemini &nbsp;|&nbsp; <b>Protocol:</b> stream-json (NDJSON) &nbsp;|&nbsp; <b>Process Model:</b> per-execution (spawn → exit)<br>
+<b>Command:</b> <code>gemini.CMD --output-format stream-json --skip-trust --prompt "What is 2+2?..."</code><br>
+<b>Duration:</b> 16,345ms &nbsp;|&nbsp; <b>Tokens:</b> input=12,837, output=26, total=12,945 (native) &nbsp;|&nbsp; <b>Model:</b> auto-gemini-3 (routed to gemini-2.5-flash-lite)<br>
+<b>Env:</b> <code>GEMINI_MODEL=auto-gemini-3</code> (OAuth auth: oauth-personal, no API key in Redis)<br>
+<b>Memory:</b> search=0 → inject=0 → extract=episodic (memoryId: <code>f86573e8</code>, 26 tokens, hash: <code>8b3c3776</code>)<br>
+<b>stdin mode:</b> none (prompt passed as --prompt CLI arg) &nbsp;|&nbsp; <b>stderr:</b> 471 bytes (true-color warning + skill override)
+</div>
+<div class="legend">
+<span><i style="background:#58a6ff"></i>Engine Core</span>
+<span><i style="background:#7ee787"></i>Memory System</span>
+<span><i style="background:#f0883e"></i>Backend Process</span>
+<span><i style="background:#d2a8ff"></i>Adapter/Parser</span>
+<span><i style="background:#f85149"></i>Redis Persistence</span>
+</div>
+<div class="chart">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant CLI as CLI<br/>(iota-cli)
+    participant ENG as Engine<br/>(engine.request)
+    participant CTX as Context Builder
+    participant MEM as Memory<br/>(Redis ZSET)
+    participant WS as Workspace<br/>Scanner
+    participant RDS as Redis<br/>(:6379)
+    participant PROC as gemini.CMD<br/>(pid 5584)
+    participant ADP as Adapter<br/>(gemini_native_mapper)
+
+    rect rgba(240,136,62,0.05)
+    Note over CLI,RDS: Phase 1 — Session & Context Preparation (T+0ms ~ T+120ms)
+    CLI->>ENG: stream("What is 2+2?", backend=gemini)
+    activate ENG
+    ENG->>RDS: HSET iota:session:c7bc533d (create)
+    ENG->>CTX: build context
+    activate CTX
+    Note right of CTX: 0ms — no prior context
+    CTX-->>ENG: ready
+    deactivate CTX
+    ENG->>MEM: search(promptHash=510a2e9e, ~10 tokens)
+    activate MEM
+    Note right of MEM: 0ms — candidateCount=0
+    MEM-->>ENG: [] empty
+    deactivate MEM
+    ENG->>MEM: inject(selected=0, excluded=0)
+    MEM-->>ENG: prompt unchanged
+    ENG->>WS: scan("D:\coding\creative\iota")
+    activate WS
+    Note right of WS: 58ms — 202 files indexed
+    WS-->>ENG: fileCount=202
+    deactivate WS
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 2 — State Events (T+67ms ~ T+69ms)
+    ENG->>RDS: XADD events {state:queued} seq=1
+    ENG->>RDS: XADD events {state:starting} seq=2
+    ENG->>RDS: XADD events {state:running} seq=3
+    end
+
+    rect rgba(240,136,62,0.08)
+    Note over ENG,ADP: Phase 3 — Backend Subprocess (T+120ms ~ T+16284ms, per-execution spawn)
+    ENG->>PROC: spawn(gemini.CMD --output-format stream-json --skip-trust --prompt "...")
+    activate PROC
+    Note right of PROC: env: GEMINI_MODEL=auto-gemini-3<br/>Auth: OAuth (oauth-personal)<br/>⚠ stdin mode=none (prompt in CLI arg)
+
+    Note over PROC: ~12s startup + OAuth + model routing...
+
+    PROC-->>ADP: stdout line 1: {type:init, model:auto-gemini-3, session_id:"1d3e338c-..."}
+    activate ADP
+    Note right of ADP: T+12253ms | 130 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=4)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:gemini_init} seq=4
+
+    PROC-->>ADP: stdout line 2: {type:message, role:user, content:"What is 2+2?..."}
+    activate ADP
+    Note right of ADP: T+12265ms | 124 chars → output (user echo)
+    ADP-->>ENG: RuntimeEvent(output, seq=5)
+    deactivate ADP
+    ENG->>RDS: XADD events {output:user_echo} seq=5
+
+    PROC-->>ADP: stdout line 3: {type:message, role:assistant, content:"4", delta:true}
+    activate ADP
+    Note right of ADP: T+16192ms | 103 chars → output (assistant delta)
+    ADP-->>ENG: RuntimeEvent(output, seq=6, content="4")
+    deactivate ADP
+    ENG->>RDS: XADD events {output} seq=6
+
+    PROC-->>ADP: stdout line 4: {type:result, status:success, total_tokens:12945}
+    activate ADP
+    Note right of ADP: T+16255ms | 437 chars → output (final)<br/>models: gemini-2.5-flash-lite<br/>duration_ms:4013, tool_calls:0
+    ADP-->>ENG: RuntimeEvent(output, seq=7, final=true)
+    deactivate ADP
+    ENG->>RDS: XADD events {output, final} seq=7
+
+    PROC-->>ENG: stderr: 471 bytes (true-color warning, skill override)
+    PROC-->>ENG: exit(0)
+    deactivate PROC
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 4 — Completion & Visibility Persistence (T+16284ms ~ T+16342ms)
+    ENG->>RDS: XADD events {state:completed} seq=8
+    ENG->>RDS: HSET iota:exec:663e1c7c status=completed output="4"
+    ENG->>RDS: SET visibility:tokens {in:12837, out:26, total:12945}
+    ENG->>RDS: RPUSH visibility:spans (14 spans)
+    ENG->>RDS: HSET visibility:chain (14 entries)
+    ENG->>RDS: RPUSH visibility:mapping (4 native→runtime, all lossy=false)
+    ENG->>RDS: SET visibility:context {1 segment, budgetUsed:0.005%}
+    ENG->>RDS: SET visibility:link {command, process, 5 nativeEventRefs incl stderr}
+    end
+
+    rect rgba(126,231,135,0.05)
+    Note over ENG,MEM: Phase 5 — Memory Extraction (T+16342ms ~ T+16344ms)
+    ENG->>MEM: extract(output="4")
+    activate MEM
+    Note right of MEM: 2ms — episodic<br/>memoryId=f86573e8<br/>hash=8b3c3776, 26 tokens
+    MEM->>RDS: ZADD iota:memories:c7bc533d
+    MEM->>RDS: SET visibility:memory
+    MEM-->>ENG: persisted
+    deactivate MEM
+    end
+
+    ENG-->>CLI: output="4", status=completed
+    deactivate ENG
+    Note over CLI,ADP: ✅ Total: 16,345ms | Events: 8 | Spans: 14 | Memory: 1 episodic | Note: Gemini high input tokens (12,837) due to system prompt
+</pre>
+</div>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'dark',sequence:{mirrorActors:false,actorMargin:50,messageMargin:35,noteMargin:10,useMaxWidth:false}});
+</script>
+</body>
+</html>

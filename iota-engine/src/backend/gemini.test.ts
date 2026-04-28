@@ -1,3 +1,4 @@
+import os from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import { GeminiAdapter } from "./gemini.js";
 import type { RuntimeRequest } from "../event/types.js";
@@ -7,7 +8,7 @@ describe("GeminiAdapter", () => {
     sessionId: "session-123",
     executionId: "exec-456",
     prompt: "hello",
-    workingDirectory: "/tmp",
+    workingDirectory: os.tmpdir(),
   };
 
   it("should have correct capabilities", () => {

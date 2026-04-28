@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { resolve, normalize } from "node:path";
+import { resolve, normalize, sep } from "node:path";
 import { access, stat } from "node:fs/promises";
 import { IotaError } from "@iota/engine";
 import { BACKEND_ENUM_SCHEMA } from "./shared.js";
@@ -30,19 +30,44 @@ const sessionParamsSchema = {
 } as const;
 
 /**
+ * Allowed root directories for working directory validation.
+ * If empty, any accessible directory is permitted (development default).
+ * Set via IOTA_ALLOWED_ROOTS env var (comma-separated absolute paths).
+ */
+const ALLOWED_ROOTS: string[] = (process.env.IOTA_ALLOWED_ROOTS ?? "")
+  .split(",")
+  .map((r) => r.trim())
+  .filter(Boolean)
+  .map((r) => normalize(resolve(r)));
+
+/**
  * Validate and normalize a working directory path.
- * Rejects path traversal attacks and non-existent directories.
+ * Rejects path traversal attacks, non-existent directories, and paths
+ * outside configured allowed roots.
  */
 export async function validateWorkingDirectory(
   dir: string,
 ): Promise<
   { valid: true; normalized: string } | { valid: false; error: string }
 > {
-  const normalized = normalize(resolve(dir));
-
-  // Block obvious traversal patterns in the raw input
+  // Block null bytes before any path operations
   if (dir.includes("\0")) {
     return { valid: false, error: "Working directory contains null bytes" };
+  }
+
+  const normalized = normalize(resolve(dir));
+
+  // Enforce allowed roots when configured
+  if (ALLOWED_ROOTS.length > 0) {
+    const withinRoot = ALLOWED_ROOTS.some(
+      (root) => normalized === root || normalized.startsWith(root + (root.endsWith("/") || root.endsWith("\\") ? "" : sep)),
+    );
+    if (!withinRoot) {
+      return {
+        valid: false,
+        error: "Working directory is outside the allowed roots",
+      };
+    }
   }
 
   try {

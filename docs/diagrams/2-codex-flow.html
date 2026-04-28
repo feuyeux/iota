@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Iota Engine - Codex Backend 实际执行流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;padding:24px;line-height:1.6}
+h1{color:#3fb950;font-size:1.35em;margin-bottom:16px}
+.meta{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:20px;font-size:.82em;line-height:2}
+.meta b{color:#8b949e}
+.meta code{background:#1f2937;padding:1px 5px;border-radius:3px;color:#7ee787;font-size:.95em}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:.78em}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}
+.chart{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;overflow-x:auto}
+</style>
+</head>
+<body>
+<h1>🟢 Codex Backend — Iota Engine 内部实际执行流程</h1>
+<div class="meta">
+<b>Trace ID:</b> <code>9955afdc-1cab-451a-8369-913f416f5f8f</code> &nbsp;|&nbsp;
+<b>Execution ID:</b> <code>d3ea30c9-2390-4450-ab6d-d7358782c2dd</code> &nbsp;|&nbsp;
+<b>Session ID:</b> <code>3271ee12-5435-4ff5-bea0-992a045ea8ba</code><br>
+<b>Backend:</b> codex &nbsp;|&nbsp; <b>Protocol:</b> NDJSON &nbsp;|&nbsp; <b>Process Model:</b> per-execution (spawn → exit)<br>
+<b>Command:</b> <code>codex.CMD exec --json</code><br>
+<b>Duration:</b> 4,297ms &nbsp;|&nbsp; <b>Tokens:</b> input=0, output=0, total=0 (ChatGPT auth, tokens not reported) &nbsp;|&nbsp; <b>Model:</b> gpt-5.5<br>
+<b>Env:</b> <code>CODEX_HOME=C:/Users/feuye/.codex-iota</code>, <code>ROUTER_API_KEY=redacted</code><br>
+<b>Memory:</b> search=0 candidates → inject=0 → extract=episodic (memoryId: <code>3558ae1a</code>, 16 tokens, hash: <code>328a9db1</code>)<br>
+<b>stderr:</b> 170 bytes — "Reading prompt from stdin..." + non-fatal thread-not-found warning
+</div>
+<div class="legend">
+<span><i style="background:#58a6ff"></i>Engine Core</span>
+<span><i style="background:#7ee787"></i>Memory System</span>
+<span><i style="background:#3fb950"></i>Backend Process</span>
+<span><i style="background:#f0883e"></i>Adapter/Parser</span>
+<span><i style="background:#f85149"></i>Redis Persistence</span>
+</div>
+<div class="chart">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant CLI as CLI<br/>(iota-cli)
+    participant ENG as Engine<br/>(engine.request)
+    participant CTX as Context Builder
+    participant MEM as Memory<br/>(Redis ZSET)
+    participant WS as Workspace<br/>Scanner
+    participant RDS as Redis<br/>(:6379)
+    participant PROC as codex.CMD<br/>(pid 14260)
+    participant ADP as Adapter<br/>(codex_native_mapper)
+
+    rect rgba(63,185,80,0.05)
+    Note over CLI,RDS: Phase 1 — Session & Context Preparation (T+0ms ~ T+111ms)
+    CLI->>ENG: stream("What is 2+2?", backend=codex)
+    activate ENG
+    ENG->>RDS: HSET iota:session:3271ee12 (create)
+    ENG->>CTX: build context
+    activate CTX
+    Note right of CTX: 0ms — no prior context
+    CTX-->>ENG: ready
+    deactivate CTX
+    ENG->>MEM: search(promptHash=510a2e9e, ~10 tokens)
+    activate MEM
+    Note right of MEM: 0ms — candidateCount=0
+    MEM-->>ENG: [] empty
+    deactivate MEM
+    ENG->>MEM: inject(selected=0, excluded=0)
+    MEM-->>ENG: prompt unchanged
+    ENG->>WS: scan("D:\coding\creative\iota")
+    activate WS
+    Note right of WS: 58ms — 202 files indexed
+    WS-->>ENG: fileCount=202
+    deactivate WS
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 2 — State Events (T+66ms ~ T+68ms)
+    ENG->>RDS: XADD events {state:queued} seq=1
+    ENG->>RDS: XADD events {state:starting} seq=2
+    ENG->>RDS: XADD events {state:running} seq=3
+    end
+
+    rect rgba(63,185,80,0.08)
+    Note over ENG,ADP: Phase 3 — Backend Subprocess (T+111ms ~ T+4201ms, per-execution spawn)
+    ENG->>PROC: spawn(codex.CMD exec --json)
+    activate PROC
+    Note right of PROC: env: CODEX_HOME=.codex-iota<br/>ROUTER_API_KEY=redacted
+    ENG->>PROC: stdin.write(40 bytes) prompt text
+    Note right of PROC: stdin: plain prompt string<br/>(no JSON wrapping)
+
+    PROC-->>ADP: stdout line 1: {type:thread.started, thread_id:"019dd2f1-707e-..."}
+    activate ADP
+    Note right of ADP: T+573ms | 76 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=4)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:codex_lifecycle} seq=4
+
+    PROC-->>ADP: stdout line 2: {type:turn.started}
+    activate ADP
+    Note right of ADP: T+576ms | 23 chars → extension
+    ADP-->>ENG: RuntimeEvent(extension, seq=5)
+    deactivate ADP
+    ENG->>RDS: XADD events {extension:codex_lifecycle} seq=5
+
+    PROC-->>ADP: stdout line 3: {type:item.completed, item:{text:"4"}}
+    activate ADP
+    Note right of ADP: T+3415ms | 82 chars → output
+    ADP-->>ENG: RuntimeEvent(output, seq=6, content="4")
+    deactivate ADP
+    ENG->>RDS: XADD events {output} seq=6
+
+    PROC-->>ADP: stdout line 4: {type:turn.completed, usage:{all zeros}}
+    activate ADP
+    Note right of ADP: T+3485ms | 122 chars → output (final=true)
+    ADP-->>ENG: RuntimeEvent(output, seq=7, final=true, tokens=0)
+    deactivate ADP
+    ENG->>RDS: XADD events {output, final} seq=7
+
+    PROC-->>ENG: stderr: 170 bytes (non-fatal warning)
+    PROC-->>ENG: exit(0)
+    deactivate PROC
+    Note right of PROC: stderr: "Reading prompt from stdin..."<br/> + "ERROR codex_core::session: failed to<br/>record rollout items: thread not found"
+    end
+
+    rect rgba(241,88,73,0.05)
+    Note over ENG,RDS: Phase 4 — Completion & Visibility Persistence (T+4201ms ~ T+4292ms)
+    ENG->>RDS: XADD events {state:completed} seq=8
+    ENG->>RDS: HSET iota:exec:d3ea30c9 status=completed output="4"
+    ENG->>RDS: SET visibility:tokens {in:0, out:0, total:0, confidence:native}
+    ENG->>RDS: RPUSH visibility:spans (15 spans)
+    ENG->>RDS: HSET visibility:chain (15 entries)
+    ENG->>RDS: RPUSH visibility:mapping (4 native→runtime, all lossy=false)
+    ENG->>RDS: SET visibility:context {1 segment, budgetUsed:0.005%}
+    ENG->>RDS: SET visibility:link {command, process, protocol, 6 nativeEventRefs incl stderr}
+    end
+
+    rect rgba(126,231,135,0.05)
+    Note over ENG,MEM: Phase 5 — Memory Extraction (T+4292ms ~ T+4296ms)
+    ENG->>MEM: extract(output="4")
+    activate MEM
+    Note right of MEM: 4ms — episodic<br/>memoryId=3558ae1a<br/>hash=328a9db1, 16 tokens
+    MEM->>RDS: ZADD iota:memories:3271ee12
+    MEM->>RDS: SET visibility:memory
+    MEM-->>ENG: persisted
+    deactivate MEM
+    end
+
+    ENG-->>CLI: output="4", status=completed
+    deactivate ENG
+    Note over CLI,ADP: ✅ Total: 4,297ms | Events: 8 (3 state + 2 extension + 2 output + 1 completed) | Spans: 15 | Memory: 1 episodic
+</pre>
+</div>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'dark',sequence:{mirrorActors:false,actorMargin:50,messageMargin:35,noteMargin:10,useMaxWidth:false}});
+</script>
+</body>
+</html>

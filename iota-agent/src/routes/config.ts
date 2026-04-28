@@ -9,24 +9,39 @@ function isValidScope(scope: string): scope is ConfigScope {
 
 export const configRoutes: FastifyPluginAsync = async (fastify) => {
   /** GET /config — resolved config (all scopes merged) */
-  fastify.get("/config", async (request, reply) => {
-    const store = fastify.engine.getConfigStore();
-    if (!store) {
-      reply.code(503);
-      return { error: "Config store not available" };
-    }
-    const query = request.query as {
-      backend?: string;
-      sessionId?: string;
-      userId?: string;
-    };
-    const resolved = await store.getResolved(
-      query.backend,
-      query.sessionId,
-      query.userId,
-    );
-    return resolved;
-  });
+  fastify.get(
+    "/config",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          properties: {
+            backend: { type: "string" },
+            sessionId: { type: "string" },
+            userId: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const store = fastify.engine.getConfigStore();
+      if (!store) {
+        reply.code(503);
+        return { error: "Config store not available" };
+      }
+      const query = request.query as {
+        backend?: string;
+        sessionId?: string;
+        userId?: string;
+      };
+      const resolved = await store.getResolved(
+        query.backend,
+        query.sessionId,
+        query.userId,
+      );
+      return resolved;
+    },
+  );
 
   /** GET /config/:scope — all keys in a scope */
   fastify.get<{ Params: { scope: string } }>(
@@ -72,24 +87,55 @@ export const configRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   /** POST /config — set a global config key */
-  fastify.post("/config", async (request, reply) => {
-    const store = fastify.engine.getConfigStore();
-    if (!store) {
-      reply.code(503);
-      return { error: "Config store not available" };
-    }
-    const body = request.body as { key: string; value: string };
-    if (!body.key || body.value === undefined) {
-      reply.code(400);
-      return { error: "Body must contain 'key' and 'value'" };
-    }
-    await store.set("global", body.key, String(body.value));
-    return { ok: true, scope: "global", key: body.key, value: body.value };
-  });
+  fastify.post(
+    "/config",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["key", "value"],
+          properties: {
+            key: { type: "string", minLength: 1, maxLength: 200 },
+            value: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const store = fastify.engine.getConfigStore();
+      if (!store) {
+        reply.code(503);
+        return { error: "Config store not available" };
+      }
+      const body = request.body as { key: string; value: string };
+      await store.set("global", body.key, String(body.value));
+      return { ok: true, scope: "global", key: body.key, value: body.value };
+    },
+  );
 
   /** POST /config/:scope/:scopeId — set a scoped config key */
   fastify.post<{ Params: { scope: string; scopeId: string } }>(
     "/config/:scope/:scopeId",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["scope", "scopeId"],
+          properties: {
+            scope: { type: "string" },
+            scopeId: { type: "string" },
+          },
+        },
+        body: {
+          type: "object",
+          required: ["key", "value"],
+          properties: {
+            key: { type: "string", minLength: 1, maxLength: 200 },
+            value: { type: "string" },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const store = fastify.engine.getConfigStore();
       if (!store) {
@@ -102,10 +148,6 @@ export const configRoutes: FastifyPluginAsync = async (fastify) => {
         return { error: `Invalid scope: ${scope}` };
       }
       const body = request.body as { key: string; value: string };
-      if (!body.key || body.value === undefined) {
-        reply.code(400);
-        return { error: "Body must contain 'key' and 'value'" };
-      }
       await store.set(
         scope as ConfigScope,
         body.key,

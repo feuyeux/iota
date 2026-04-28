@@ -103,7 +103,7 @@ export interface MemoryCardView {
   preview: string;
   tags: string[];
   updatedAt?: number;
-  source: "dialogue" | "working" | "store" | "milvus" | "redis" | "in_memory";
+  source: "dialogue" | "working" | "store" | "redis" | "in_memory";
   visibleToBackend: boolean;
   tokenEstimate?: number;
 }

@@ -1,16 +1,18 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { api } from '../lib/api';
 
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
-  const { sessionId, setWsConnected, mergeDelta, updateSnapshot, setSendMessage, activeExecution } = useSessionStore();
+  const sessionId = useSessionStore(s => s.sessionId);
+  const setSendMessage = useSessionStore(s => s.setSendMessage);
+  const activeExecutionId = useSessionStore(s => s.activeExecution?.executionId);
 
   const subscribedExecutionRef = useRef<string | null>(null);
 
   // Subscribe to visibility when execution changes
   useEffect(() => {
-    const execId = activeExecution?.executionId;
+    const execId = activeExecutionId;
     if (execId && execId !== subscribedExecutionRef.current && ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({
         type: 'subscribe_visibility',
@@ -18,43 +20,44 @@ export function useWebSocket() {
       }));
       subscribedExecutionRef.current = execId;
     }
-  }, [activeExecution?.executionId]);
+  }, [activeExecutionId]);
 
-  const syncSnapshot = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const snapshot = await api.getSessionSnapshot(sessionId);
-      updateSnapshot(snapshot);
-    } catch (e) {
-      console.error('Failed to sync snapshot after WS gap', e);
-    }
-  }, [sessionId, updateSnapshot]);
+  const connectRef = useRef<() => void>(() => {});
 
-  const connect = useCallback(() => {
+  connectRef.current = () => {
     // Skip if already connected or connecting
     if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) {
       return;
     }
 
+    // Always read the latest state from the store to avoid stale closures
+    const state = useSessionStore.getState();
+    const currentSessionId = state.sessionId;
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     const url = `${protocol}//${host}/api/v1/stream`;
-    console.log('WS Connecting to:', url);
+    console.log('WS Connecting to:', url, 'sessionId:', currentSessionId);
 
     const socket = new WebSocket(url);
     ws.current = socket;
 
     socket.onopen = () => {
       console.log('WS Connected');
-      setWsConnected(true);
-      if (sessionId) {
+      state.setWsConnected(true);
+      const latestState = useSessionStore.getState();
+      const sid = latestState.sessionId;
+      if (sid) {
         socket.send(JSON.stringify({
           type: 'subscribe_app_session',
-          sessionId
+          sessionId: sid
         }));
-        syncSnapshot();
+        // Sync snapshot
+        api.getSessionSnapshot(sid).then(snap => {
+          useSessionStore.getState().updateSnapshot(snap);
+        }).catch(e => console.error('Failed to sync snapshot', e));
 
-        const execId = activeExecution?.executionId;
+        const execId = latestState.activeExecution?.executionId;
         if (execId) {
           socket.send(JSON.stringify({
             type: 'subscribe_visibility',
@@ -68,24 +71,27 @@ export function useWebSocket() {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        const store = useSessionStore.getState();
 
         switch (data.type) {
           case 'app_delta': {
-            const { needsSync } = mergeDelta(data);
-            if (needsSync) {
-              syncSnapshot();
+            const { needsSync } = store.mergeDelta(data);
+            if (needsSync && store.sessionId) {
+              api.getSessionSnapshot(store.sessionId).then(snap => {
+                useSessionStore.getState().updateSnapshot(snap);
+              }).catch(e => console.error('Failed to sync snapshot', e));
             }
             break;
           }
           case 'app_snapshot':
-            updateSnapshot(data.snapshot);
+            store.updateSnapshot(data.snapshot);
             break;
           case 'event': {
             const rawEvent = data.event;
             if (rawEvent && rawEvent.type === 'output') {
-              mergeDelta({
+              store.mergeDelta({
                 type: 'app_delta',
-                sessionId: sessionId!,
+                sessionId: store.sessionId!,
                 revision: undefined,
                 delta: {
                   type: 'conversation_delta',
@@ -104,16 +110,26 @@ export function useWebSocket() {
             break;
           }
           case 'complete':
-            setTimeout(syncSnapshot, 300);
+            setTimeout(() => {
+              const s = useSessionStore.getState();
+              if (s.sessionId) {
+                api.getSessionSnapshot(s.sessionId).then(snap => {
+                  useSessionStore.getState().updateSnapshot(snap);
+                }).catch(e => console.error('Failed to sync snapshot', e));
+              }
+            }, 300);
             break;
           case 'error':
             console.error('WS Application Error:', data.error);
             break;
           case 'pubsub_event':
-            // Cross-instance events bridged via Redis pub/sub.
-            // Re-dispatch inner message to trigger snapshot sync.
             if (data.message?.type === 'execution_event' || data.message?.type === 'session_update') {
-              syncSnapshot();
+              const s = useSessionStore.getState();
+              if (s.sessionId) {
+                api.getSessionSnapshot(s.sessionId).then(snap => {
+                  useSessionStore.getState().updateSnapshot(snap);
+                }).catch(e => console.error('Failed to sync snapshot', e));
+              }
             }
             break;
         }
@@ -128,20 +144,19 @@ export function useWebSocket() {
 
     socket.onclose = (event) => {
       console.log('WS Disconnected', event.code, event.reason);
-      setWsConnected(false);
+      useSessionStore.getState().setWsConnected(false);
       ws.current = null;
 
       // Reconnect after delay if not a clean close
       if (event.code !== 1000 && event.code !== 1001) {
         setTimeout(() => {
-          // Check if sessionId still exists before reconnecting
-          if (sessionId || useSessionStore.getState().sessionId) {
-            connect();
+          if (useSessionStore.getState().sessionId) {
+            connectRef.current();
           }
         }, 3000);
       }
     };
-  }, [sessionId, setWsConnected, mergeDelta, updateSnapshot, syncSnapshot, activeExecution?.executionId]);
+  };
 
   // Set centralized send method
   useEffect(() => {
@@ -155,18 +170,25 @@ export function useWebSocket() {
   // Connect when sessionId is available
   useEffect(() => {
     if (sessionId) {
-      connect();
+      // Use a longer delay to survive React StrictMode's double-invoke in dev
+      const timer = setTimeout(() => connectRef.current(), 300);
+      return () => {
+        clearTimeout(timer);
+        if (ws.current) {
+          ws.current.onclose = null;
+          ws.current.close();
+          ws.current = null;
+        }
+      };
     }
-
     return () => {
-      // Cleanup WebSocket on unmount
       if (ws.current) {
-        ws.current.onclose = null; // Prevent reconnect
+        ws.current.onclose = null;
         ws.current.close();
         ws.current = null;
       }
     };
-  }, [sessionId]); // Only reconnect when sessionId changes, not on every connect() change
+  }, [sessionId]);
 
   return null;
 }

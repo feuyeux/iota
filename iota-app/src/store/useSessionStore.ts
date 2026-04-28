@@ -189,7 +189,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             for (const card of delta.memory.added) {
               if (card.source === 'dialogue') {
                 if (!memory.tabs.session.some(c => c.id === card.id)) memory.tabs.session.push(card);
-              } else if (card.source === 'milvus' || card.source === 'redis') {
+              } else if (card.source === 'redis') {
                 if (!memory.tabs.knowledge.some(c => c.id === card.id)) memory.tabs.knowledge.push(card);
               } else {
                 if (!memory.tabs.longTerm.some(c => c.id === card.id)) memory.tabs.longTerm.push(card);

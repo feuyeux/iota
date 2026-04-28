@@ -1,6 +1,6 @@
 # Iota Infrastructure Deployment
 
-本目录包含 Iota 项目所有基础设施组件的统一部署配置，包括 Redis、Milvus、MinIO 等存储服务。
+本目录包含 Iota 项目所有基础设施组件的统一部署配置，包括 Redis、MinIO 等存储服务。
 
 **重要**: 所有 Iota 包（engine、cli、agent、app）使用的基础设施都应从此目录统一管理和启动。
 
@@ -27,8 +27,7 @@
 └────────┬────────┘
          │
          └─> Storage Services (from deployment/)
-             ├─> Redis (Events, Locks, Memory)
-             ├─> Milvus (Vector Search)
+             ├─> Redis (Events, Locks, Memory, Vector Search)
              └─> MinIO (Snapshots)
 ```
 
@@ -38,11 +37,9 @@
 
 | 服务 | 用途 | 端口 | 使用者 | 发布|
 |:---|:---|:---|:---|:---|
-| Redis | 事件流存储 (Redis Streams)、锁、审计日志 | 6379 | engine, cli, agent |<https://github.com/redis/redis/releases>|
+| Redis | 事件流存储 (Redis Streams)、锁、审计日志、向量索引 | 6379 | engine, cli, agent |<https://github.com/redis/redis/releases>|
 | Redis Sentinel | Redis 高可用 | 26379 | agent (production) |-|
-| Milvus | 工作/事实/情节/程序记忆向量索引 | 19530, 9091 | engine, agent | <https://github.com/milvus-io/milvus/releases> |
 | MinIO | 快照大对象存储 | 9002 (API), 9003 (Console) | agent |<https://github.com/minio/minio/releases>|
-| etcd | Milvus 元数据存储 | 2379 | milvus |<https://github.com/etcd-io/etcd/releases>|
 
 ## 快速启动
 
@@ -127,23 +124,12 @@ redis-cli -h localhost -p 6379
 - 用户名: `iota`
 - 密码: `iotasecret`
 
-### Milvus
-
-```bash
-# 使用 Python SDK
-from pymilvus import connections
-connections.connect("default", host="localhost", port="19530")
-```
-
 ## 数据持久化
 
 所有数据通过 Docker volumes 持久化：
 
 - `redis-data`: Redis 数据
 - `sentinel-data`: Sentinel 配置
-- `etcd-data`: etcd 数据
-- `minio-data`: Milvus 使用的 MinIO 数据
-- `milvus-data`: Milvus 向量数据
 - `iota-minio-data`: Iota 快照存储
 
 ### 清理所有数据
@@ -158,7 +144,6 @@ docker-compose down -v
 默认资源限制：
 
 - Redis: 2GB 内存
-- Milvus: 无限制（建议 4GB+）
 - MinIO: 无限制
 
 可在 `docker/docker-compose.yml` 中调整资源限制。
@@ -215,8 +200,6 @@ storage:
         - host: localhost
           port: 26379
       streamPrefix: "iota:events"
-    milvus:
-      address: "localhost:19530"
     minio:
       endPoint: "localhost"
       port: 9002
@@ -249,7 +232,6 @@ docker-compose restart [service-name]
 | Redis 连接失败 | Redis 未启动 | 运行 `deployment/scripts/start-storage.sh` |
 | 端口被占用 | 其他服务占用端口 | 检查并停止占用端口的服务，或修改 `docker-compose.yml` 中的端口映射 |
 | Docker 资源不足 | 内存/CPU 限制 | 增加 Docker Desktop 资源配置 |
-| Milvus 启动失败 | etcd 或 MinIO 未就绪 | 等待依赖服务启动完成，或查看日志排查 |
 
 ### 检查服务状态
 

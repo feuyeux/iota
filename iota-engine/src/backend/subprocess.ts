@@ -31,24 +31,6 @@ import type {
   EventMappingVisibility,
 } from "../visibility/types.js";
 
-/**
- * On Windows with shell: true, spawn joins args with spaces without quoting.
- * Args containing spaces or special characters must be explicitly quoted.
- */
-function shellQuoteArgs(args: string[]): string[] {
-  if (process.platform !== "win32") return args;
-  return args.map((arg) => {
-    // If it looks like a flag (starts with -), don't quote
-    if (arg.startsWith("-")) return arg;
-    // If it contains spaces or special shell chars, wrap in double quotes
-    if (/[\s"&|<>^()%!]/.test(arg)) {
-      // Escape internal double quotes
-      return `"${arg.replace(/"/g, '\\"')}"`;
-    }
-    return arg;
-  });
-}
-
 /** stderr handling config per Section 7.6 */
 const STDERR_MAX_BYTES = 64 * 1024;
 
@@ -386,12 +368,11 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     // For long-lived, buildArgs is called with a dummy request just for startup args
     const child = spawn(
       resolvedExecutable,
-      shellQuoteArgs(this.options.buildArgs({} as RuntimeRequest)),
+      this.options.buildArgs({} as RuntimeRequest),
       {
         cwd: config.workingDirectory,
         env: buildBackendProcessEnv(config.env),
         windowsHide: true,
-        shell: process.platform === "win32",
       },
     );
 
@@ -686,12 +667,11 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     const resolvedExecutable = await resolveExecutable(executable, config.env);
     const child = spawn(
       resolvedExecutable,
-      shellQuoteArgs(this.options.buildArgs(request)),
+      this.options.buildArgs(request),
       {
         cwd: request.workingDirectory,
         env: buildBackendProcessEnv(config.env),
         windowsHide: true,
-        shell: process.platform === "win32",
       },
     );
     this.active.set(request.executionId, child);

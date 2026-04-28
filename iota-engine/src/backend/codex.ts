@@ -10,8 +10,8 @@ import type {
 /**
  * CodexAdapter — Section 7.3
  * Uses codex exec command for per-execution mode.
- * Reads OPENAI_MODEL and OPENAI_API_KEY from distributed backend config and
- * passes them as -c flags (Codex reads config from ~/.codex/config.toml, not env vars).
+ * Reads distributed backend config and only passes non-secret settings as -c flags.
+ * Secrets must stay in process env so they do not appear in the child process argv.
  */
 export class CodexAdapter extends SubprocessBackendAdapter {
   constructor() {
@@ -61,10 +61,6 @@ export class CodexAdapter extends SubprocessBackendAdapter {
         args.push("-c", `model_provider=${env.CODEX_MODEL_PROVIDER}`);
       } else if (env.OPENAI_BASE_URL) {
         args.push("-c", `openai_base_url=${env.OPENAI_BASE_URL}`);
-      }
-
-      if (env.OPENAI_API_KEY) {
-        args.push("-c", `openai_api_key=${env.OPENAI_API_KEY}`);
       }
     } catch {
       // Config not initialized yet — fall back to defaults
