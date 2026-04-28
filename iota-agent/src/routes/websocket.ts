@@ -688,12 +688,32 @@ function eventToAppDeltas(
         timestamp: event.timestamp,
         executionId,
         eventSequence: event.sequence,
+        metadata: event.data.final ? { final: true } : undefined,
       },
     });
   }
 
   if (event.type === "extension") {
     const name = event.data.name;
+    if (name === "thinking") {
+      const payload = event.data.payload as { text?: string } | undefined;
+      const text = payload?.text ?? "";
+      if (text) {
+        deltas.push({
+          type: "conversation_delta",
+          executionId,
+          item: {
+            id: `${executionId}-think-${event.sequence}`,
+            role: "assistant",
+            content: text,
+            timestamp: event.timestamp,
+            executionId,
+            eventSequence: event.sequence,
+            metadata: { thinking: true },
+          },
+        });
+      }
+    }
     if (name === "approval_request") {
       const payload = event.data.payload as Record<string, unknown>;
       deltas.push({
@@ -830,6 +850,24 @@ function eventToAppDeltas(
 
   // Trace step deltas for MCP tool calls
   if (event.type === "tool_call") {
+    deltas.push({
+      type: "conversation_delta",
+      executionId,
+      item: {
+        id: `${executionId}-tc-${event.sequence}`,
+        role: "tool",
+        content: `Tool: ${event.data.toolName}`,
+        timestamp: event.timestamp,
+        executionId,
+        eventSequence: event.sequence,
+        metadata: {
+          toolCall: {
+            name: event.data.toolName,
+            arguments: event.data.arguments,
+          },
+        },
+      },
+    });
     deltas.push({
       type: "trace_step_delta",
       executionId,

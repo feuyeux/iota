@@ -25,7 +25,39 @@ export const ChatTimeline: React.FC = () => {
     mergeDelta
   } = useSessionStore();
   
-  const items = useMemo(() => activeExecution?.conversation?.items || [], [activeExecution]);
+  const items = useMemo(() => {
+    const raw = activeExecution?.conversation?.items || [];
+    if (raw.length === 0) return raw;
+
+    // Merge consecutive assistant (non-thinking, non-tool) messages into one
+    const merged: typeof raw = [];
+    for (const item of raw) {
+      const isThinking = !!(item.metadata as Record<string, unknown> | undefined)?.thinking;
+      const isFinal = !!(item.metadata as Record<string, unknown> | undefined)?.final;
+      const prev = merged[merged.length - 1];
+      const prevIsThinking = prev && !!(prev.metadata as Record<string, unknown> | undefined)?.thinking;
+
+      if (
+        prev &&
+        item.role === 'assistant' && prev.role === 'assistant' &&
+        !isThinking && !prevIsThinking &&
+        item.executionId === prev.executionId
+      ) {
+        // Merge into previous: concatenate content
+        merged[merged.length - 1] = {
+          ...prev,
+          id: item.id,
+          content: prev.content + item.content,
+          timestamp: item.timestamp,
+          eventSequence: item.eventSequence,
+          metadata: isFinal ? { ...prev.metadata, final: true } : prev.metadata,
+        };
+      } else {
+        merged.push(item);
+      }
+    }
+    return merged;
+  }, [activeExecution]);
   const parentRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
   const [approvalPolicy, setApprovalPolicy] = useState<'ask' | 'auto' | 'deny'>('ask');
@@ -254,28 +286,49 @@ export const ChatTimeline: React.FC = () => {
 const MessageItem: React.FC<{ item: ConversationTimelineItem; onApprove: (id: string, approved: boolean) => void }> = ({ item, onApprove }) => {
   const isUser = item.role === 'user';
   const isTool = item.role === 'tool';
+  const isThinking = !!(item.metadata as Record<string, unknown> | undefined)?.thinking;
+  const toolCall = (item.metadata as Record<string, unknown> | undefined)?.toolCall as { name: string; arguments?: Record<string, unknown> } | undefined;
   const approval = item.metadata?.approval as ApprovalRequest | undefined;
   const isDecisionOnly = !!approval?.status && !approval?.command && !approval?.path && !approval?.reason;
-  
+
   return (
     <div className={`flex space-x-4 max-w-4xl mx-auto ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${
-        isUser 
-          ? 'bg-white text-iota-text border-gray-200' 
-          : isTool 
-            ? 'bg-amber-50 text-amber-600 border-amber-100' 
-            : 'bg-iota-accent text-white border-iota-accent'
+        isUser
+          ? 'bg-white text-iota-text border-gray-200'
+          : isTool
+            ? 'bg-amber-50 text-amber-600 border-amber-100'
+            : isThinking
+              ? 'bg-purple-50 text-purple-500 border-purple-100'
+              : 'bg-iota-accent text-white border-iota-accent'
       }`}>
-        {isUser ? <User size={16} /> : isTool ? <Wrench size={16} /> : <Bot size={16} />}
+        {isUser ? <User size={16} /> : isTool ? <Wrench size={16} /> : isThinking ? <Settings2 size={16} /> : <Bot size={16} />}
       </div>
-      
+
       <div className={`flex flex-col max-w-[90%] ${isUser ? 'items-end' : 'items-start'}`}>
         <div className={`rounded-2xl px-5 py-4 shadow-sm border ${
-          isUser 
-            ? 'bg-iota-accent text-white border-iota-accent' 
-            : 'bg-gray-50/50 border-iota-border text-iota-text'
+          isUser
+            ? 'bg-iota-accent text-white border-iota-accent'
+            : isThinking
+              ? 'bg-purple-50/50 border-purple-100 text-purple-700 italic'
+              : toolCall
+                ? 'bg-amber-50/50 border-amber-100 text-amber-800'
+                : 'bg-gray-50/50 border-iota-border text-iota-text'
         }`}>
-          {approval && !isDecisionOnly ? (
+          {isThinking && (
+            <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Thinking</div>
+          )}
+          {toolCall ? (
+            <div className="text-sm">
+              <div className="flex items-center space-x-2 mb-1">
+                <Wrench size={12} />
+                <span className="font-mono font-bold text-xs">{toolCall.name}</span>
+              </div>
+              {toolCall.arguments && Object.keys(toolCall.arguments).length > 0 && (
+                <pre className="text-[11px] bg-black/5 rounded p-2 mt-1 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(toolCall.arguments, null, 2)}</pre>
+              )}
+            </div>
+          ) : approval && !isDecisionOnly ? (
             <ApprovalCard approval={approval} onApprove={onApprove} />
           ) : (
             <div className="markdown-content text-sm leading-relaxed overflow-hidden">
