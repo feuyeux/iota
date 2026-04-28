@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { api } from '../../lib/api';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -161,7 +162,10 @@ export const ChatTimeline: React.FC = () => {
               <AlertCircle size={14} />
               <span>Backend circuit breaker is open.</span>
             </div>
-            <button className="text-[10px] underline uppercase tracking-widest font-bold">Try Reset</button>
+            <button
+              onClick={() => { api.resetCircuitBreaker(activeBackend).catch(e => console.error('Reset failed', e)); }}
+              className="text-[10px] underline uppercase tracking-widest font-bold hover:text-red-800"
+            >Try Reset</button>
           </div>
         )}
         

@@ -99,17 +99,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setActiveBackend: (backend) => set({ activeBackend: backend }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
   
-  updateSnapshot: (snapshot) => set({ 
+  updateSnapshot: (snapshot) => set((state) => ({
     sessionSnapshot: snapshot,
-    activeBackend: snapshot.session.activeBackend,
+    activeBackend: state.activeBackend || snapshot.session.activeBackend || 'claude-code',
     workingDirectory: snapshot.session.workingDirectory,
     backends: snapshot.backends || [],
     activeFiles: snapshot.activeFiles || [],
     conversations: snapshot.conversations || [],
     mcpServers: snapshot.mcpServers || [],
     activeExecution: snapshot.activeExecution || null,
-    sessionRevision: 0 
-  }),
+    sessionRevision: 0
+  })),
 
   setActiveFiles: (files) => set({ activeFiles: files }),
   setBackends: (backends) => set({ backends }),

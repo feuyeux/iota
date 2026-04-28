@@ -868,6 +868,10 @@ export class IotaEngine {
     return this.metrics.getSnapshot();
   }
 
+  resetCircuitBreaker(backend: BackendName): boolean {
+    return this.requirePool().resetBreaker(backend);
+  }
+
   /** Get the distributed config store (if Redis is available). */
   getConfigStore(): RedisConfigStore | undefined {
     return this.configStore;

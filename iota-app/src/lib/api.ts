@@ -23,6 +23,12 @@ export const api = {
     return res.json();
   },
 
+  async resetCircuitBreaker(backend: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`${API_BASE}/backends/${backend}/reset-circuit`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to reset circuit breaker');
+    return res.json();
+  },
+
   async getSessionSnapshot(sessionId: string): Promise<AppSessionSnapshot> {
     const res = await fetch(`${API_BASE}/sessions/${sessionId}/app-snapshot`);
     if (!res.ok) throw new Error('Failed to fetch session snapshot');

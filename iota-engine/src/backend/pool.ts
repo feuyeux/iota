@@ -143,6 +143,15 @@ export class BackendPool {
     return result;
   }
 
+  resetBreaker(name: BackendName): boolean {
+    const breaker = this.breakers.get(name);
+    if (breaker) {
+      breaker.reset();
+      return true;
+    }
+    return false;
+  }
+
   async destroy(): Promise<void> {
     await Promise.all(
       [...this.backends.values()].map((backend) => backend.destroy()),

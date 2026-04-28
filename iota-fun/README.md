@@ -378,6 +378,7 @@ node dist/index.js run --backend claude-code "请用 go 随机生成一种形状
 - [05-engine-guide.md](../docs/guides/05-engine-guide.md) - Engine architecture
 - [iota-engine/src/fun-engine.ts](../iota-engine/src/fun-engine.ts) - Implementation
 - [iota-engine/src/fun-intent.ts](../iota-engine/src/fun-intent.ts) - Intent detection
+- [../iota-skill/pet-generator/SKILL.md](../iota-skill/pet-generator/SKILL.md) - Skill spec for multi-language pet generation
 
 ## Contributing
 

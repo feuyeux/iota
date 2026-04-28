@@ -34,6 +34,12 @@ export class CircuitBreaker {
     }
   }
 
+  reset(): void {
+    this.failures = 0;
+    this.state = "closed";
+    this.openedAt = 0;
+  }
+
   getState(): CircuitBreakerState {
     return this.state;
   }

@@ -22,6 +22,13 @@ export function composeEffectivePrompt(request: RuntimeRequest): string {
     parts.push("");
   }
 
+  if (request.context?.workspaceSummary) {
+    parts.push("<workspace_summary>");
+    parts.push(request.context.workspaceSummary);
+    parts.push("</workspace_summary>");
+    parts.push("");
+  }
+
   parts.push(request.prompt);
   return parts.join("\n");
 }

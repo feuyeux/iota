@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import spawn from "cross-spawn";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -370,11 +371,12 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       resolvedExecutable,
       this.options.buildArgs({} as RuntimeRequest),
       {
+        stdio: "pipe",
         cwd: config.workingDirectory,
         env: buildBackendProcessEnv(config.env),
         windowsHide: true,
       },
-    );
+    ) as ChildProcessWithoutNullStreams;
 
     // Setup stderr monitoring (Section 7.6)
     child.stderr.on("data", (chunk: Buffer) => {
@@ -669,11 +671,12 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       resolvedExecutable,
       this.options.buildArgs(request),
       {
+        stdio: "pipe",
         cwd: request.workingDirectory,
         env: buildBackendProcessEnv(config.env),
         windowsHide: true,
       },
-    );
+    ) as ChildProcessWithoutNullStreams;
     this.active.set(request.executionId, child);
 
     // Record link visibility: command and process info
