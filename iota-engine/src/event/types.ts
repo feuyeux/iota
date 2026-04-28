@@ -30,7 +30,12 @@ export interface McpServerDescriptor {
   name: string;
   command: string;
   args?: string[];
-  env?: Record<string, string>;
+  /**
+   * Environment variables for the MCP server process.
+   * Accepts both object form (used by claude-code / codex MCP) and
+   * array form (required by hermes ACP McpServerStdio schema).
+   */
+  env?: Record<string, string> | string[];
 }
 
 export interface ApprovalPolicy {

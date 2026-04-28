@@ -4,3 +4,10 @@ engine:
   defaultBackend: claude-code
 approval:
   shell: auto
+mcp:
+  servers:
+    - name: iota-fun
+      command: node
+      args:
+        - /Users/han/codingx/iota/iota-engine/dist/mcp/fun-server.js
+      env: []

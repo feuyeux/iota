@@ -1,6 +1,20 @@
 import type { McpServerDescriptor } from "../event/types.js";
 import { StdioMcpClient, type McpClient } from "./client.js";
 
+/** Normalize env to Record<string,string> regardless of input form. */
+function normalizeEnv(env?: Record<string, string> | string[]): Record<string, string> {
+  if (!env) return {};
+  if (Array.isArray(env)) {
+    const result: Record<string, string> = {};
+    for (const entry of env) {
+      const eq = entry.indexOf("=");
+      if (eq > 0) result[entry.slice(0, eq)] = entry.slice(eq + 1);
+    }
+    return result;
+  }
+  return env;
+}
+
 export interface McpServerStatus {
   name: string;
   connected: boolean;
@@ -58,7 +72,7 @@ export class McpServerManager {
       const client = new StdioMcpClient(
         descriptor.command,
         descriptor.args,
-        descriptor.env,
+        normalizeEnv(descriptor.env),
       );
       // List tools on connect and cache them
       const toolsResult = (await client.request("tools/list")) as

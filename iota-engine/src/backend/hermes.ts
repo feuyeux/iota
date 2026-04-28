@@ -1,12 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
-
-const _HERMES_DIR = path.dirname(fileURLToPath(import.meta.url));
-// fun-server.js is compiled alongside this file in dist/backend/ → dist/mcp/fun-server.js
-const FUN_SERVER_PATH = path.resolve(_HERMES_DIR, "..", "mcp", "fun-server.js");
 import { encodeAcp } from "../protocol/acp.js";
 import { ErrorCode } from "../error/codes.js";
 import { SubprocessBackendAdapter } from "./subprocess.js";
@@ -14,9 +9,27 @@ import { composeEffectivePrompt } from "./prompt-composer.js";
 import type { BackendConfig } from "./interface.js";
 import type {
   BackendName,
+  McpServerDescriptor,
   RuntimeEvent,
   RuntimeRequest,
 } from "../event/types.js";
+
+/**
+ * Convert an engine McpServerDescriptor to the hermes ACP McpServerStdio wire format.
+ * Hermes requires: { name, type: "stdio", command, args, env: string[] }
+ */
+function toHermesMcpServer(s: McpServerDescriptor): Record<string, unknown> {
+  let env: string[];
+  if (Array.isArray(s.env)) {
+    env = s.env as string[];
+  } else if (s.env && typeof s.env === "object") {
+    // Convert { KEY: "VALUE" } → ["KEY=VALUE"]
+    env = Object.entries(s.env).map(([k, v]) => `${k}=${v}`);
+  } else {
+    env = [];
+  }
+  return { name: s.name, type: "stdio", command: s.command, args: s.args ?? [], env };
+}
 
 /**
  * HermesAdapter — Section 7.5
@@ -34,7 +47,7 @@ export class HermesAdapter extends SubprocessBackendAdapter {
   private generatedHermesHome?: string;
   private configuredModel?: string;
 
-  constructor() {
+  constructor(private readonly mcpServers: McpServerDescriptor[] = []) {
     // Shared state between closures: maps our sessionId → hermes sessionId
     const sessionMap = new Map<string, string>();
     // Pending session/new requests: maps request id → our sessionId
@@ -84,20 +97,16 @@ export class HermesAdapter extends SubprocessBackendAdapter {
         if (!sessionMap.has(request.sessionId)) {
           const newReqId = `${request.executionId}:new`;
           pendingNewSessions.set(newReqId, request.sessionId);
+          const hermesMcpServers = (self.adapter?.mcpServers ?? []).map(toHermesMcpServer);
+          console.debug(`[iota-mcp] session/new mcpServers=[${hermesMcpServers.map((s) => (s as {name:string}).name).join(", ")}] (global hermes config used for tool discovery)`);
           messages += encodeAcp({
             id: newReqId,
             method: "session/new",
             params: {
               cwd: request.workingDirectory || process.cwd(),
-              mcpServers: [
-                {
-                  name: "iota-fun",
-                  type: "stdio",
-                  command: "node",
-                  args: [FUN_SERVER_PATH],
-                  env: [],
-                },
-              ],
+              // Note: per-session mcpServers may not override global hermes MCP config.
+              // Tools registered via `hermes mcp add` are always available.
+              mcpServers: [],
             },
           });
           // Can't send session/prompt yet — hermes sessionId unknown.

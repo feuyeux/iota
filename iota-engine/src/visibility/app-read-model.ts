@@ -168,7 +168,7 @@ export interface McpServerDescriptor {
   name: string;
   command: string;
   args?: string[];
-  env?: Record<string, string>;
+  env?: Record<string, string> | string[];
 }
 
 export interface AppSessionSnapshot {

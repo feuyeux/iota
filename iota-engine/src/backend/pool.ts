@@ -34,7 +34,7 @@ export class BackendPool {
     this.backends.set("claude-code", new ClaudeCodeAdapter());
     this.backends.set("codex", new CodexAdapter());
     this.backends.set("gemini", new GeminiAdapter());
-    this.backends.set("hermes", new HermesAdapter());
+    this.backends.set("hermes", new HermesAdapter(config.mcp?.servers ?? []));
     for (const name of this.backends.keys()) {
       this.breakers.set(name, new CircuitBreaker());
     }
