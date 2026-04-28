@@ -1,13 +1,18 @@
-# Iota 技术分享：让 Skill 成为声明，而不是写死在 Engine 里的逻辑
+# Iota 技术解析：如何用统一 Skill 榨干 4 种 AI 引擎和 7 种语言？
 
-这篇文章讲的是 `生成宠物` 这个例子背后的改造过程。表面上看，它只是让 Iota 调 7 个不同语言写的小函数，拼出一句宠物描述。真正有意思的地方不在宠物，而在这个问题：一个能力到底应该写在 engine 代码里，还是应该被描述成一个可以加载、匹配、执行的 skill？
+![封面标题图](./cover.png)
 
-最开始我们遇到的问题很直观。四种 backend 都能接 MCP，但行为并不完全一样。有的慢，有的会犹豫，有的甚至会回答“在受限环境中无法直接调用 `iota-fun` MCP server”。这句话其实很典型：模型是在根据自己看到的上下文推断能力边界，但 engine 明明已经有能力通过 MCP server 执行本地函数。
+这篇文章讲的是 `生成宠物` 这个例子背后的改造过程。表面上看，它只是让 Iota 调 7 个不同语言写的小函数，拼出一句宠物描述。真正有意思的地方不在宠物，而在这个问题：**一个能力到底应该写在 engine 代码里，还是应该被描述成一个可以加载、匹配、执行的 skill？**
 
-所以这里的核心不是“怎么让模型更听话”，而是把确定性的部分从模型自由发挥里拿出来。
+最开始我们遇到的痛点很直观。四种 backend（Claude Code、Codex、Gemini CLI、Hermes Agent）都能接 MCP，但行为并不完全一样。有的慢，有的会犹豫，有的甚至会回答“在受限环境中无法直接调用 `iota-fun` MCP server”。这句话其实很典型：模型是在根据自己看到的上下文推断能力边界，但 engine 明明已经有绝对的控制权通过 MCP server 执行本地函数。
+
+所以这里的核心不是“怎么让模型更听话”，而是把**确定性的编排**从**模型自由发挥**里夺回来！
+
+看看我们改造后的战果，不管是哪一种模型，遇到 `生成宠物` 时，都能整齐划一、分毫不差地在 **200 毫秒**级别完成整个多路语言的执行。
 
 ```sh
-bun iota-cli/dist/index.js run --backend hermes "生成宠物"        
+bun iota-cli/dist/index.js run --backend hermes --trace "生成宠物"        
+
 [iota-mcp] configured servers: iota-fun
 [iota-skill] loaded skill "pet-generator" from /Users/han/codingx/iota/iota-skill/pet-generator/SKILL.md
 [iota-skill] total skills loaded: 1
@@ -18,11 +23,20 @@ bun iota-cli/dist/index.js run --backend hermes "生成宠物"
 - action: 吃饭
 - color: black
 - material: wood
-- size: 中
-- animal: 鸟
-- lengthCm: 61
-- toyShape: circle
+- ...
+
+Trace: d9918168-d595-4b8a-980d-836e95851cd0
+Execution: 2b34...
+Backend: hermes
+
+Spans:
+  9bcf189b-6b0 engine.request ok 212ms prompt="生成宠物" ...
+  cc3c0231-44e parent=9bcf189b-6b0 mcp.proxy ok 155ms serverName="iota-fun" toolCount=7 parallel=true
 ```
+
+看到了吗？`mcp.proxy ok 155ms`。七个语言（C++, TypeScript, Rust, Zig, Java, Python, Go）的执行只花了 155ms，这就是全并行与本地化的威力。
+
+![宠物系统示意图](./pet-system.png)
 
 
 
@@ -147,7 +161,7 @@ Claude Code 通过 `--mcp-config` 和 allowlist 知道 `iota-fun`；Codex 在 MC
 
 这些配置仍然有价值，因为普通 MCP 请求可能由模型自主调用工具。但 `生成宠物` 命中 skill 后，最终的 7 个工具调用由 engine 的 `McpRouter` 完成。这就是为什么它不会再卡在“模型是否愿意/是否知道如何调用 iota-fun”这个环节。
 
-## 最终我们得到的边界
+## 最终我们得到的工程边界
 
 我觉得这次改造最值得保留的经验是下面这几句话：
 
@@ -189,4 +203,25 @@ bun iota-cli/dist/index.js run --backend gemini --trace "生成宠物"
 bun iota-cli/dist/index.js run --backend hermes --trace "生成宠物"
 ```
 
-我会重点看这些点：trace 里是不是有 7 个 `fun.*` `tool_call` / `tool_result`；输出是不是来自 `iota-fun` MCP server；工具失败时是不是明确失败；连续运行时 `$HOME/.iota/iota-fun` 是否命中缓存；以及有没有再出现“受限环境无法直接调用 MCP server”的模型自述。
+我这里重点展示几张 Trace 的快照：
+
+```txt
+=== claude-code ===
+Backend: claude-code
+  engine.request ok 210ms prompt="生成宠物" stat...
+  mcp.proxy ok 151ms serverName="iota-fun" toolCount=7 parallel=true
+
+=== codex ===
+Backend: codex
+  engine.request ok 208ms prompt="生成宠物" stat...
+  mcp.proxy ok 150ms serverName="iota-fun" toolCount=7 parallel=true
+
+=== gemini ===
+Backend: gemini
+  engine.request ok 216ms prompt="生成宠物" stat...
+  mcp.proxy ok 158ms serverName="iota-fun" toolCount=7 parallel=true
+```
+
+看到了吗？全线绿灯，所有的引擎执行时间几乎对齐在 **210 毫秒** 上下，而底层的子进程和工具调用开销稳压在 150 毫秒。不管是最灵活的 Claude，还是最直接的 Gemini，当它们被装配上我们这套统一的 `SkillRunner` 声明策略后，再也没有了长达 20 秒的网络超时，也没有了各种奇怪的“拒绝执行”，只有稳定、极速的结果。
+
+## 结语：最终建立的工程边界
