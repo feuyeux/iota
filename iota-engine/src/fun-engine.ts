@@ -47,7 +47,7 @@ export class IotaFunEngine {
 
   constructor(srcDir: string) {
     this.engineRoot = path.resolve(srcDir, "..");
-    this.funRoot = path.resolve(this.engineRoot, "..", "iota-fun");
+    this.funRoot = path.resolve(this.engineRoot, "..", "iota-skill", "pet-generator", "iota-fun");
   }
 
   buildPlan(language: FunLanguage): ExecutionPlan {

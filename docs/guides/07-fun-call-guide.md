@@ -1,13 +1,13 @@
 # Fun Call 函数调用指南
 
-本指南描述了 `iota-fun/` 示例函数的执行方式、如何通过 `IotaEngine` 路由它们，以及当你需要在代码中进行确定性控制时如何直接调用它们。
+本指南描述了 `iota-skill/pet-generator/iota-fun/` 示例函数的执行方式、如何通过 `IotaEngine` 路由它们，以及当你需要在代码中进行确定性控制时如何直接调用它们。
 
 ## 概述
 
 当前实现包含两个层次：
 
 -  `IotaFunEngine` 位于 `iota-engine/src/fun-engine.ts`
-执行 `iota-fun/` 下的具体语言目标。
+执行 `iota-skill/pet-generator/iota-fun/` 下的具体语言目标。
 -  `IotaEngine` 集成位于 `iota-engine/src/engine.ts`
 检测匹配的提示词并在正常执行生命周期内将它们路由到 `IotaFunEngine`。
 
@@ -28,7 +28,7 @@
 -  `java`: 生成随机动物
 -  `cpp`: 生成随机动作
 
-源文件位于 `iota-fun/` 目录下。
+源文件位于 `iota-skill/pet-generator/iota-fun/` 目录下。
 
 ## 直接使用
 

@@ -1,6 +1,6 @@
 # Fun Runtime 运行时安装指南
 
-本文档记录了执行 `iota-fun/` 下示例 Function 函数所需的本地 Runtime 运行时要求，以及在此 Windows Workspace 工作区上的当前验证状态。
+本文档记录了执行 `iota-skill/pet-generator/iota-fun/` 下示例 Function 函数所需的本地 Runtime 运行时要求，以及在此 Windows Workspace 工作区上的当前验证状态。
 
 ## 当前状态
 
@@ -14,9 +14,9 @@
 
 ## 已验证的执行
 
--  Python 函数从 `iota-fun/python/random_number.py` 成功执行
--  TypeScript 函数从 `iota-fun/typescript/randomColor.ts` 成功执行
--  Go 函数在对齐 `iota-fun/go/` 中的包名后成功执行
+-  Python 函数从 `iota-skill/pet-generator/iota-fun/python/random_number.py` 成功执行
+-  TypeScript 函数从 `iota-skill/pet-generator/iota-fun/typescript/randomColor.ts` 成功执行
+-  Go 函数在对齐 `iota-skill/pet-generator/iota-fun/go/` 中的包名后成功执行
 -  Rust 函数在移除外部 `rand` crate 依赖后成功执行
 -  Java 源代码可以编译和运行，但由于控制台编码问题，此终端仍显示中文输出乱码
 -  Zig 运行时已安装；示例运行器已调整以兼容 Zig 0.16

@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+
+const _HERMES_DIR = path.dirname(fileURLToPath(import.meta.url));
+// fun-server.js is compiled alongside this file in dist/backend/ → dist/mcp/fun-server.js
+const FUN_SERVER_PATH = path.resolve(_HERMES_DIR, "..", "mcp", "fun-server.js");
 import { encodeAcp } from "../protocol/acp.js";
 import { ErrorCode } from "../error/codes.js";
 import { SubprocessBackendAdapter } from "./subprocess.js";
@@ -84,7 +89,15 @@ export class HermesAdapter extends SubprocessBackendAdapter {
             method: "session/new",
             params: {
               cwd: request.workingDirectory || process.cwd(),
-              mcpServers: [],
+              mcpServers: [
+                {
+                  name: "iota-fun",
+                  type: "stdio",
+                  command: "node",
+                  args: [FUN_SERVER_PATH],
+                  env: [],
+                },
+              ],
             },
           });
           // Can't send session/prompt yet — hermes sessionId unknown.

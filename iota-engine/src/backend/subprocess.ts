@@ -314,6 +314,9 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
 
   /** Write raw data to the process stdin (long-lived warm process or per-execution child). */
   protected writeToStdin(executionId: string, data: string): boolean {
+    if (process.env.IOTA_DEBUG_ACP === "true") {
+      process.stderr.write(`[acp:stdin] ${data.slice(0, 300)}\n`);
+    }
     // Record visibility for stdin writes
     const vc = this.getVc(executionId);
     if (vc) {
@@ -404,6 +407,9 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
 
     const rl = readline.createInterface({ input: child.stdout });
     rl.on("line", (line) => {
+      if (process.env.IOTA_DEBUG_ACP === "true") {
+        process.stderr.write(`[acp:stdout] ${line}\n`);
+      }
       // Dispatch only to the execution that currently owns stdin
       const execId = this.activeWarmExecution;
       if (execId) {

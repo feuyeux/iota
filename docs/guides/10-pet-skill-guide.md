@@ -1,3 +1,26 @@
+更新 docs/guides/10-pet-skill-guide.md
+目标： 
+4种backend都能成功加载和执行skill，并行执行工具
+iota-engine能运行7个编程语言写的函数
+内容：
+分别展示4种backend的cli示例 并总结完整的流程原理图--以组件为中心 流程在组件间的箭头线上标明 序号和描述 (drawio版)
+
+[iota-skill] total skills loaded: 1
+[iota-engine] skills active: pet-generator
+
+hermes LLM → MCP call fun.cpp → iota-fun-mcp server → IotaFunEngine.execute() → 返回给 hermes → LLM
+  组合
+
+[iota-pet] starting parallel fun execution for cpp, typescript, rust, zig, java, python, go
+[iota-pet] fun.cpp → "奔跑"
+[iota-pet] fun.typescript → "black"
+[iota-pet] fun.rust → "wood"
+[iota-pet] fun.zig → "中"
+[iota-pet] fun.java → "鸟"
+[iota-pet] fun.python → "10"
+[iota-pet] fun.go → "square"
+
+
 # 宠物技能指南
 
 **版本：** 1.0  
@@ -15,9 +38,9 @@
 
 - [`iota-skill/pet-generator/SKILL.md`](../../iota-skill/pet-generator/SKILL.md)
 
-技能目录说明位于：
+工具函数位于：
 
-- [`iota-skill/README.md`](../../iota-skill/README.md)
+- [`iota-skill/pet-generator/iota-fun/`](../../iota-skill/pet-generator/iota-fun/)
 
 ## 3. 触发条件
 
@@ -36,13 +59,13 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ## 4. 真实数据来源
 
-这个 skill 必须读取并调用 `iota-fun/` 的真实函数。不能凭示例模板硬编码词汇。
+这个 skill 必须读取并调用 `iota-skill/pet-generator/iota-fun/` 的真实函数。不能凭示例模板硬编码词汇。
 
 当前实际词表如下。
 
 ### `cpp` 动作
 
-文件：[`iota-fun/cpp/random_action.cpp`](../../iota-fun/cpp/random_action.cpp)
+文件：[`iota-skill/pet-generator/iota-fun/cpp/random_action.cpp`](../../iota-skill/pet-generator/iota-fun/cpp/random_action.cpp)
 
 真实输出集合：
 
@@ -55,7 +78,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `typescript` 颜色
 
-文件：[`iota-fun/typescript/randomColor.ts`](../../iota-fun/typescript/randomColor.ts)
+文件：[`iota-skill/pet-generator/iota-fun/typescript/randomColor.ts`](../../iota-skill/pet-generator/iota-fun/typescript/randomColor.ts)
 
 真实输出集合：
 
@@ -68,7 +91,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `rust` 材质
 
-文件：[`iota-fun/rust/random_material.rs`](../../iota-fun/rust/random_material.rs)
+文件：[`iota-skill/pet-generator/iota-fun/rust/random_material.rs`](../../iota-skill/pet-generator/iota-fun/rust/random_material.rs)
 
 真实输出集合：
 
@@ -80,7 +103,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `zig` 尺寸
 
-文件：[`iota-fun/zig/random_size.zig`](../../iota-fun/zig/random_size.zig)
+文件：[`iota-skill/pet-generator/iota-fun/zig/random_size.zig`](../../iota-skill/pet-generator/iota-fun/zig/random_size.zig)
 
 > **运行时状态：** 需要安装 `zig` 编译器。当前开发环境未安装，调用会失败并在输出中明确标注，不静默补默认值。
 
@@ -92,7 +115,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `java` 动物
 
-文件：[`iota-fun/java/RandomAnimal.java`](../../iota-fun/java/RandomAnimal.java)
+文件：[`iota-skill/pet-generator/iota-fun/java/RandomAnimal.java`](../../iota-skill/pet-generator/iota-fun/java/RandomAnimal.java)
 
 真实输出集合：
 
@@ -102,7 +125,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `python` 数字
 
-文件：[`iota-fun/python/random_number.py`](../../iota-fun/python/random_number.py)
+文件：[`iota-skill/pet-generator/iota-fun/python/random_number.py`](../../iota-skill/pet-generator/iota-fun/python/random_number.py)
 
 真实输出范围：
 
@@ -110,7 +133,7 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 
 ### `go` 形状
 
-文件：[`iota-fun/go/random_shape.go`](../../iota-fun/go/random_shape.go)
+文件：[`iota-skill/pet-generator/iota-fun/go/random_shape.go`](../../iota-skill/pet-generator/iota-fun/go/random_shape.go)
 
 真实输出集合：
 
@@ -231,12 +254,14 @@ bun iota-cli/dist/index.js run --backend claude-code "生成宠物"
 | cpp | `g++` | ✅ Apple clang 21.0 | action |
 | typescript | `node` | ✅ v25.9.0 | color |
 | rust | `rustc` | ✅ 1.95.0 | material |
-| zig | `zig` | ❌ 未安装 | size |
+| zig | `zig` | ✅ 0.16.0 | size |
 | java | `javac` / `java` | ✅ 25 | animal |
 | python | `python3` | ✅ 3.14.4 | lengthCm |
 | go | `go` | ✅ 1.26.2 | toyShape |
 
-zig 未安装时，size 属性会在输出中明确标注失败，不静默补默认值。
+zig 未安装时，size 属性会在输出中明确标注失败，不静默补默认值。当前所有 7 个语言运行时均已就绪。
+
+> **注意：** zig 0.16.0 标准库移除了 `std.io`，`runner.zig` 改用 libc `write()` 直接写 stdout。
 
 ## 9. 接入原理
 
@@ -255,7 +280,7 @@ prompt 包含"生成宠物"
 
 ## 10. 相关文档
 
-- [`iota-fun/README.md`](../../iota-fun/README.md)
+- [`iota-skill/pet-generator/iota-fun/README.md`](../../iota-skill/pet-generator/iota-fun/README.md)
 - [`iota-engine/src/fun-intent.ts`](../../iota-engine/src/fun-intent.ts)
 - [`iota-engine/src/fun-engine.ts`](../../iota-engine/src/fun-engine.ts)
 - [`iota-engine/src/skill/loader.ts`](../../iota-engine/src/skill/loader.ts)
