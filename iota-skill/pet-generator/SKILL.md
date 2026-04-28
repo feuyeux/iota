@@ -9,7 +9,7 @@ description: 当用户请求"生成宠物"时，并行调用 iota-skill/pet-gene
 
 当请求中包含"生成宠物"时，通过**并行调用 `fun.*` 工具**获取真实的随机属性值，组合成一只完整的宠物描述。
 
-**重要：不要凭空编造属性值。** 每个属性必须来自对应工具的真实调用结果。
+**重要：不要凭空编造属性值，不要使用文档中的示例值。** 每个属性必须来自对应工具的真实调用结果。
 
 ## Available Tools
 
@@ -27,10 +27,10 @@ description: 当用户请求"生成宠物"时，并行调用 iota-skill/pet-gene
 
 ## Execution Instructions
 
-**重要：直接在当前会话中调用这些工具，不要使用 `delegate` 或 `delegate_task` 工具委托子任务。`fun.*` 工具仅在当前会话中可用，子会话中没有这些工具。**
+**重要：直接在当前会话中调用这些 MCP 工具，不要使用 `terminal`、`execute_code`、`delegate` 或任何 shell 命令来模拟工具调用结果。`fun.*` 工具必须通过 MCP 工具调用执行，不可用 echo 或其他命令替代。**
 
-1. **在当前会话中直接调用**全部 7 个工具：`fun.cpp`、`fun.typescript`、`fun.rust`、`fun.zig`、`fun.java`、`fun.python`、`fun.go`
-2. 等待所有工具返回结果
+1. **在当前会话中直接调用** MCP 工具，调用全部 7 个：`fun.cpp`、`fun.typescript`、`fun.rust`、`fun.zig`、`fun.java`、`fun.python`、`fun.go`
+2. 等待所有工具返回真实结果
 3. 用真实结果组合宠物描述（见 Output Contract）
 4. 如某个工具调用失败，在输出中明确标注，不要用默认值替代
 
@@ -41,31 +41,19 @@ description: 当用户请求"生成宠物"时，并行调用 iota-skill/pet-gene
 1. **自然语言描述**（保留各工具输出的原始词形，不要翻译）
 2. **属性清单**
 
-示例（假设工具返回值如下）：
+示例格式（值必须来自真实工具调用，不要使用下面的占位符）：
 
 ```
-fun.cpp        → 睡觉
-fun.typescript → red
-fun.rust       → metal
-fun.zig        → 大
-fun.java       → 猫
-fun.python     → 80
-fun.go         → circle
-```
-
-输出：
-
-```
-一只正在睡觉的、red 的、metal 感的、大号的猫，抱着一个 80 厘米、circle 的飞盘。
+一只正在{action}的、{color}的、{material}感的、{size}号的{animal}，抱着一个 {lengthCm} 厘米、{toyShape} 的飞盘。
 
 属性：
-- action: 睡觉  (fun.cpp)
-- color: red  (fun.typescript)
-- material: metal  (fun.rust)
-- size: 大  (fun.zig)
-- animal: 猫  (fun.java)
-- lengthCm: 80  (fun.python)
-- toyShape: circle  (fun.go)
+- action: {fun.cpp 的实际返回值}
+- color: {fun.typescript 的实际返回值}
+- material: {fun.rust 的实际返回值}
+- size: {fun.zig 的实际返回值}
+- animal: {fun.java 的实际返回值}
+- lengthCm: {fun.python 的实际返回值}
+- toyShape: {fun.go 的实际返回值}
 ```
 
 ## Guardrails
