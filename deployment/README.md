@@ -36,13 +36,13 @@
 
 生产模式需要以下存储服务。相关设计说明见 [`../docs/requirement/4.iota_engine_design_0425.md`](../docs/requirement/4.iota_engine_design_0425.md)。
 
-| 服务 | 用途 | 端口 | 使用者 |
-|---|---|---|---|
-| Redis | 事件流存储 (Redis Streams)、锁、审计日志 | 6379 | engine, cli, agent |
-| Redis Sentinel | Redis 高可用 | 26379 | agent (production) |
-| Milvus | 工作/事实/情节/程序记忆向量索引 | 19530, 9091 | engine, agent |
-| MinIO | 快照大对象存储 | 9002 (API), 9003 (Console) | agent |
-| etcd | Milvus 元数据存储 | 2379 | milvus |
+| 服务 | 用途 | 端口 | 使用者 | 发布|
+|:---|:---|:---|:---|:---|
+| Redis | 事件流存储 (Redis Streams)、锁、审计日志 | 6379 | engine, cli, agent |<https://github.com/redis/redis/releases>|
+| Redis Sentinel | Redis 高可用 | 26379 | agent (production) |-|
+| Milvus | 工作/事实/情节/程序记忆向量索引 | 19530, 9091 | engine, agent | <https://github.com/milvus-io/milvus/releases> |
+| MinIO | 快照大对象存储 | 9002 (API), 9003 (Console) | agent |<https://github.com/minio/minio/releases>|
+| etcd | Milvus 元数据存储 | 2379 | milvus |<https://github.com/etcd-io/etcd/releases>|
 
 ## 快速启动
 
@@ -66,6 +66,14 @@ redis-cli -h localhost -p 6379 ping
 curl http://localhost:3000/health
 curl http://localhost:3000/api/v1/status
 ```
+
+如果你还要在这台机器上运行 Iota 的四个 backend CLI，可先执行统一检测脚本：
+
+```bash
+bash deployment/scripts/ensure-backends.sh --check-only
+```
+
+该脚本会优先检查当前 shell 的 `PATH`，并在 Windows / WSL / Git Bash 环境下回退使用 `where.exe`，避免把 Windows 侧已安装的 `hermes.exe`、`codex`、`gemini` 等可执行文件误判为缺失。
 
 ### 3. 停止所有服务
 
@@ -107,16 +115,20 @@ bun run dev
 ## 服务访问
 
 ### Redis
+
 ```bash
 redis-cli -h localhost -p 6379
 ```
 
 ### MinIO Console
-浏览器访问: http://localhost:9003
+
+浏览器访问: <http://localhost:9003>
+
 - 用户名: `iota`
 - 密码: `iotasecret`
 
 ### Milvus
+
 ```bash
 # 使用 Python SDK
 from pymilvus import connections

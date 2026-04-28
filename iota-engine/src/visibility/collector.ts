@@ -464,6 +464,10 @@ export class VisibilityCollector {
     };
   }
 
+  getMemoryExtraction(): MemoryExtractionVisibility | undefined {
+    return this.memoryExtraction;
+  }
+
   // ─── Finalize & Persist ────────────────────────────────────────
 
   async finalize(response?: RuntimeResponse): Promise<void> {

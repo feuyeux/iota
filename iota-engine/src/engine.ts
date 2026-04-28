@@ -13,7 +13,6 @@ import { RuntimeEventStore } from "./event/store.js";
 import { EventMultiplexer } from "./event/multiplexer.js";
 import { RedisStorage } from "./storage/redis.js";
 import { RedisPubSub } from "./storage/pubsub.js";
-import { MilvusMemoryStore } from "./storage/milvus.js";
 import { MinioSnapshotStore } from "./storage/minio.js";
 import {
   hashRequest,
@@ -30,13 +29,19 @@ import { scanWorkspace } from "./workspace/hash-scan.js";
 import { diffManifests } from "./workspace/delta.js";
 import { DialogueMemory } from "./memory/dialogue.js";
 import { WorkingMemory } from "./memory/working.js";
-import { MemoryStore } from "./memory/store.js";
-import { extractMemory } from "./memory/extractor.js";
-import { injectMemoryWithVisibility } from "./memory/injector.js";
+import {
+  MemoryInjector,
+  injectMemoryWithVisibility,
+} from "./memory/injector.js";
 import { AuditLogger } from "./audit/logger.js";
 import { MetricsCollector } from "./metrics/collector.js";
 import { McpRouter } from "./mcp/router.js";
-import { createDefaultEmbeddingChain } from "./memory/embedding.js";
+import { MemoryStorage, type MemoryStorageBackend } from "./memory/storage.js";
+import { memoryMapper } from "./memory/mapper.js";
+import type {
+  BackendMemoryEvent,
+  StoredMemory,
+} from "./memory/types.js";
 import {
   AutoApprovalHook,
   type ApprovalHook,
@@ -88,6 +93,8 @@ import type {
 import type { RuntimeRequest } from "./event/types.js";
 import type { IotaConfig } from "./config/schema.js";
 import type { AuditEntry } from "./audit/logger.js";
+import { IotaFunEngine } from "./fun-engine.js";
+import { detectFunIntent } from "./fun-intent.js";
 
 export interface IotaEngineOptions extends LoadConfigOptions {
   workingDirectory?: string;
@@ -132,16 +139,17 @@ export class IotaEngine {
   private multiplexer?: EventMultiplexer;
   private readonly dialogueMemory = new DialogueMemory();
   private readonly workingMemory = new WorkingMemory();
-  private readonly memoryStore = new MemoryStore();
+  private memoryStorage?: MemoryStorage;
+  private memoryInjector?: MemoryInjector;
   private readonly metrics = new MetricsCollector();
   private readonly approvalHook: ApprovalHook;
   private mcpRouter?: McpRouter;
-  private milvusStore?: MilvusMemoryStore;
   private minioStore?: MinioSnapshotStore;
   private audit?: AuditLogger;
   private visibilityStore?: VisibilityStore;
   private pubsub?: RedisPubSub;
   private configStore?: RedisConfigStore;
+  private readonly funEngine = new IotaFunEngine(__dirname);
 
   /** Track in-flight executions for multiplexer stream reuse */
   private readonly runningExecutions = new Set<string>();
@@ -235,34 +243,13 @@ export class IotaEngine {
     this.eventStore = new RuntimeEventStore(this.storage);
     this.multiplexer = new EventMultiplexer(this.eventStore);
 
-    // Connect typed memory to Redis-backed storage.
-    if (hasMemoryStorage(this.storage)) {
-      this.memoryStore.setStorage(this.storage);
+    if (hasUnifiedMemoryStorage(this.storage)) {
+      this.memoryStorage = new MemoryStorage(this.storage);
+      this.memoryInjector = new MemoryInjector(this.memoryStorage);
     }
 
-    // Production mode: Milvus for vector memory, MinIO for snapshots
+    // Production mode: MinIO for snapshots
     if (this.config.engine.mode === "production") {
-      const milvusCfg = this.config.storage.production.milvus;
-      const embeddingChain = createDefaultEmbeddingChain(milvusCfg.dimension);
-      this.milvusStore = new MilvusMemoryStore(
-        {
-          address: milvusCfg.address,
-          collectionName: milvusCfg.collectionName,
-          dimension: milvusCfg.dimension,
-        },
-        embeddingChain,
-      );
-      try {
-        await this.milvusStore.init();
-      } catch (err) {
-        // Non-fatal: fall back to in-memory
-        console.warn(
-          "[iota-engine] Milvus init failed, falling back to in-memory:",
-          err,
-        );
-        this.milvusStore = undefined;
-      }
-
       const minioCfg = this.config.storage.production.minio;
       this.minioStore = new MinioSnapshotStore({
         endPoint: minioCfg.endPoint,
@@ -702,9 +689,8 @@ export class IotaEngine {
 
   async listSessionMemories(
     sessionId: string,
-    query?: string,
     limit = 50,
-  ): Promise<import("./event/types.js").MemoryBlock[]> {
+  ): Promise<StoredMemory[]> {
     const session = await this.requireStorage().getSession(sessionId);
     if (!session) {
       throw new IotaError({
@@ -712,15 +698,15 @@ export class IotaEngine {
         message: `Session ${sessionId} does not exist`,
       });
     }
-    return query
-      ? this.memoryStore.search(sessionId, query, limit)
-      : this.memoryStore.list(sessionId, limit);
+    return this.requireMemoryStorage().retrieve({
+      type: "episodic",
+      scope: "session",
+      scopeId: sessionId,
+      limit,
+    });
   }
 
-  async createSessionMemory(
-    sessionId: string,
-    memory: import("./event/types.js").MemoryBlock,
-  ): Promise<import("./event/types.js").MemoryBlock> {
+  async createSessionMemory(sessionId: string, content: string): Promise<StoredMemory> {
     const session = await this.requireStorage().getSession(sessionId);
     if (!session) {
       throw new IotaError({
@@ -728,11 +714,24 @@ export class IotaEngine {
         message: `Session ${sessionId} does not exist`,
       });
     }
-    await this.memoryStore.add(sessionId, memory);
-    return {
-      ...memory,
-      type: memory.type ?? "episodic",
-    };
+
+    return this.requireMemoryStorage().store(
+      {
+        type: "episodic",
+        scope: "session",
+        content,
+        source: {
+          backend: (session.activeBackend as BackendName | undefined) ?? "claude-code",
+          nativeType: "manual_session_note",
+          executionId: `manual:${sessionId}`,
+        },
+        metadata: { source: "manual" },
+        confidence: 1,
+        timestamp: Date.now(),
+        ttlDays: 7,
+      },
+      sessionId,
+    );
   }
 
   async deleteSessionMemory(
@@ -746,7 +745,7 @@ export class IotaEngine {
         message: `Session ${sessionId} does not exist`,
       });
     }
-    return this.memoryStore.delete(sessionId, memoryId);
+    return this.requireMemoryStorage().delete("episodic", memoryId);
   }
 
   /**
@@ -815,7 +814,7 @@ export class IotaEngine {
     // 3. Build context for new backend
     const context: RuntimeContext = {
       conversation: this.dialogueMemory.getConversation(sessionId),
-      injectedMemory: await this.memoryStore.search(sessionId, ""),
+      injectedMemory: [],
       workspaceSummary: `Switching backend from ${currentBackend} to ${newBackend}.`,
       activeFiles: this.workingMemory
         .getActiveFiles(sessionId)
@@ -872,28 +871,11 @@ export class IotaEngine {
     return this.pubsub;
   }
 
-  /** Search memories across all sessions (cross-session query). */
-  async searchMemoriesAcrossSessions(
+  async searchMemories(
     query: string,
     limit?: number,
-  ): Promise<
-    Array<{
-      id: string;
-      sessionId: string;
-      content: string;
-      type?: string;
-      score?: number;
-    }>
-  > {
-    const storage = this.requireStorage();
-    if (!storage.searchMemoriesAcrossSessions) {
-      throw new IotaError({
-        code: ErrorCode.EXECUTION_FAILED,
-        message:
-          "The configured storage backend does not support cross-session memory search",
-      });
-    }
-    return storage.searchMemoriesAcrossSessions(query, limit);
+  ): Promise<Array<StoredMemory & { score?: number }>> {
+    return this.requireMemoryStorage().searchAcrossScopes(query, limit);
   }
 
   /** Get backend isolation report (cross-session query). */
@@ -1008,7 +990,6 @@ export class IotaEngine {
     await this.pubsub?.close();
     await this.configStore?.close();
     await this.mcpRouter?.close();
-    await this.milvusStore?.close();
     await this.minioStore?.close();
     await this.pool?.destroy();
     await this.storage?.close();
@@ -1028,6 +1009,19 @@ export class IotaEngine {
       const storage = engine.requireStorage();
       const eventStore = engine.requireEventStore();
       const multiplexer = engine.requireMultiplexer();
+      const funIntent = detectFunIntent(request.prompt);
+
+      if (funIntent) {
+        yield* engine.runFunExecution(
+          request,
+          requestHash,
+          existing,
+          lease,
+          funIntent.language,
+        );
+        return;
+      }
+
       const backend = engine
         .requirePool()
         .get(request.backend ?? engine.requireConfig().routing.defaultBackend);
@@ -1196,6 +1190,21 @@ export class IotaEngine {
           ...request,
           backend: backend.name,
         })) {
+          if (rawEvent.type === "memory") {
+            const stored = await engine.storeBackendMemoryEvent(rawEvent);
+            if (stored && visibilityCollector) {
+              visibilityCollector.recordMemoryExtraction({
+                extracted: true,
+                memoryId: stored.id,
+                type: stored.type,
+                contentHash: contentHash(stored.content),
+                estimatedTokens: Math.ceil(stored.content.length / 4),
+                persistedTo: ["redis"],
+              });
+            }
+            continue;
+          }
+
           // Check for approval_request extensions from adapters (native backend approval)
           if (
             rawEvent.type === "extension" &&
@@ -1543,40 +1552,23 @@ export class IotaEngine {
       visibilityCollector?.recordEventPersist(finalEvt.sequence);
       yield finalEvt;
 
-      // Build response for memory extraction
-      const response: RuntimeResponse = {
-        sessionId: request.sessionId,
-        executionId: request.executionId,
-        backend: backend.name,
-        status,
-        output: output.join(""),
-        events: await eventStore.replay(request.executionId),
-        error: errorJson
-          ? (JSON.parse(errorJson) as RuntimeResponse["error"])
-          : undefined,
-      };
-
       // Memory extraction (Section 12.5)
       const memExtractSpanId = visibilityCollector?.startSpan(
         "memory.extract",
         {},
       );
-      const memory = extractMemory(response);
-      if (memory) {
-        await engine.memoryStore.add(request.sessionId, memory);
-        const persistedTo: Array<"memory_map" | "redis" | "milvus"> = [
-          "memory_map",
-        ];
-        if (engine.milvusStore) {
-          await engine.milvusStore
-            .add(request.sessionId, memory)
-            .then(() => {
-              persistedTo.push("milvus");
-            })
-            .catch((err: unknown) => {
-              console.warn("[iota-engine] Milvus memory add failed:", err);
-            });
-        }
+      const memory = await engine.captureExecutionMemory({
+        backend: backend.name,
+        executionId: request.executionId,
+        sessionId: request.sessionId,
+        prompt: request.prompt,
+        output: output.join(""),
+        workingDirectory: request.workingDirectory,
+      });
+      const hasNativeMemoryExtraction = visibilityCollector
+        ? Boolean(visibilityCollector.getMemoryExtraction()?.extracted)
+        : false;
+      if (memory && !hasNativeMemoryExtraction) {
         // Record extraction in visibility
         if (visibilityCollector) {
           visibilityCollector.recordMemoryExtraction({
@@ -1585,10 +1577,10 @@ export class IotaEngine {
             type: memory.type,
             contentHash: contentHash(memory.content),
             estimatedTokens: Math.ceil(memory.content.length / 4),
-            persistedTo,
+            persistedTo: ["redis"],
           });
         }
-      } else if (visibilityCollector) {
+      } else if (!memory && visibilityCollector && !hasNativeMemoryExtraction) {
         visibilityCollector.recordMemoryExtraction({
           extracted: false,
           reason: "no_signal",
@@ -1606,39 +1598,43 @@ export class IotaEngine {
       });
       engine.dialogueMemory.append(request.sessionId, {
         role: "assistant",
-        content: response.output,
+        content: output.join(""),
         timestamp: Date.now(),
       });
 
       // Record output tokens and finalize visibility
       if (visibilityCollector) {
-        if (response.output) {
+        const finalOutput = output.join("");
+        const finalEvents = await eventStore.replay(request.executionId);
+        if (finalOutput) {
           visibilityCollector.addOutputTokens(
-            response.output,
+            finalOutput,
             "assistant_output",
           );
-        }
-        if (response.usage) {
-          visibilityCollector.setNativeUsage({
-            backend: backend.name,
-            inputTokens: response.usage.inputTokens,
-            outputTokens: response.usage.outputTokens,
-            totalTokens: response.usage.totalTokens,
-            cacheReadTokens: response.usage.cacheReadTokens,
-            cacheWriteTokens: response.usage.cacheWriteTokens,
-          });
         }
         if (requestSpanId) {
           visibilityCollector.endSpan(requestSpanId, {
             status: status === "completed" ? "ok" : "error",
             attributes: {
               status,
-              eventCount: response.events.length,
-              outputChars: response.output.length,
+              eventCount: finalEvents.length,
+              outputChars: finalOutput.length,
             },
           });
         }
-        await visibilityCollector.finalize(response).catch((err) => {
+        await visibilityCollector
+          .finalize({
+            sessionId: request.sessionId,
+            executionId: request.executionId,
+            backend: backend.name,
+            status,
+            output: finalOutput,
+            events: finalEvents,
+            error: errorJson
+              ? (JSON.parse(errorJson) as RuntimeResponse["error"])
+              : undefined,
+          })
+          .catch((err) => {
           engine.audit
             ?.append({
               timestamp: Date.now(),
@@ -1658,14 +1654,24 @@ export class IotaEngine {
                 auditErr,
               );
             });
-        });
+          });
       }
 
       // Clear visibility collector from backend adapter
       backend.setVisibilityCollector?.(undefined, request.executionId);
 
       // Metrics
-      engine.metrics.recordExecution(response);
+      engine.metrics.recordExecution({
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend: backend.name,
+        status,
+        output: output.join(""),
+        events: await eventStore.replay(request.executionId),
+        error: errorJson
+          ? (JSON.parse(errorJson) as RuntimeResponse["error"])
+          : undefined,
+      });
 
       // Record visibility metrics if available
       if (engine.visibilityStore) {
@@ -1688,7 +1694,7 @@ export class IotaEngine {
         requestHash,
         prompt: request.prompt,
         workingDirectory: request.workingDirectory,
-        output: response.output,
+        output: output.join(""),
         errorJson,
         startedAt,
         finishedAt,
@@ -1712,6 +1718,186 @@ export class IotaEngine {
         { status },
       );
     }
+    return generator(this);
+  }
+
+  private runFunExecution(
+    request: RuntimeRequest,
+    requestHash: string,
+    existing: ExecutionRecord | null,
+    lease: LockLease,
+    language: import("./fun-engine.js").FunLanguage,
+  ): AsyncGenerator<RuntimeEvent> {
+    async function* generator(
+      engine: IotaEngine,
+    ): AsyncGenerator<RuntimeEvent> {
+      const storage = engine.requireStorage();
+      const eventStore = engine.requireEventStore();
+      const multiplexer = engine.requireMultiplexer();
+      const backend = request.backend ?? engine.requireConfig().routing.defaultBackend;
+      const startedAt = Date.now();
+      let status: RuntimeResponse["status"] = "completed";
+      let errorJson: string | undefined;
+      let output = "";
+
+      async function assertFencingValid(): Promise<void> {
+        if ("validateFencingToken" in storage) {
+          const valid = await (
+            storage as StorageBackend & {
+              validateFencingToken(
+                key: string,
+                token: number,
+              ): Promise<boolean>;
+            }
+          ).validateFencingToken(lease.key, lease.token);
+          if (!valid) {
+            throw new IotaError({
+              code: ErrorCode.WORKSPACE_LOCKED,
+              message:
+                "Stale fencing token — another execution has superseded this lock",
+            });
+          }
+        }
+      }
+
+      if (!existing) {
+        await assertFencingValid();
+        await storage.createExecution({
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          status: "queued",
+          requestHash,
+          prompt: request.prompt,
+          workingDirectory: request.workingDirectory,
+          startedAt,
+        });
+
+        await engine.pubsub?.publishExecutionEvent({
+          executionId: request.executionId,
+          sessionId: request.sessionId,
+          action: "started",
+          backend,
+          timestamp: startedAt,
+        });
+      }
+
+      for (const state of ["queued", "starting", "running"] as const) {
+        const evt = await eventStore.appendState(
+          request.sessionId,
+          request.executionId,
+          backend,
+          state,
+        );
+        await multiplexer.publish(evt);
+        yield evt;
+      }
+
+      const toolCall = await eventStore.append({
+        type: "tool_call",
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend,
+        data: {
+          toolCallId: `fun-${request.executionId}`,
+          toolName: `fun.${language}`,
+          rawToolName: `fun.${language}`,
+          arguments: { language },
+          approvalRequired: false,
+        },
+      });
+      await multiplexer.publish(toolCall);
+      yield toolCall;
+      const toolCallId = toolCall.type === "tool_call" ? toolCall.data.toolCallId : `fun-${request.executionId}`;
+
+      try {
+        const result = await engine.funEngine.execute({ language });
+        output = result.value;
+
+        const toolResult = await eventStore.append({
+          type: "tool_result",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          data: {
+            toolCallId,
+            status: "success",
+            output: result.value,
+          },
+        });
+        await multiplexer.publish(toolResult);
+        yield toolResult;
+
+        const outEvt = await eventStore.append({
+          type: "output",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          data: {
+            role: "assistant",
+            content: result.value,
+            format: "text",
+            final: true,
+          },
+        });
+        await multiplexer.publish(outEvt);
+        yield outEvt;
+      } catch (error) {
+        status = "failed";
+        const runtimeError = toRuntimeError(error);
+        errorJson = JSON.stringify(runtimeError);
+
+        const toolResult = await eventStore.append({
+          type: "tool_result",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          data: {
+            toolCallId,
+            status: "error",
+            error: runtimeError.message,
+          },
+        });
+        await multiplexer.publish(toolResult);
+        yield toolResult;
+
+        const errEvt = await eventStore.append({
+          type: "error",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          data: runtimeError,
+        });
+        await multiplexer.publish(errEvt);
+        yield errEvt;
+      }
+
+      const finalEvt = await eventStore.appendState(
+        request.sessionId,
+        request.executionId,
+        backend,
+        status,
+      );
+      await multiplexer.publish(finalEvt);
+      yield finalEvt;
+
+      await assertFencingValid();
+      const finishedAt = Date.now();
+      await storage.updateExecution({
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend,
+        status,
+        requestHash,
+        prompt: request.prompt,
+        workingDirectory: request.workingDirectory,
+        output,
+        errorJson,
+        startedAt,
+        finishedAt,
+      });
+    }
+
     return generator(this);
   }
 
@@ -1740,38 +1926,29 @@ export class IotaEngine {
         .map((f) => f.path),
     };
 
-    // Inject typed memory (Milvus in production, Redis / in-memory fallback otherwise)
-    let memoryBlocks: import("./event/types.js").MemoryBlock[] = [];
+    // Inject unified memory from session/project/user scopes.
+    let memoryContext = undefined;
     let memoryVisibility:
       | RuntimeRequestWithVisibility["__memoryVisibility"]
       | undefined;
-    if (this.milvusStore) {
-      try {
-        memoryBlocks = await this.milvusStore.search(
-          input.sessionId,
-          input.prompt,
-        );
-      } catch {
-        // Fall back to local
-        memoryBlocks = await this.memoryStore.search(
-          input.sessionId,
-          input.prompt,
-        );
-      }
-    } else {
-      memoryBlocks = await this.memoryStore.search(
-        input.sessionId,
-        input.prompt,
-      );
-    }
-    if (memoryBlocks.length > 0) {
+    if (this.memoryInjector) {
+      memoryContext = await this.memoryInjector.buildContext({
+        sessionId: input.sessionId,
+        projectId: this.resolveProjectScopeId(session),
+        userId: this.resolveUserScopeId(session),
+        workingDirectory: path.resolve(
+          input.workingDirectory ??
+            session.workingDirectory ??
+            config.engine.workingDirectory,
+        ),
+      });
+
       const visibilityPolicy = this.requireConfig().visibility;
-      const result = injectMemoryWithVisibility(context, memoryBlocks, {
+      const result = injectMemoryWithVisibility(context, memoryContext, {
         backend,
         visibilityPolicy,
       });
       context = result.context;
-      // Store injection visibility for later collection by VisibilityCollector
       memoryVisibility = {
         candidates: result.candidates,
         selected: result.selected,
@@ -2371,6 +2548,157 @@ export class IotaEngine {
     return this.multiplexer;
   }
 
+  private requireMemoryStorage(): MemoryStorage {
+    if (!this.memoryStorage) {
+      throw new Error("Unified memory storage is not available");
+    }
+    return this.memoryStorage;
+  }
+
+  private resolveProjectScopeId(session: SessionRecord): string {
+    return session.workingDirectory;
+  }
+
+  private resolveUserScopeId(session: SessionRecord): string {
+    const userId = session.metadata?.userId;
+    return typeof userId === "string" && userId.length > 0 ? userId : "default";
+  }
+
+  private async captureExecutionMemory(input: {
+    backend: BackendName;
+    executionId: string;
+    sessionId: string;
+    prompt: string;
+    output: string;
+    workingDirectory: string;
+  }): Promise<StoredMemory | null> {
+    const content = this.extractMemoryContent(input.prompt, input.output);
+    if (!content) {
+      return null;
+    }
+
+    const session = await this.requireStorage().getSession(input.sessionId);
+    if (!session) {
+      return null;
+    }
+
+    const nativeType = this.resolveNativeMemoryType(input.backend, content);
+    const unified = memoryMapper.map(
+      {
+        backend: input.backend,
+        nativeType,
+        content,
+        metadata: {
+          sessionId: input.sessionId,
+          workingDirectory: input.workingDirectory,
+        },
+      },
+      input.executionId,
+    );
+
+    if (unified.confidence < 0.7) {
+      return null;
+    }
+
+    const scopeId = this.resolveScopeId(unified.scope, session);
+    return this.requireMemoryStorage().store(unified, scopeId);
+  }
+
+  private extractMemoryContent(prompt: string, output: string): string | null {
+    const promptText = prompt.trim();
+    const outputText = output.trim();
+    if (!promptText && !outputText) {
+      return null;
+    }
+
+    const responseSummary = outputText.slice(0, 800);
+    const combined = promptText
+      ? `User request: ${promptText}\nResult: ${responseSummary}`
+      : responseSummary;
+
+    return combined.length >= 20 ? combined.slice(0, 2000) : null;
+  }
+
+  private resolveNativeMemoryType(
+    backend: BackendName,
+    content: string,
+  ): BackendMemoryEvent["nativeType"] {
+    const lower = content.toLowerCase();
+    if (lower.includes("decided") || lower.includes("plan") || lower.includes("architecture")) {
+      return backend === "claude-code"
+        ? "project_context"
+        : backend === "codex"
+          ? "task_planning"
+          : backend === "gemini"
+            ? "goal_tracking"
+            : "intention_memory";
+    }
+    if (lower.includes("use ") || lower.includes("run ") || lower.includes("command")) {
+      return backend === "claude-code"
+        ? "code_context"
+        : backend === "codex"
+          ? "tool_usage"
+          : backend === "gemini"
+            ? "execution_patterns"
+            : "skill_memory";
+    }
+    return backend === "claude-code"
+      ? "conversation_context"
+      : backend === "codex"
+        ? "session_history"
+        : backend === "gemini"
+          ? "interaction_log"
+          : "dialogue_memory";
+  }
+
+  private resolveScopeId(
+    scope: StoredMemory["scope"],
+    session: SessionRecord,
+  ): string {
+    switch (scope) {
+      case "project":
+        return this.resolveProjectScopeId(session);
+      case "user":
+        return this.resolveUserScopeId(session);
+      case "session":
+      default:
+        return session.id;
+    }
+  }
+
+  private async storeBackendMemoryEvent(
+    event: import("./event/types.js").MemoryEvent,
+  ): Promise<StoredMemory | null> {
+    const session = await this.requireStorage().getSession(event.sessionId);
+    if (!session) {
+      return null;
+    }
+
+    const unified = memoryMapper.map(
+      {
+        backend: event.backend,
+        nativeType: event.data.nativeType,
+        content: event.data.content,
+        metadata: event.data.metadata,
+        confidence:
+          typeof event.data.metadata?.confidence === "number"
+            ? event.data.metadata.confidence
+            : undefined,
+        timestamp: event.timestamp,
+      },
+      event.executionId,
+    );
+
+    if (unified.confidence < 0.7) {
+      return null;
+    }
+
+    return this.requireMemoryStorage().store(
+      unified,
+      this.resolveScopeId(unified.scope, session),
+    );
+  }
+
   private async queryTraceExecutions(
     options: TraceAggregationOptions,
   ): Promise<ExecutionRecord[]> {
@@ -2411,37 +2739,22 @@ function hasAuditSink(storage: StorageBackend): storage is StorageBackend & {
   );
 }
 
-function hasMemoryStorage(
+function hasUnifiedMemoryStorage(
   storage: StorageBackend,
-): storage is StorageBackend & {
-  saveMemory(memory: {
-    id: string;
-    sessionId: string;
-    content: string;
-    type?: import("./event/types.js").MemoryKind;
-    metadata?: Record<string, unknown>;
-    embedding?: number[];
-  }): Promise<void>;
-  searchMemories(
-    sessionId: string,
-    query: string,
-    limit?: number,
-  ): Promise<
-    Array<{
-      id: string;
-      content: string;
-      type?: import("./event/types.js").MemoryKind;
-      metadata?: Record<string, unknown>;
-    }>
-  >;
-} {
+) : storage is MemoryStorageBackend {
   const candidate = storage as {
-    saveMemory?: unknown;
-    searchMemories?: unknown;
+    saveUnifiedMemory?: unknown;
+    loadUnifiedMemories?: unknown;
+    deleteUnifiedMemory?: unknown;
+    touchUnifiedMemories?: unknown;
+    searchUnifiedMemories?: unknown;
   };
   return (
-    typeof candidate.saveMemory === "function" &&
-    typeof candidate.searchMemories === "function"
+    typeof candidate.saveUnifiedMemory === "function" &&
+    typeof candidate.loadUnifiedMemories === "function" &&
+    typeof candidate.deleteUnifiedMemory === "function" &&
+    typeof candidate.touchUnifiedMemories === "function" &&
+    typeof candidate.searchUnifiedMemories === "function"
   );
 }
 

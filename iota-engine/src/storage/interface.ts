@@ -1,9 +1,15 @@
 import type {
   BackendName,
+  MemoryKind,
   RuntimeEvent,
   RuntimeRequest,
   RuntimeResponse,
 } from "../event/types.js";
+import type {
+  MemoryQuery,
+  MemoryScope,
+  StoredMemory,
+} from "../memory/types.js";
 
 export interface SessionRecord {
   id: string;
@@ -78,18 +84,15 @@ export interface StorageBackend {
   queryExecutions?(options?: LogQueryOptions): Promise<ExecutionRecord[]>;
   queryLogs?(options?: LogQueryOptions): Promise<RuntimeLogEntry[]>;
   aggregateLogs?(options?: LogQueryOptions): Promise<LogAggregation>;
-  searchMemoriesAcrossSessions?(
+  saveUnifiedMemory?(memory: StoredMemory): Promise<void>;
+  loadUnifiedMemories?(query: MemoryQuery): Promise<StoredMemory[]>;
+  deleteUnifiedMemory?(type: MemoryKind, memoryId: string): Promise<boolean>;
+  touchUnifiedMemories?(memoryIds: string[], accessedAt: number): Promise<void>;
+  searchUnifiedMemories?(
     query: string,
     limit?: number,
-  ): Promise<
-    Array<{
-      id: string;
-      sessionId: string;
-      content: string;
-      type?: string;
-      metadata?: Record<string, unknown>;
-    }>
-  >;
+    scope?: { scope: MemoryScope; scopeId: string },
+  ): Promise<Array<StoredMemory & { score?: number }>>;
   getBackendIsolationReport?(): Promise<{
     sessions: Array<{
       sessionId: string;

@@ -155,7 +155,7 @@ export const crossSessionRoutes: FastifyPluginAsync = async (fastify) => {
 
   /**
    * GET /cross-session/memories/search
-   * Search memories across all sessions
+   * Search unified memories across all scopes
    */
   fastify.get<{
     Querystring: {
@@ -181,10 +181,7 @@ export const crossSessionRoutes: FastifyPluginAsync = async (fastify) => {
         const { query } = request.query;
         const limit = request.query.limit ? Number(request.query.limit) : 10;
 
-        const memories = await engine.searchMemoriesAcrossSessions(
-          query,
-          limit,
-        );
+        const memories = await engine.searchMemories(query, limit);
         return reply.send({
           memories,
           count: memories.length,
@@ -192,7 +189,7 @@ export const crossSessionRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } catch (err: any) {
         return reply.code(501).send({
-          error: err.message ?? "searchMemoriesAcrossSessions not supported",
+          error: err.message ?? "searchMemories not supported",
         });
       }
     },

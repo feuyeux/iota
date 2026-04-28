@@ -41,13 +41,26 @@ iota/
 
 ### 1. 启动基础设施
 
-开发环境至少需要 Redis：
+开发环境至少需要 Redis（通过 Docker 运行）：
+
+**前置条件**: 确保 Docker Desktop 已启动并运行
+
+```bash
+# 验证 Docker 是否运行
+docker ps
+
+# 如果失败，请先启动 Docker Desktop，然后继续
+```
+
+启动 Redis 和其他存储服务：
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
 ```
+
+如果遇到 `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` 错误，说明 Docker Desktop 未运行，请先启动 Docker Desktop。
 
 ### 2. 安装依赖并构建
 
@@ -58,40 +71,180 @@ cd ../iota-agent && bun install
 cd ../iota-app && bun install
 ```
 
-### 3. 配置后端
+### 3. 准备后端配置文件
 
-后端配置统一写入 Redis：
+在将配置路径写入 Redis 之前，需要先准备各后端的配置文件。
+
+#### 3.1 Claude Code Settings
+
+确保 Claude Code settings 文件存在（通常在 `~/.claude/settings.json` 或自定义路径）：
+
+```json
+{
+    "env": {
+        "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+        "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+        "API_TIMEOUT_MS": "3000000"
+    }
+}
+```
+
+#### 3.2 Codex Config
+
+创建 Codex 配置文件（如果使用 9Router 或其他供应商）：
 
 ```bash
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id claude-code
+mkdir -p ~/.codex-iota
+cat > ~/.codex-iota/config.toml <<'EOF'
+model = "gh/gpt-5.4"
+model_provider = "ninerouter"
 
-iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
+model_reasoning_effort = "high"
+model_verbosity = "medium"
 
+[model_providers.ninerouter]
+name = "9Router"
+base_url = "http://localhost:20128/v1"
+env_key = "ROUTER_API_KEY"
+wire_api = "responses"
+stream_idle_timeout_ms = 600000
+
+[agents.subagent]
+description = "General-purpose helper agent for delegated subtasks"
+model = "gh/gpt-5.4"
+EOF
+```
+
+#### 3.3 Gemini CLI
+
+Gemini CLI 使用本机 OAuth 登录态，无需额外配置文件。确保已运行 `gemini auth login`。
+
+#### 3.4 Hermes Agent
+
+Hermes 配置通过 Redis 环境变量传递，无需本地配置文件。
+
+### 4. 配置后端到 Redis
+
+**配置流程**: 将本地已有的后端配置文件路径写入 Redis，Engine 运行时会从 Redis 读取路径并加载配置文件。
+
+```bash
+# Claude Code - 将 settings 文件路径写入 Redis
+iota config set env.CLAUDE_SETTINGS_PATH "$HOME/.claude/settings-minimax.json" --scope backend --scope-id claude-code
+
+# Codex - 将 CODEX_HOME 路径和 API key 写入 Redis
+iota config set env.CODEX_HOME "$HOME/.codex-iota" --scope backend --scope-id codex
+iota config set env.ROUTER_API_KEY "sk_9router" --scope backend --scope-id codex
+
+# Gemini - 配置模型名称
 iota config set env.GEMINI_MODEL "auto-gemini-3" --scope backend --scope-id gemini
 
+# Hermes - 配置认证和模型信息
 iota config set env.HERMES_API_KEY "<redacted>" --scope backend --scope-id hermes
 iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
 iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id hermes
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
+**运行时流程**：
+- Engine 从 Redis 读取配置路径（如 `env.CLAUDE_SETTINGS_PATH`、`env.CODEX_HOME`）
+- 启动后端时，Engine 传递配置文件路径或设置环境变量
+- 后端进程从各自的配置文件中读取实际的认证信息和模型配置
+
 说明：
 
-- Claude Code 和 Hermes 使用 Redis 中的 provider / model / credential。
-- Codex 当前验证基线是本机 Codex ChatGPT 登录态加 Redis `env.OPENAI_MODEL`。
+- Claude Code 使用自定义 settings 文件配置所有环境变量和模型设置。
+- Codex 使用自定义 `CODEX_HOME` 配置多模型供应商（9Router / OpenAI / Anthropic 等）。
 - Gemini 当前验证基线是本机 Gemini OAuth 登录态加 Redis `env.GEMINI_MODEL`。
+- Hermes 使用 Redis 中的 provider / model / credential。
 - 不要把后端密钥写入仓库文件或示例 `.env`。
 
-### 4. 运行 CLI
+### 4.5 检测并安装四个 backend CLI
+
+仓库提供了一个统一脚本，用于检测 Claude Code、Codex、Gemini CLI、Hermes Agent 是否已安装；如果缺失，可以按脚本提示直接安装：
+
+```bash
+bash deployment/scripts/ensure-backends.sh
+```
+
+只做检测、不安装：
+
+```bash
+bash deployment/scripts/ensure-backends.sh --check-only
+```
+
+只检查或安装部分 backend：
+
+```bash
+bash deployment/scripts/ensure-backends.sh codex gemini
+```
+
+当前脚本的安装策略：
+
+- `claude-code` -> `npm install -g @anthropic-ai/claude-code`
+- `codex` -> `npm install -g @openai/codex`
+- `gemini` -> `npm install -g @google/gemini-cli`
+- `hermes` -> `uv tool install hermes-agent`
+
+说明：
+
+- `hermes` 依赖本机已安装 `uv`。
+- 脚本会优先使用 `command -v` 检测当前 shell 的 `PATH`，在 Windows / WSL / Git Bash 场景下还会回退到 `where.exe` 检测 Windows 侧可执行文件，避免把已安装的 `hermes.exe` 误判为未安装。
+- 脚本只负责可执行文件发现与缺失安装，不会写入 backend 密钥或 Redis 配置。
+- 即使脚本显示四个命令都存在，也不能替代真实运行验证。
+
+`docs/guides/README.md` 已将这个脚本定义为 guides 体系内统一的 backend 检测入口；各 component guide 应引用该入口，而不是重复维护 shell 级的检测命令说明。
+
+### 5. 验证后端健康状态
+
+#### 5.1 检查后端状态
+
+```bash
+cd iota-cli
+node dist/index.js status
+```
+
+预期输出：所有配置的后端显示 `"healthy": true, "status": "ready"`。
+
+#### 5.2 运行 Traced 请求验证
+
+**重要**: 后端验证不能停在 `iota status`。每个后端都必须至少执行一次真实的 traced request。
+
+**详细的 trace 和 visibility 文档请参见 [docs/guides/06-visibility-trace-guide.md](docs/guides/06-visibility-trace-guide.md)。**
+
+```bash
+# 验证 Claude Code
+node dist/index.js run --backend claude-code --trace "ping"
+
+# 验证 Hermes
+node dist/index.js run --backend hermes --trace "ping"
+
+# 验证 Gemini
+node dist/index.js run --backend gemini --trace "ping"
+
+# 验证 Codex
+node dist/index.js run --backend codex --trace "ping"
+```
+
+**预期结果**：
+- Claude Code: 应返回简短响应，使用 settings 文件中配置的模型
+- Hermes: 应返回 "pong" 或类似响应
+- Gemini: 可能会探索代码库，但最终应成功响应
+- Codex: 应返回响应（可能提示某些命令被策略阻止，但后端本身正常工作）
+
+**常见问题**：
+- Claude Code 提示 "Not logged in": 运行 `claude login` 进行认证
+- Hermes 显示 `model.provider: custom` 或本地 `model.base_url`: 检查 `hermes config show`，确保配置正确
+- Codex 连接失败: 确保 9Router 或配置的 base_url 服务正在运行
+
+### 6. 运行 CLI
 
 ```bash
 cd iota-cli
 node dist/index.js run "What is 2+2?"
 ```
 
-### 5. 启动 Agent 和 App
+### 7. 启动 Agent 和 App
 
 ```bash
 cd iota-agent
@@ -103,23 +256,6 @@ bun run dev
 
 - Agent 默认端口：`9666`
 - App 默认端口：`9888`
-
-## 后端验证规则
-
-后端验证不能停在 `which <executable>`、可执行发现或 `iota status`。每次切换 Claude Code、Codex、Gemini 或 Hermes 后，都必须至少执行一次真实 traced request：
-
-```bash
-cd iota-cli
-node dist/index.js run --backend <name> --trace "ping"
-```
-
-Hermes 额外要求：
-
-```bash
-hermes config show
-```
-
-如果看到死掉的 `model.provider: custom` 或指向本地未运行网关的 `model.base_url`，必须判定为无效配置。
 
 ## 开发命令
 
@@ -140,7 +276,7 @@ hermes config show
 - [Agent 指南](docs/guides/03-agent-guide.md)
 - [App 指南](docs/guides/04-app-guide.md)
 - [Engine 指南](docs/guides/05-engine-guide.md)
+- [Visibility & Trace 指南](docs/guides/06-visibility-trace-guide.md)
 - [Engine 设计](docs/requirement/4.iota_engine_design_0425.md)
 - [App 设计](docs/requirement/5.iota_app_design.md)
 - [部署说明](deployment/README.md)
-

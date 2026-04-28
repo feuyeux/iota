@@ -1,795 +1,795 @@
-# App Guide
+# App 应用指南
 
-**Version:** 1.0
-**Last Updated:** April 2026
+**版本:** 1.0
+**最后更新:** 2026 年 4 月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#1-introduction)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Prerequisites](#3-prerequisites)
-4. [Installation and Setup](#4-installation-and-setup)
-5. [Core Functionality — UI Components](#5-core-functionality--ui-components)
-6. [Core Functionality — User Workflows](#6-core-functionality--user-workflows)
-7. [Distributed Features](#7-distributed-features)
-8. [Manual Verification Methods](#8-manual-verification-methods)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Cleanup](#10-cleanup)
-11. [Complete Reset Workflow](#11-complete-reset-workflow)
-12. [References](#12-references)
-
----
-
-## 1. Introduction
-
-### Purpose and Scope
-
-This guide covers the Iota App web interface running on port 9888. The App provides a visual interface for session management, real-time chat with streaming output, execution inspection with visibility data, and workspace exploration. It communicates with the Agent service on port 9666 via HTTP REST and WebSocket.
-
-### Target Audience
-
-- Users preferring visual interface over CLI
-- Developers testing App-Engine integration
-- Anyone inspecting execution traces visually
+1. [简介](#1-简介)
+2. [架构概览](#2-架构概览)
+3. [前置要求](#3-前置要求)
+4. [安装与设置](#4-安装与设置)
+5. [核心功能 — UI 组件](#5-核心功能--ui-组件)
+6. [核心功能 — 用户工作流](#6-核心功能--用户工作流)
+7. [分布式特性](#7-分布式特性)
+8. [手动验证方法](#8-手动验证方法)
+9. [故障排查](#9-故障排查)
+10. [清理](#10-清理)
+11. [完整重置工作流](#11-完整重置工作流)
+12. [参考资料](#12-参考资料)
 
 ---
 
-## 2. Architecture Overview
+## 1. 简介
 
-### Component Diagram
+### 目的与范围
+
+本指南涵盖运行在 9888 端口的 Iota App 应用 Web 界面。App 应用提供了会话管理、实时流式输出聊天、执行检查（包含可见性数据）以及工作空间浏览的可视化界面。它通过 HTTP REST 和 WebSocket 与运行在 9666 端口的 Agent 服务通信。
+
+### 目标受众
+
+- 偏好可视化界面而非 CLI 的用户
+- 测试 App-Engine 集成的开发者
+- 需要可视化检查执行追踪的任何人
+
+---
+
+## 2. 架构概览
+
+### 组件图
 
 ```mermaid
 graph TB
-    subgraph "Browser"
-        BrowserApp[Iota App<br/>React/Vite]
-        DevTools[DevTools]
+    subgraph "浏览器"
+        BrowserApp[Iota App 应用<br/>React/Vite]
+        DevTools[开发者工具]
     end
 
-    subgraph "Layer 2: Service"
-        Agent[Agent Service<br/>:9666]
-        WebSocket[WebSocket Handler]
+    subgraph "第 2 层：服务"
+        Agent[Agent 服务<br/>:9666]
+        WebSocket[WebSocket 处理器]
     end
 
-    subgraph "Layer 3: Core"
-        Engine[Engine Library<br/>iota-engine]
+    subgraph "第 3 层：核心"
+        Engine[Engine 引擎库<br/>iota-engine]
     end
 
-    subgraph "Layer 4: Storage"
+    subgraph "第 4 层：存储"
         Redis[(Redis<br/>:6379)]
     end
 
     BrowserApp -->|HTTP REST| Agent
     BrowserApp -->|WebSocket| WebSocket
     Agent -->|TypeScript| Engine
-    Engine -->|Redis Protocol| Redis
-    DevTools -->|WS Inspection| BrowserApp
+    Engine -->|Redis 协议| Redis
+    DevTools -->|WS 检查| BrowserApp
 ```
 
-### Dependencies
+### 依赖项
 
-| Dependency | Purpose | Connection |
+| 依赖项 | 用途 | 连接 |
 |------------|---------|------------|
-| Agent Service | HTTP/WebSocket backend | Must be running on :9666 |
-| Vite | Dev server | Runs on :9888 |
-| React | UI framework | In-browser |
-| WebSocket | Real-time updates | Browser WebSocket API |
+| Agent Service 服务 | HTTP/WebSocket 后端 | 必须运行在 :9666 |
+| Vite | 开发服务器 | 运行在 :9888 |
+| React | UI 用户界面框架 | 浏览器内 |
+| WebSocket | 实时更新 | 浏览器 WebSocket API |
 
-### Communication Protocols
+### 通信协议
 
-- **Browser → App**: HTTP for static assets from Vite dev server :9888
-- **App → Agent**: HTTP REST JSON over TCP :9666
-- **App → Agent**: WebSocket JSON over TCP :9666
-- **Agent → Engine**: Direct TypeScript calls (in-process)
+- **浏览器 → App 应用**: 从 Vite 开发服务器 :9888 获取静态资源的 HTTP
+- **App 应用 → Agent 服务**: 通过 TCP :9666 的 HTTP REST JSON
+- **App 应用 → Agent 服务**: 通过 TCP :9666 的 WebSocket JSON
+- **Agent 服务 → Engine 引擎**: 直接 TypeScript 调用（进程内）
 
-**Reference**: See [00-architecture-overview.md](./00-architecture-overview.md)
+**参考**: 参见 [00-architecture-overview.md](./00-architecture-overview.md)
 
 ---
 
-## 3. Prerequisites
+## 3. 前置要求
 
-### Required Software
+### 必需软件
 
-| Software | Purpose |
+| 软件 | 用途 |
 |----------|---------|
-| Bun | Package manager and runtime |
-| Redis | Must be running on :6379 |
-| Agent Service | Must be running on :9666 |
+| Bun | 包管理器和运行时 |
+| Redis | 必须运行在 :6379 |
+| Agent Service 服务 | 必须运行在 :9666 |
 
-### Browser Requirements
+### 浏览器要求
 
-| Browser | Support |
+| 浏览器 | 支持情况 |
 |---------|---------|
-| Chrome/Chromium | ✅ Full support |
-| Firefox | ✅ Full support |
-| Safari | ✅ Full support |
-| Edge | ✅ Full support |
+| Chrome/Chromium | ✅ 完全支持 |
+| Firefox | ✅ 完全支持 |
+| Safari | ✅ 完全支持 |
+| Edge | ✅ 完全支持 |
 
-**Required browser features**:
-- WebSocket support
+**必需的浏览器特性**:
+- WebSocket 支持
 - ES2020+ JavaScript
 - CSS Grid/Flexbox
 
-### Port Requirements
+### 端口要求
 
-| Port | Service | Verification |
+| 端口 | 服务 | 验证命令 |
 |------|---------|--------------|
-| 9666 | Agent | `lsof -i :9666` |
-| 9888 | App | `lsof -i :9888` |
+| 9666 | Agent 服务 | `lsof -i :9666` |
+| 9888 | App 应用 | `lsof -i :9888` |
 | 6379 | Redis | `lsof -i :6379` |
 
 ---
 
-## 4. Installation and Setup
+## 4. 安装与设置
 
-### Step 1: Start Redis
+### 步骤 1: 启动 Redis
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期输出: PONG
 ```
 
-### Step 2: Start Agent (required for App)
+### 步骤 2: 启动 Agent 服务（App 应用必需）
 
 ```bash
 cd iota-agent
 lsof -i :9666 -t | xargs kill -9 2>/dev/null
 bun install
 bun run dev
-# Listens on 0.0.0.0:9666
+# 监听 0.0.0.0:9666
 ```
 
-**Verification**:
+**验证**:
 ```bash
 curl http://localhost:9666/health
-# Expected: {"status":"ok",...}
+# 预期输出: {"status":"ok",...}
 ```
 
-### Step 3: Build and Start App
+### 步骤 3: 构建并启动 App 应用
 
 ```bash
 cd iota-app
 lsof -i :9888 -t | xargs kill -9 2>/dev/null
 bun install
 bun run dev
-# Listens on 0.0.0.0:9888
+# 监听 0.0.0.0:9888
 ```
 
-### Step 4: Access App
+### 步骤 4: 访问 App 应用
 
-Open browser to: `http://localhost:9888`
+在浏览器中打开: `http://localhost:9888`
 
-**Verification**:
-- Page loads without errors
-- "Create New Session" button visible (if no session in URL)
-
----
-
-## 5. Core Functionality — UI Components
-
-### Session Manager (Sidebar)
-
-**Location**: `iota-app/src/components/layout/Sidebar.tsx`
-
-**Purpose**: Displays list of sessions and allows session switching.
-
-**State Management**: Uses `useSessionStore` for session state.
-
-**Props/State**:
-- `sessions`: List of session objects
-- `sessionId`: Current session UUID
-- `setSessionId()`: Switch session
-
-**Verification**:
-1. Open DevTools → Components tab (if React DevTools installed)
-2. Find `Sidebar` component
-3. Verify `sessions` array contains session objects
+**验证**:
+- 页面加载无错误
+- "Create New Session" 按钮可见（如果 URL 中没有 session 参数）
 
 ---
 
-### Chat Timeline
+## 5. 核心功能 — UI 组件
 
-**Location**: `iota-app/src/components/chat/ChatTimeline.tsx`
+### Session Manager 会话管理器（侧边栏）
 
-**Purpose**: Displays conversation history and streaming output.
+**位置**: `iota-app/src/components/layout/Sidebar.tsx`
 
-**Props**:
-- `sessionId`: Current session UUID
-- `executions`: Array of execution objects
-- `onExecutionClick`: Handler for execution selection
+**用途**: 显示会话列表并允许切换会话。
 
-**State Management**:
-- Uses `useSessionStore` for session state
-- WebSocket updates trigger re-render
-- Optimistic UI updates before server confirmation
+**状态管理**: 使用 `useSessionStore` 管理会话状态。
 
-**Verification**:
-1. Execute a prompt
-2. Verify response appears in timeline
-3. Click execution in timeline
-4. Verify Inspector panel opens
+**Props/State 属性/状态**:
+- `sessions`: 会话对象列表
+- `sessionId`: 当前会话 UUID
+- `setSessionId()`: 切换会话
+
+**验证**:
+1. 打开 DevTools → Components 组件标签（如果已安装 React DevTools）
+2. 找到 `Sidebar` 组件
+3. 验证 `sessions` 数组包含会话对象
 
 ---
 
-### Inspector Panel
+### Chat Timeline 聊天时间线
 
-**Location**: `iota-app/src/components/inspector/InspectorPanel.tsx`
+**位置**: `iota-app/src/components/chat/ChatTimeline.tsx`
 
-**Purpose**: Shows detailed execution trace, tokens, memory, and context data.
+**用途**: 显示对话历史和流式输出。
 
-**Tabs** (from App Read Model):
-- **Overview**: Execution summary
-- **Trace**: Span hierarchy with timing
-- **Memory**: Memory candidates, selected, trimmed
-- **Context**: Context manifest segments
+**Props 属性**:
+- `sessionId`: 当前会话 UUID
+- `executions`: 执行对象数组
+- `onExecutionClick`: 执行选择处理器
 
-**Verification**:
-1. Click execution in Chat Timeline
-2. Verify Inspector panel opens on right
-3. Switch between tabs
-4. Verify data loads correctly
+**状态管理**:
+- 使用 `useSessionStore` 管理会话状态
+- WebSocket 更新触发重新渲染
+- 服务器确认前的乐观 UI 更新
 
----
-
-### Workspace Explorer
-
-**Location**: `iota-app/src/components/workspace/WorkspaceExplorer.tsx`
-
-**Purpose**: Displays file tree of the working directory.
-
-**Verification**:
-1. Verify file tree loads on session creation
-2. Verify files are displayed correctly
-3. Verify directory expansion works
+**验证**:
+1. 执行一个提示
+2. 验证响应出现在时间线中
+3. 点击时间线中的执行
+4. 验证 Inspector 检查器面板打开
 
 ---
 
-### Header
+### Inspector Panel 检查器面板
 
-**Location**: `iota-app/src/components/layout/Header.tsx`
+**位置**: `iota-app/src/components/inspector/InspectorPanel.tsx`
 
-**Purpose**: Top bar with backend selector, session info, and controls.
+**用途**: 显示详细的执行追踪、令牌、内存和上下文数据。
 
-**Verification**:
-1. Verify backend selector visible
-2. Verify session ID displayed
-3. Verify controls are functional
+**标签页**（来自 App Read Model 应用读取模型）:
+- **Overview 概览**: 执行摘要
+- **Trace 追踪**: 带时间的 Span 层次结构
+- **Memory 内存**: 内存候选、已选择、已修剪
+- **Context 上下文**: 上下文清单片段
+
+**验证**:
+1. 点击 Chat Timeline 聊天时间线中的执行
+2. 验证 Inspector 检查器面板在右侧打开
+3. 在标签页之间切换
+4. 验证数据正确加载
 
 ---
 
-## 6. Core Functionality — User Workflows
+### Workspace Explorer 工作空间浏览器
 
-### Workflow: Create New Session
+**位置**: `iota-app/src/components/workspace/WorkspaceExplorer.tsx`
 
-**Steps**:
+**用途**: 显示工作目录的文件树。
 
-1. Open `http://localhost:9888`
-2. Click "Create New Session"
-3. Enter working directory path (or use default)
-4. Session appears in sidebar
+**验证**:
+1. 验证会话创建时文件树加载
+2. 验证文件正确显示
+3. 验证目录展开功能正常
 
-**Verification**:
+---
+
+### Header 头部
+
+**位置**: `iota-app/src/components/layout/Header.tsx`
+
+**用途**: 顶部栏，包含后端选择器、会话信息和控制按钮。
+
+**验证**:
+1. 验证后端选择器可见
+2. 验证会话 ID 已显示
+3. 验证控制按钮功能正常
+
+---
+
+## 6. 核心功能 — 用户工作流
+
+### 工作流: 创建新会话
+
+**步骤**:
+
+1. 打开 `http://localhost:9888`
+2. 点击 "Create New Session"
+3. 输入工作目录路径（或使用默认值）
+4. 会话出现在侧边栏中
+
+**验证**:
 ```bash
-# After creating session
+# 创建会话后
 redis-cli KEYS "iota:session:*"
-# Expected: New session key exists
+# 预期输出: 新会话键存在
 ```
 
 ---
 
-### Workflow: Execute Prompt
+### 工作流: 执行提示
 
-**Steps**:
+**步骤**:
 
-1. Type prompt in chat input at bottom
-2. Click "Send" or press Enter
-3. Streaming response appears in timeline
-4. Execution appears in timeline
+1. 在底部的聊天输入框中输入提示
+2. 点击 "Send" 或按 Enter
+3. 流式响应出现在时间线中
+4. 执行出现在时间线中
 
-**Verification**:
+**验证**:
 ```bash
-# After execution
+# 执行后
 redis-cli KEYS "iota:exec:*"
-# Expected: Execution key exists
+# 预期输出: 执行键存在
 ```
 
 ---
 
-### Workflow: Inspect Execution
+### 工作流: 检查执行
 
-**Steps**:
+**步骤**:
 
-1. Click execution item in Chat Timeline
-2. Inspector Panel opens on right
-3. View tabs: Overview, Trace, Memory, Context
-4. Click span in Trace to see details
+1. 点击 Chat Timeline 聊天时间线中的执行项
+2. Inspector Panel 检查器面板在右侧打开
+3. 查看标签页: Overview 概览、Trace 追踪、Memory 内存、Context 上下文
+4. 点击 Trace 追踪中的 span 查看详情
 
-**Verification**:
+**验证**:
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 curl http://localhost:9666/api/v1/executions/$EXEC_ID/visibility
-# Expected: Full visibility bundle
+# 预期输出: 完整的可见性数据包
 ```
 
 ---
 
-### Workflow: Backend Switching
+### 工作流: 后端切换
 
-**Steps**:
+**步骤**:
 
-1. Click backend selector in Header
-2. Select different backend (claude-code, gemini, hermes, codex)
-3. New executions use selected backend
+1. 点击 Header 头部中的后端选择器
+2. 选择不同的后端（claude-code、gemini、hermes、codex）
+3. 新执行使用选定的后端
 
-**Verification**:
+**验证**:
 ```bash
-# After switching backend
+# 切换后端后
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
 redis-cli HGET "iota:session:$SESSION_ID" "activeBackend"
-# Expected: New backend name
+# 预期输出: 新后端名称
 ```
 
 ---
 
-## 7. Distributed Features
+## 7. 分布式特性
 
-### Distributed Feature: Multi-Session Visualization
+### 分布式特性: 多会话可视化
 
-**Purpose**: Open multiple browser tabs with different sessions.
+**用途**: 在不同会话中打开多个浏览器标签页。
 
-**Procedure**:
+**步骤**:
 
-1. **Tab 1**: Create session A at `http://localhost:9888?session=A`
-2. **Tab 2**: Create session B at `http://localhost:9888?session=B`
-3. **Tab 1**: Execute prompt with Claude Code
-4. **Tab 2**: Execute prompt with Gemini
-5. **Verify**: Each tab shows only its session's data
+1. **标签页 1**: 在 `http://localhost:9888?session=A` 创建会话 A
+2. **标签页 2**: 在 `http://localhost:9888?session=B` 创建会话 B
+3. **标签页 1**: 使用 Claude Code 执行提示
+4. **标签页 2**: 使用 Gemini 执行提示
+5. **验证**: 每个标签页仅显示其自己会话的数据
 
-**Verification**:
+**验证**:
 ```bash
-# Query cross-session sessions
+# 查询跨会话的会话列表
 curl http://localhost:9666/api/v1/cross-session/sessions
-# Expected: Both sessions A and B visible
+# 预期输出: 会话 A 和 B 都可见
 ```
 
 ---
 
-### Distributed Feature: Cross-Session Log Visualization
+### 分布式特性: 跨会话日志可视化
 
-**Procedure**:
+**步骤**:
 ```bash
-# Create multiple sessions with different backends
-# Execute in each
+# 使用不同后端创建多个会话
+# 在每个会话中执行
 
-# Query via Agent API
+# 通过 Agent API 查询
 curl "http://localhost:9666/api/v1/cross-session/logs?backend=claude-code&limit=10"
 ```
 
 ---
 
-### Distributed Feature: Distributed Memory Inspection
+### 分布式特性: 统一记忆检查
 
-**Procedure**:
+**步骤**:
 ```bash
-# After executions with memory extraction
+# 执行带统一记忆提取的操作后
 curl "http://localhost:9666/api/v1/cross-session/memories/search?query=binary+search"
 ```
 
 ---
 
-### Distributed Feature: Backend Isolation in UI
+### 分布式特性: UI 中的后端隔离
 
-**Procedure**:
+**步骤**:
 
-1. Switch to backend A, execute
-2. Switch to backend B, execute
-3. Check isolation report:
+1. 切换到后端 A，执行
+2. 切换到后端 B，执行
+3. 检查隔离报告:
    ```bash
    curl http://localhost:9666/api/v1/backend-isolation
    ```
 
 ---
 
-## 8. Manual Verification Methods
+## 8. 手动验证方法
 
-### Verification Checklist: Page Load
+### 验证清单: 页面加载
 
-**Objective**: Verify App loads correctly without errors.
+**目标**: 验证 App 应用正确加载且无错误。
 
-- [ ] **Setup**: Agent running on :9666, App running on :9888
+- [ ] **设置**: Agent 服务运行在 :9666，App 应用运行在 :9888
   ```bash
   curl http://localhost:9666/health
   lsof -i :9888
   ```
 
-- [ ] **Open App**: Navigate to `http://localhost:9888`
+- [ ] **打开 App 应用**: 导航到 `http://localhost:9888`
   ```bash
-  # Browser should load page
-  # "Create New Session" button visible
+  # 浏览器应加载页面
+  # "Create New Session" 按钮可见
   ```
 
-- [ ] **Check DevTools Console**:
-  - Open DevTools (F12)
-  - Console tab: No red errors
-  - Network tab: No failed requests
+- [ ] **检查 DevTools 开发者工具控制台**:
+  - 打开 DevTools（F12）
+  - Console 控制台标签: 无红色错误
+  - Network 网络标签: 无失败请求
 
-- [ ] **Check WebSocket**:
-  - Network tab → WS filter
-  - Connection to `ws://localhost:9666/api/v1/stream` established
+- [ ] **检查 WebSocket**:
+  - Network 网络标签 → WS 过滤器
+  - 连接到 `ws://localhost:9666/api/v1/stream` 已建立
 
-**Success Criteria**:
-- ✅ Page loads without errors
-- ✅ No console errors
-- ✅ WebSocket connected
-- ✅ All assets loaded (no 404s)
+**成功标准**:
+- ✅ 页面加载无错误
+- ✅ 无控制台错误
+- ✅ WebSocket 已连接
+- ✅ 所有资源已加载（无 404）
 
 ---
 
-### Verification Checklist: Session Creation
+### 验证清单: 会话创建
 
-**Objective**: Verify session creation workflow.
+**目标**: 验证会话创建工作流。
 
-- [ ] **Setup**: Clean Redis
+- [ ] **设置**: 清空 Redis
   ```bash
   redis-cli FLUSHALL
   ```
 
-- [ ] **Click Create New Session**:
-  - Button at center of page when no sessionId in URL
-  - Session created with working directory `/Users/han/codingx/iota` (default)
+- [ ] **点击 Create New Session 创建新会话**:
+  - URL 中无 sessionId 时页面中央的按钮
+  - 使用工作目录 `/Users/han/codingx/iota`（默认）创建会话
 
-- [ ] **Verify in Redis**:
+- [ ] **在 Redis 中验证**:
   ```bash
   redis-cli KEYS "iota:session:*"
-  # Expected: 1 session key
+  # 预期输出: 1 个会话键
   
   redis-cli HGETALL "iota:session:$(redis-cli KEYS 'iota:session:*' | head -1 | cut -d: -f3)"
-  # Expected: Session fields present
+  # 预期输出: 会话字段存在
   ```
 
-- [ ] **Verify in UI**:
-  - Session appears in sidebar
-  - URL updates to include `?session=<id>`
+- [ ] **在 UI 中验证**:
+  - 会话出现在侧边栏中
+  - URL 更新为包含 `?session=<id>`
 
-- [ ] **Cleanup**:
+- [ ] **清理**:
   ```bash
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Session created in Redis
-- ✅ Session appears in sidebar
-- ✅ URL updated
+**成功标准**:
+- ✅ 会话在 Redis 中创建
+- ✅ 会话出现在侧边栏
+- ✅ URL 已更新
 
 ---
 
-### Verification Checklist: Prompt Execution
+### 验证清单: 提示执行
 
-**Objective**: Verify prompt execution with streaming output.
+**目标**: 验证带流式输出的提示执行。
 
-- [ ] **Setup**: Session created
+- [ ] **设置**: 会话已创建
   ```bash
   SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
-  # Navigate browser to: http://localhost:9888?session=$SESSION_ID
+  # 在浏览器中导航到: http://localhost:9888?session=$SESSION_ID
   ```
 
-- [ ] **Execute Prompt**:
-  - Type "What is 2+2?" in chat input
-  - Press Enter or click Send
-  - Streaming output appears in timeline
+- [ ] **执行提示**:
+  - 在聊天输入框中输入 "What is 2+2?"
+  - 按 Enter 或点击 Send
+  - 流式输出出现在时间线中
 
-- [ ] **Verify Events in Redis**:
+- [ ] **在 Redis 中验证事件**:
   ```bash
   redis-cli KEYS "iota:events:*"
-  # Expected: Events key created
+  # 预期输出: 事件键已创建
   
-  redis-cli LRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" 0 -1 | jq '.[].type'
-  # Expected: Contains "output", "state" events
+  redis-cli XRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" - + | jq '.[].type'
+  # 预期输出: 包含 "output"、"state" 事件
   ```
 
-- [ ] **Verify Visibility**:
+- [ ] **验证可见性**:
   ```bash
   EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
   curl http://localhost:9666/api/v1/executions/$EXEC_ID/visibility/tokens
-  # Expected: Token data
+  # 预期输出: 令牌数据
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**:
   ```bash
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Response streams in real-time
-- ✅ Execution appears in timeline
-- ✅ Events stored in Redis
-- ✅ Visibility data recorded
+**成功标准**:
+- ✅ 响应实时流式传输
+- ✅ 执行出现在时间线中
+- ✅ 事件存储在 Redis 中
+- ✅ 可见性数据已记录
 
 ---
 
-### Verification Checklist: Inspector Panel
+### 验证清单: Inspector 检查器面板
 
-**Objective**: Verify Inspector panel shows correct data.
+**目标**: 验证 Inspector 检查器面板显示正确数据。
 
-- [ ] **Setup**: Execute a prompt (see above)
+- [ ] **设置**: 执行一个提示（见上文）
 
-- [ ] **Click Execution**:
-  - Click execution item in Chat Timeline
-  - Inspector Panel opens on right side
+- [ ] **点击执行**:
+  - 点击 Chat Timeline 聊天时间线中的执行项
+  - Inspector Panel 检查器面板在右侧打开
 
-- [ ] **Verify Tabs**:
-  - **Overview**: Shows execution summary
-  - **Trace**: Shows span hierarchy
-  - **Memory**: Shows memory selection
-  - **Context**: Shows context segments
+- [ ] **验证标签页**:
+  - **Overview 概览**: 显示执行摘要
+  - **Trace 追踪**: 显示 span 层次结构
+  - **Memory 内存**: 显示内存选择
+  - **Context 上下文**: 显示上下文片段
 
-- [ ] **Verify API matches UI**:
+- [ ] **验证 API 与 UI 匹配**:
   ```bash
   curl http://localhost:9666/api/v1/executions/$EXEC_ID/visibility
-  # Compare with UI display
+  # 与 UI 显示进行比较
   ```
 
 ---
 
-### Verification Checklist: WebSocket DevTools Inspection
+### 验证清单: WebSocket DevTools 开发者工具检查
 
-**Objective**: Inspect WebSocket messages in browser DevTools.
+**目标**: 在浏览器 DevTools 开发者工具中检查 WebSocket 消息。
 
-- [ ] **Open DevTools**: F12
+- [ ] **打开 DevTools 开发者工具**: F12
 
-- [ ] **Navigate to Network tab**:
-  - Filter by "WS" (WebSocket)
-  - Click connection to `stream`
+- [ ] **导航到 Network 网络标签**:
+  - 按 "WS"（WebSocket）过滤
+  - 点击到 `stream` 的连接
 
-- [ ] **View Frames**:
-  - Switch to "Messages" tab
-  - Observe JSON message flow
+- [ ] **查看帧**:
+  - 切换到 "Messages 消息" 标签
+  - 观察 JSON 消息流
 
-- [ ] **Verify Message Types**:
-  - `app_snapshot`: Full state on subscribe
-  - `app_delta`: Incremental updates
-  - `event`: RuntimeEvents during execution
+- [ ] **验证消息类型**:
+  - `app_snapshot`: 订阅时的完整状态
+  - `app_delta`: 增量更新
+  - `event`: 执行期间的 RuntimeEvents
 
-- [ ] **Send Execute**:
-  - Type prompt in App
-  - Observe `event` messages appearing in real-time
-  - Observe `complete` message at end
+- [ ] **发送执行**:
+  - 在 App 应用中输入提示
+  - 观察实时出现的 `event` 消息
+  - 观察结束时的 `complete` 消息
 
-**Success Criteria**:
-- ✅ Messages appear in correct order
-- ✅ JSON schema matches documented format
-- ✅ Real-time updates visible
+**成功标准**:
+- ✅ 消息按正确顺序出现
+- ✅ JSON 架构符合文档格式
+- ✅ 实时更新可见
 
 ---
 
-### Verification Checklist: Multi-Session
+### 验证清单: 多会话
 
-**Objective**: Verify multi-session isolation.
+**目标**: 验证多会话隔离。
 
-- [ ] **Setup**: Open two browser tabs
+- [ ] **设置**: 打开两个浏览器标签页
   ```
-  Tab 1: http://localhost:9888
-  Tab 2: http://localhost:9888
+  标签页 1: http://localhost:9888
+  标签页 2: http://localhost:9888
   ```
 
-- [ ] **Create Session A** in Tab 1:
-  - Click "Create New Session"
-  - Note session ID from URL
+- [ ] **在标签页 1 中创建会话 A**:
+  - 点击 "Create New Session"
+  - 从 URL 中记录会话 ID
 
-- [ ] **Create Session B** in Tab 2:
-  - Click "Create New Session"
-  - Note session ID
+- [ ] **在标签页 2 中创建会话 B**:
+  - 点击 "Create New Session"
+  - 记录会话 ID
 
-- [ ] **Execute in Tab 1** (Claude Code backend):
-  - Type "I prefer blue"
-  - Submit
+- [ ] **在标签页 1 中执行**（Claude Code 后端）:
+  - 输入 "I prefer blue"
+  - 提交
 
-- [ ] **Execute in Tab 2** (different backend):
-  - Type "I prefer red"
-  - Submit
+- [ ] **在标签页 2 中执行**（不同后端）:
+  - 输入 "I prefer red"
+  - 提交
 
-- [ ] **Verify Isolation**:
-  - Tab 1 shows only its executions
-  - Tab 2 shows only its executions
-  - No cross-contamination
+- [ ] **验证隔离**:
+  - 标签页 1 仅显示其执行
+  - 标签页 2 仅显示其执行
+  - 无交叉污染
 
-- [ ] **Query Cross-Session**:
+- [ ] **查询跨会话**:
   ```bash
   curl "http://localhost:9666/api/v1/cross-session/sessions?limit=100"
-  # Expected: Both sessions visible
+  # 预期输出: 两个会话都可见
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**:
   ```bash
   redis-cli FLUSHALL
   ```
 
 ---
 
-## 9. Troubleshooting
+## 9. 故障排查
 
-### Issue: Page Load Shows Error
+### 问题: 页面加载显示错误
 
-**Symptoms**:
-- Red error displayed in browser
-- Session sync failed message
+**症状**:
+- 浏览器中显示红色错误
+- 会话同步失败消息
 
-**Diagnosis**:
+**诊断**:
 ```bash
-# Check Agent is running
+# 检查 Agent 服务是否运行
 curl http://localhost:9666/health
 
-# Check session exists
+# 检查会话是否存在
 curl http://localhost:9666/api/v1/sessions/all
 ```
 
-**Solution**:
-1. Click "Reconnect" button
-2. Or reload page
-3. Or create new session
+**解决方案**:
+1. 点击 "Reconnect 重新连接" 按钮
+2. 或重新加载页面
+3. 或创建新会话
 
 ---
 
-### Issue: WebSocket Connection Failed
+### 问题: WebSocket 连接失败
 
-**Symptoms**:
-- No streaming output
-- Console shows WebSocket error
+**症状**:
+- 无流式输出
+- 控制台显示 WebSocket 错误
 
-**Diagnosis**:
+**诊断**:
 ```bash
-# Check Agent running
+# 检查 Agent 服务运行
 curl http://localhost:9666/health
 
-# Check WebSocket endpoint
+# 检查 WebSocket 端点
 curl -I http://localhost:9666/api/v1/stream
 ```
 
-**Solution**:
+**解决方案**:
 ```bash
 cd iota-agent
 lsof -i :9666 -t | xargs kill -9
 bun run dev
-# Reload browser page
+# 重新加载浏览器页面
 ```
 
 ---
 
-### Issue: No Streaming / Output Appears All at Once
+### 问题: 无流式传输 / 输出一次性全部出现
 
-**Symptoms**:
-- Response appears after long delay
-- No real-time streaming
+**症状**:
+- 响应在长时间延迟后出现
+- 无实时流式传输
 
-**Diagnosis**:
-1. Open Network tab → WS filter
-2. Check if `event` messages arrive in real-time
+**诊断**:
+1. 打开 Network 网络标签 → WS 过滤器
+2. 检查 `event` 消息是否实时到达
 
-**Solution**:
-- Check WebSocket connection is working
-- Check browser console for errors
-- Try refreshing page
+**解决方案**:
+- 检查 WebSocket 连接是否正常工作
+- 检查浏览器控制台是否有错误
+- 尝试刷新页面
 
 ---
 
-### Issue: Inspector Panel Empty
+### 问题: Inspector 检查器面板为空
 
-**Symptoms**:
-- Execution clicked but Inspector shows no data
+**症状**:
+- 点击执行但 Inspector 检查器不显示数据
 
-**Diagnosis**:
+**诊断**:
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 curl http://localhost:9666/api/v1/executions/$EXEC_ID/visibility
-# If empty: No visibility data recorded
+# 如果为空: 未记录可见性数据
 ```
 
-**Solution**:
-- Execution may have failed — check events
-- Refresh page
+**解决方案**:
+- 执行可能失败 — 检查事件
+- 刷新页面
 
 ---
 
-## 10. Cleanup
+## 10. 清理
 
-### Close Browser Tabs
+### 关闭浏览器标签页
 
-Simply close browser tabs/windows.
+直接关闭浏览器标签页/窗口。
 
-### Stop App (Vite dev server)
+### 停止 App 应用（Vite 开发服务器）
 
 ```bash
 lsof -i :9888 -t | xargs kill -9
 ```
 
-### Reset Redis
+### 重置 Redis
 
 ```bash
 redis-cli FLUSHALL
 ```
 
-### Stop Agent
+### 停止 Agent 服务
 
 ```bash
 lsof -i :9666 -t | xargs kill -9
 ```
 
-### Full Teardown
+### 完全拆除
 
 ```bash
-# Stop App
+# 停止 App 应用
 lsof -i :9888 -t | xargs kill -9
 
-# Stop Agent
+# 停止 Agent 服务
 lsof -i :9666 -t | xargs kill -9
 
-# Stop Redis
+# 停止 Redis
 cd deployment/scripts && bash stop-storage.sh
 ```
 
 ---
 
-## 11. Complete Reset Workflow
+## 11. 完整重置工作流
 
-When you modify `iota-engine` core logic or encounter state inconsistencies, follow this full reset procedure:
+当您修改 `iota-engine` 核心逻辑或遇到状态不一致时，请遵循此完整重置步骤：
 
-### 11.1 Overview
+### 11.1 概述
 
-Iota App runs with two persistent layers:
-- **Redis**: Session/execution data
-- **In-process state**: Vite dev server and Agent memory
+Iota App 应用运行时有两个持久层：
+- **Redis**: 会话/执行数据
+- **进程内状态**: Vite 开发服务器和 Agent 服务内存
 
-A full reset ensures clean state after core changes.
+完整重置确保核心更改后的干净状态。
 
-### 11.2 Full Reset Steps
+### 11.2 完整重置步骤
 
-**Step 1 — Stop all processes**:
+**步骤 1 — 停止所有进程**:
 
-- Ctrl+C to stop App (Vite dev server on :9888)
-- Ctrl+C to stop Agent (Fastify on :9666)
-- Or forcefully:
+- Ctrl+C 停止 App 应用（Vite 开发服务器在 :9888）
+- Ctrl+C 停止 Agent 服务（Fastify 在 :9666）
+- 或强制停止：
 
 ```bash
 lsof -i :9888 -t | xargs kill -9 2>/dev/null
 lsof -i :9666 -t | xargs kill -9 2>/dev/null
 ```
 
-**Step 2 — Flush Redis cache**:
+**步骤 2 — 清空 Redis 缓存**:
 
 ```bash
 redis-cli FLUSHALL
 ```
 
-**Step 3 — Rebuild Engine** (if core logic changed):
+**步骤 3 — 重新构建 Engine 引擎**（如果核心逻辑已更改）:
 
 ```bash
 cd iota-engine && bun run build
 ```
 
-**Step 4 — Sequential restart**:
+**步骤 4 — 顺序重启**:
 
 ```bash
-# 1. Redis (if stopped)
+# 1. Redis（如果已停止）
 cd deployment/scripts && bash start-storage.sh
 
-# 2. Agent
+# 2. Agent 服务
 cd iota-agent && bun run dev
 
-# 3. App
+# 3. App 应用
 cd iota-app && bun run dev
 ```
 
-**Verification**:
+**验证**:
 ```bash
-redis-cli ping    # Expected: PONG
-curl http://localhost:9666/health  # Expected: {"status":"ok"}
-# Open http://localhost:9888 → App should load
+redis-cli ping    # 预期输出: PONG
+curl http://localhost:9666/health  # 预期输出: {"status":"ok"}
+# 打开 http://localhost:9888 → App 应用应加载
 ```
 
-## 12. References
+## 12. 参考资料
 
-### Related Guides
+### 相关指南
 
 - [00-architecture-overview.md](./00-architecture-overview.md)
 - [01-cli-guide.md](./01-cli-guide.md)
@@ -797,52 +797,52 @@ curl http://localhost:9666/health  # Expected: {"status":"ok"}
 - [03-agent-guide.md](./03-agent-guide.md)
 - [05-engine-guide.md](./05-engine-guide.md)
 
-### External Documentation
+### 外部文档
 
-- [Vite](https://vite.dev/) — Build tool
-- [React](https://react.dev/) — UI framework
-- [TanStack Query](https://tanstack.com/query/latest) — Data fetching
-- [zustand](https://zustand-demo.pmnd.rs/) — State management
+- [Vite](https://vite.dev/) — 构建工具
+- [React](https://react.dev/) — UI 用户界面框架
+- [TanStack Query](https://tanstack.com/query/latest) — 数据获取
+- [zustand](https://zustand-demo.pmnd.rs/) — 状态管理
 
-### Component Source Locations
+### 组件源码位置
 
-| Component | File |
+| 组件 Component | 文件 |
 |-----------|------|
-| App | `iota-app/src/App.tsx` |
-| Sidebar | `iota-app/src/components/layout/Sidebar.tsx` |
-| Header | `iota-app/src/components/layout/Header.tsx` |
-| ChatTimeline | `iota-app/src/components/chat/ChatTimeline.tsx` |
-| InspectorPanel | `iota-app/src/components/inspector/InspectorPanel.tsx` |
-| WorkspaceExplorer | `iota-app/src/components/workspace/WorkspaceExplorer.tsx` |
-| SessionStore | `iota-app/src/store/useSessionStore.ts` |
+| App 应用 | `iota-app/src/App.tsx` |
+| Sidebar 侧边栏 | `iota-app/src/components/layout/Sidebar.tsx` |
+| Header 头部 | `iota-app/src/components/layout/Header.tsx` |
+| ChatTimeline 聊天时间线 | `iota-app/src/components/chat/ChatTimeline.tsx` |
+| InspectorPanel 检查器面板 | `iota-app/src/components/inspector/InspectorPanel.tsx` |
+| WorkspaceExplorer 工作空间浏览器 | `iota-app/src/components/workspace/WorkspaceExplorer.tsx` |
+| SessionStore 会话存储 | `iota-app/src/store/useSessionStore.ts` |
 | WebSocket Hook | `iota-app/src/hooks/useWebSocket.ts` |
-| API Client | `iota-app/src/lib/api.ts` |
+| API Client 客户端 | `iota-app/src/lib/api.ts` |
 
 ---
 
-## Known Limitations
+## 已知限制
 
-### Single Active Execution Model
+### 单活动执行模型
 
-The App's state model (`useSessionStore`) maintains a single `activeExecution` at a time. When a `app_delta` arrives for an execution that is not the current `activeExecution`, the store creates a new `activeExecution` entry, potentially replacing the one the user is viewing. This means:
+App 应用的状态模型（`useSessionStore`）一次维护一个 `activeExecution`。当 `app_delta` 到达的执行不是当前 `activeExecution` 时，存储会创建一个新的 `activeExecution` 条目，可能会替换用户正在查看的条目。这意味着：
 
-- **Multi-execution sessions** may cause the UI to jump between executions unexpectedly
-- The snapshot/delta architecture is correct at the data level, but the **single-slot UI binding** makes concurrent execution viewing fragile
-- **Workaround**: Users should wait for one execution to complete before starting another
+- **多执行会话**可能导致 UI 在执行之间意外跳转
+- 快照/增量架构在数据层面是正确的，但**单槽 UI 绑定**使并发执行查看变得脆弱
+- **解决方法**: 用户应等待一个执行完成后再开始另一个
 
-### Approval UI Limitations
+### 审批 UI 限制
 
-The `ApprovalCard` component in `ChatTimeline` sends `approval_decision` messages via WebSocket. This requires the Agent to be started with a `DeferredApprovalHook` (the default for Agent mode). The approval flow is functional but has not been extensively tested in multi-user or multi-instance scenarios.
+`ChatTimeline` 中的 `ApprovalCard` 组件通过 WebSocket 发送 `approval_decision` 消息。这要求 Agent 服务使用 `DeferredApprovalHook` 启动（Agent 模式的默认设置）。审批流程是功能性的，但尚未在多用户或多实例场景中进行广泛测试。
 
-### Multi-Instance Real-Time Consistency
+### 多实例实时一致性
 
-The App consumes `app_snapshot`, `app_delta`, `event`, and `complete` WebSocket messages. Cross-instance `pubsub_event` messages (bridged via Redis pub/sub) trigger a snapshot resync but do not provide granular delta processing. In multi-Agent deployments, the real-time experience is **best-effort** — updates from other instances arrive via periodic snapshot refreshes rather than continuous streaming.
+App 应用消费 `app_snapshot`、`app_delta`、`event` 和 `complete` WebSocket 消息。跨实例的 `pubsub_event` 消息（通过 Redis pub/sub 桥接）会触发快照重新同步，但不提供细粒度的增量处理。在多 Agent 服务部署中，实时体验是**尽力而为** — 来自其他实例的更新通过定期快照刷新到达，而不是连续流式传输。
 
 ---
 
-## Version History
+## 版本历史
 
-| Version | Date | Changes |
+| 版本 | 日期 | 变更 |
 |---------|------|---------|
-| 1.1 | April 2026 | Add Known Limitations section (single execution model, approval UI, multi-instance consistency) |
-| 1.0 | April 2026 | Initial release |
+| 1.1 | 2026 年 4 月 | 添加已知限制部分（单执行模型、审批 UI、多实例一致性） |
+| 1.0 | 2026 年 4 月 | 初始版本 |

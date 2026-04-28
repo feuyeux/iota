@@ -78,7 +78,7 @@ export const logsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // Cross-session memory search
+  // Unified memory search
   fastify.get<{
     Querystring: {
       query: string;
@@ -103,10 +103,7 @@ export const logsRoutes: FastifyPluginAsync = async (fastify) => {
         const { query } = request.query;
         const limit = request.query.limit ? Number(request.query.limit) : 10;
 
-        const memories = await fastify.engine.searchMemoriesAcrossSessions(
-          query,
-          limit,
-        );
+        const memories = await fastify.engine.searchMemories(query, limit);
         return {
           query,
           limit,
@@ -116,7 +113,7 @@ export const logsRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err: any) {
         reply.code(501);
         return {
-          error: err.message ?? "Cross-session memory search not supported",
+          error: err.message ?? "Unified memory search not supported",
         };
       }
     },

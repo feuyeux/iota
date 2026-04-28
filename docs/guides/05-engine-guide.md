@@ -1,72 +1,71 @@
-# Engine Guide
+# Engine 引擎指南
 
-**Version:** 1.1
-**Last Updated:** April 2026
+**版本：** 1.1
+**最后更新：** 2026 年 4 月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#1-introduction)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Prerequisites](#3-prerequisites)
-4. [Installation and Setup](#4-installation-and-setup)
-5. [Core Functionality — Backend Adapters](#5-core-functionality--backend-adapters)
-6. [Core Functionality — Memory System](#6-core-functionality--memory-system)
-7. [Core Functionality — Visibility Plane](#7-core-functionality--visibility-plane)
-8. [Core Functionality — Configuration](#8-core-functionality--configuration)
-9. [Core Functionality — Redis Data Structures](#9-core-functionality--redis-data-structures)
-10. [Core Functionality — MCP Support](#10-core-functionality--mcp-support)
-11. [Core Functionality — Metrics Collection](#11-core-functionality--metrics-collection)
-12. [Core Functionality — Audit Logging](#12-core-functionality--audit-logging)
-13. [Core Functionality — Workspace Snapshots](#13-core-functionality--workspace-snapshots)
-14. [Core Functionality — Token Estimation](#14-core-functionality--token-estimation)
-15. [Distributed Features](#15-distributed-features)
-16. [Manual Verification Methods](#16-manual-verification-methods)
-17. [Troubleshooting](#17-troubleshooting)
-18. [Cleanup](#18-cleanup)
-19. [End-to-End Verification: Memory & Session Flow](#19-end-to-end-verification-memory--session-flow)
-20. [Observability Verification Reference](#20-observability-verification-reference)
-21. [References](#21-references)
-
----
-
-## 1. Introduction
-
-### Purpose and Scope
-
-This guide covers the Iota Engine (`@iota/engine`) — the core runtime library. It details backend adapter implementations, the memory system flow, the visibility plane data structures, the RedisConfigStore for distributed configuration, and comprehensive Redis data structure documentation.
-
-### Target Audience
-
-- Developers understanding Engine internals
-- Contributors debugging backend adapters
-- Anyone inspecting Redis data structures
+1. [简介](#1-简介)
+2. [架构概览](#2-架构概览)
+3. [前置要求](#3-前置要求)
+4. [安装与设置](#4-安装与设置)
+5. [核心功能 — Backend 适配器](#5-核心功能--backend-适配器)
+6. [核心功能 — Memory 记忆系统](#6-核心功能--memory-记忆系统)
+7. [核心功能 — Visibility 可见性平面](#7-核心功能--visibility-可见性平面)
+8. [核心功能 — 配置管理](#8-核心功能--配置管理)
+9. [核心功能 — Redis 数据结构](#9-核心功能--redis-数据结构)
+10. [核心功能 — MCP 支持](#10-核心功能--mcp-支持)
+11. [核心功能 — 指标采集](#11-核心功能--指标采集)
+12. [核心功能 — 审计日志](#12-核心功能--审计日志)
+13. [核心功能 — Workspace 快照](#13-核心功能--workspace-快照)
+14. [核心功能 — Token 估算](#14-核心功能--token-估算)
+15. [分布式特性](#15-分布式特性)
+16. [手动验证方法](#16-手动验证方法)
+17. [故障排查](#17-故障排查)
+18. [清理](#18-清理)
+19. [端到端验证：Memory 与 Session 流程](#19-端到端验证memory-与-session-流程)
+20. [可观测性验证参考](#20-可观测性验证参考)
+21. [参考资料](#21-参考资料)
 
 ---
 
-## 2. Architecture Overview
+## 1. 简介
 
-### Component Diagram
+### 目的与范围
+
+本指南涵盖 Iota Engine（`@iota/engine`）——核心运行时库。内容包括 Backend 适配器实现、Memory 记忆系统流程、Visibility 可见性平面数据结构、用于分布式配置的 RedisConfigStore，以及完整的 Redis 数据结构文档。
+
+### 目标受众
+
+- 了解 Engine 内部机制的开发者
+- 调试 Backend 适配器的贡献者
+- 需要检查 Redis 数据结构的任何人
+
+---
+
+## 2. 架构概览
+
+### 组件图
 
 ```mermaid
 graph TB
-    subgraph "Engine Core"
+    subgraph "Engine 核心"
         Engine[IotaEngine<br/>src/engine.ts]
         ConfigStore[RedisConfigStore<br/>src/config/]
         Storage[RedisStorage<br/>src/storage/]
         Visibility[VisibilityCollector<br/>src/visibility/]
-        Memory[Memory System<br/>src/memory/]
+        Memory[Memory 系统<br/>src/memory/]
     end
 
-    subgraph "Backend Adapters"
+    subgraph "Backend 适配器"
         ClaudeAdapter[Claude Code Adapter<br/>src/backend/claude-code.ts]
         CodexAdapter[Codex Adapter<br/>src/backend/codex.ts]
         GeminiAdapter[Gemini Adapter<br/>src/backend/gemini.ts]
         HermesAdapter[Hermes Adapter<br/>src/backend/hermes.ts]
     end
 
-    subgraph "Storage"
+    subgraph "存储"
         Redis[(Redis<br/>:6379)]
-        Milvus[(Milvus<br/>:19530)] 
         MinIO[(MinIO<br/>:9000)]
     end
 
@@ -82,44 +81,41 @@ graph TB
     Storage --> Redis
     Visibility --> Redis
     Memory --> Redis
-    Memory --> Milvus
     ClaudeAdapter -->|NDJSON| Claude[Claude Code CLI]
     CodexAdapter -->|NDJSON| Codex[Codex CLI]
     GeminiAdapter -->|NDJSON| Gemini[Gemini CLI]
     HermesAdapter -->|JSON-RPC 2.0| Hermes[Hermes CLI]
 ```
 
-### Dependencies
+### 依赖项
 
-| Dependency | Purpose | Connection |
-|------------|---------|------------|
-| Redis | Primary storage | Redis protocol/TCP :6379 |
-| Milvus | Vector storage (optional) | gRPC :19530 |
-| MinIO | Object storage (optional) | S3 API :9000 |
-| Backend executables | AI coding assistants | Subprocess stdio |
+| 依赖项 | 用途 | 连接方式 |
+|--------|------|---------|
+| Redis | 主存储 | Redis 协议/TCP :6379 |
+| MinIO | 对象存储（可选） | S3 API :9000 |
+| Backend 可执行文件 | AI 编码助手 | 子进程 stdio |
 
-### Communication Protocols
+### 通信协议
 
-- **Engine → Redis**: Redis protocol over TCP
-- **Engine → Backend**: Subprocess stdio — NDJSON (Claude/Codex/Gemini) or JSON-RPC 2.0 (Hermes)
-- **Engine → Milvus**: gRPC for vector insert/search
-- **Engine → MinIO**: S3-compatible HTTP API
+- **Engine → Redis**：TCP 上的 Redis 协议
+- **Engine → Backend**：子进程 stdio — NDJSON（Claude/Codex/Gemini）或 JSON-RPC 2.0（Hermes）
+- **Engine → MinIO**：S3 兼容 HTTP API
 
-**Reference**: See [00-architecture-overview.md](./00-architecture-overview.md)
+**参考**：见 [00-architecture-overview.md](./00-architecture-overview.md)
 
 ---
 
-## 3. Prerequisites
+## 3. 前置要求
 
-### Required Software
+### 必需软件
 
-| Software | Purpose |
-|----------|---------|
-| Bun | TypeScript runtime |
-| Redis | Primary storage |
-| Backend executables | AI coding assistants |
+| 软件 | 用途 |
+|------|------|
+| Bun | TypeScript 运行时 |
+| Redis | 主存储 |
+| Backend 可执行文件 | AI 编码助手 |
 
-### Backend Executables
+### Backend 可执行文件
 
 ```bash
 which claude    # Claude Code
@@ -128,63 +124,59 @@ which gemini    # Gemini CLI
 which hermes    # Hermes Agent
 ```
 
-### Environment Variables
+### 环境变量
 
 ```bash
 # Redis
 export REDIS_HOST="127.0.0.1"
 export REDIS_PORT="6379"
 
-# Optional: Milvus
-export MILVUS_HOST="127.0.0.1"
-export MILVUS_PORT="19530"
-
-# Optional: MinIO
+# 可选：MinIO
 export MINIO_ENDPOINT="127.0.0.1:9000"
 export MINIO_ACCESS_KEY="..."
 export MINIO_SECRET_KEY="..."
 ```
 
-Backend authentication is read from Redis distributed config, for example `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`.
+Backend 认证凭证从 Redis 分布式配置读取，例如 `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`。
 
 ---
 
-## 4. Installation and Setup
+## 4. 安装与设置
 
-### Step 1: Start Redis
+### 步骤 1：启动 Redis
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期：PONG
 ```
 
-### Step 2: Build Engine and CLI
+### 步骤 2：构建 Engine 和 CLI
 
 ```bash
-# Build Engine
+# 构建 Engine
 cd iota-engine
 bun install
 bun run build
 
-# Build CLI (engine tests invoke commands via CLI)
+# 构建 CLI（Engine 测试通过 CLI 调用命令）
 cd ../iota-cli
 bun install
 bun run build
 ```
 
-**Verification**:
+**验证**：
 ```bash
-ls iota-engine/dist/index.js   # Engine bundle exists
-ls iota-cli/dist/index.js       # CLI bundle exists
+ls iota-engine/dist/index.js   # Engine 包存在
+ls iota-cli/dist/index.js       # CLI 包存在
 ```
 
-> **CLI PATH Setup**: The `iota` command may not be in your PATH yet. See [01-cli-guide.md](./01-cli-guide.md), Section 4, Step 3 for setup options (Option A: `bun iota-cli/dist/index.js`, Option B: `npm link`, Option C: export PATH). All examples below use bare `iota` for brevity.
+> **CLI PATH 设置**：`iota` 命令可能尚未加入 PATH。见 [01-cli-guide.md](./01-cli-guide.md) 第 4 节步骤 3 的设置方法（选项 A：`bun iota-cli/dist/index.js`，选项 B：`npm link`，选项 C：export PATH）。下面所有示例为简洁起见均使用裸 `iota`。
 
-### Step 3: Configure Backends
+### 步骤 3：配置 Backend
 
-Backend credentials, model names, and endpoints are stored in Redis distributed config:
+Backend 凭证、模型名称和端点存储在 Redis 分布式配置中：
 
 ```bash
 iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
@@ -198,212 +190,212 @@ iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id herme
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
-The verified Hermes setup uses the same provider values as Claude Code, but with Hermes-specific Redis keys. Iota translates the Redis values into an isolated Hermes runtime home before spawning `hermes acp`.
+已验证的 Hermes 配置与 Claude Code 使用相同的 provider 值，但使用 Hermes 专属的 Redis 键。Iota 在启动 `hermes acp` 前将 Redis 中的值转换为隔离的 Hermes 运行时目录。
 
-**Hermes Agent**:
+**Hermes Agent**：
 ```bash
 hermes config show
-# Verify model provider is valid
+# 验证 model provider 有效
 ```
 
 ---
 
-## 5. Core Functionality — Backend Adapters
+## 5. 核心功能 — Backend 适配器
 
-### Backend Adapter Overview
+### Backend 适配器概览
 
-All backend adapters implement the `RuntimeBackend` interface (`src/backend/interface.ts`) and share common patterns:
+所有 Backend 适配器均实现 `RuntimeBackend` 接口（`src/backend/interface.ts`），共享以下模式：
 
-1. **Subprocess spawn**: Adapter spawns backend CLI as subprocess
-2. **Protocol parsing**: Parses stdout as NDJSON or JSON-RPC
-3. **Event mapping**: Maps native events to `RuntimeEvent` types
-4. **Visibility recording**: Records spans, tokens, and events
+1. **子进程启动（spawn）**：适配器将 Backend CLI 作为子进程启动
+2. **协议解析**：将 stdout 解析为 NDJSON 或 JSON-RPC
+3. **事件映射**：将原生事件映射为 `RuntimeEvent` 类型
+4. **可见性记录**：记录 span、token 和事件
 
 ---
 
-### Claude Code Adapter
+### Claude Code 适配器
 
-**File**: `src/backend/claude-code.ts`
+**文件**：`src/backend/claude-code.ts`
 
-**Subprocess command**:
+**子进程命令**：
 ```
 claude --print --output-format stream-json --verbose --permission-mode auto <prompt>
 ```
 
-**Protocol**: NDJSON over stdout (one JSON object per line)
+**协议**：stdout 上的 NDJSON（每行一个 JSON 对象）
 
-**Event types emitted**:
-| Native Event | RuntimeEvent Type |
-|-------------|-------------------|
-| `extension` | `extension` (thinking/anthropicthink) |
-| `output` | `output` (response text) |
-| `state` | `state` (status updates) |
+**事件类型映射**：
+| 原生事件 | RuntimeEvent 类型 |
+|---------|------------------|
+| `extension` | `extension`（thinking/anthropicthink） |
+| `output` | `output`（响应文本） |
+| `state` | `state`（状态更新） |
 
-**Event mapping** (from `src/event/types.ts`):
+**事件映射**（来自 `src/event/types.ts`）：
 ```typescript
-// Extension events map to 'extension' type
+// Extension 事件映射为 'extension' 类型
 { type: "extension", data: { ... } }
 
-// Output events map to 'output' type
+// Output 事件映射为 'output' 类型
 { type: "output", data: { content: "..." } }
 
-// State events map to 'state' type
+// State 事件映射为 'state' 类型
 { type: "state", data: { state: "running" | "completed" | "waiting_approval" } }
 ```
 
-**Configuration** (`iota:config:backend:claude-code`):
+**配置**（`iota:config:backend:claude-code`）：
 ```bash
 iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
 iota config set env.ANTHROPIC_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id claude-code
 iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id claude-code
 ```
 
-**Verification Procedure**:
+**验证步骤**：
 
-1. **Setup**:
+1. **准备**：
    ```bash
    redis-cli FLUSHALL
    which claude
    ```
 
-2. **Execute with trace**:
+2. **带 trace 执行**：
    ```bash
    iota run --backend claude-code --trace "What is 2+2?"
    ```
 
-3. **Verify subprocess**:
+3. **验证子进程**：
    ```bash
    ps aux | grep claude
-   # Expected: claude process running during execution
+   # 预期：执行期间 claude 进程可见
    ```
 
-4. **Verify events**:
+4. **验证事件**：
    ```bash
    EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-   redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
-   # Expected: Shows state, output, extension types
+   redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
+   # 预期：显示 state、output、extension 类型
    ```
 
-5. **Verify visibility**:
+5. **验证可见性**：
    ```bash
    redis-cli KEYS "iota:visibility:*"
-   # Expected: tokens, spans, link, context, memory keys
+   # 预期：tokens、spans、link、context、memory 键
    ```
 
 ---
 
-### Codex Adapter
+### Codex 适配器
 
-**File**: `src/backend/codex.ts`
+**文件**：`src/backend/codex.ts`
 
-**Subprocess command**:
+**子进程命令**：
 ```
 codex exec <prompt>
 ```
 
-**Protocol**: NDJSON over stdout
+**协议**：stdout 上的 NDJSON
 
-**Event types emitted**:
-| Native Event | RuntimeEvent Type |
-|-------------|-------------------|
+**事件类型映射**：
+| 原生事件 | RuntimeEvent 类型 |
+|---------|------------------|
 | `output` | `output` |
 | `state` | `state` |
 
-**Configuration** (`iota:config:backend:codex`):
+**配置**（`iota:config:backend:codex`）：
 ```bash
 iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
 ```
 
-The verified setup uses local Codex ChatGPT auth, so no Redis API key is required. Add `env.OPENAI_API_KEY`, `env.OPENAI_BASE_URL`, or `env.CODEX_MODEL_PROVIDER` only when the selected Codex provider requires them.
+已验证配置使用本地 Codex ChatGPT 认证，无需 Redis API key。仅在所选 Codex provider 需要时添加 `env.OPENAI_API_KEY`、`env.OPENAI_BASE_URL` 或 `env.CODEX_MODEL_PROVIDER`。
 
-**Verification Procedure**:
+**验证步骤**：
 
-1. **Execute with trace**:
+1. **带 trace 执行**：
    ```bash
    iota run --backend codex --trace "Hello"
    ```
 
-2. **Verify events**:
+2. **验证事件**：
    ```bash
    EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-   redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
+   redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
    ```
 
 ---
 
-### Gemini CLI Adapter
+### Gemini CLI 适配器
 
-**File**: `src/backend/gemini.ts`
+**文件**：`src/backend/gemini.ts`
 
-**Subprocess command**:
+**子进程命令**：
 ```
 gemini --output-format stream-json --skip-trust --prompt <prompt>
 ```
 
-**Protocol**: NDJSON over stdout
+**协议**：stdout 上的 NDJSON
 
-**Event types emitted**:
-| Native Event | RuntimeEvent Type |
-|-------------|-------------------|
+**事件类型映射**：
+| 原生事件 | RuntimeEvent 类型 |
+|---------|------------------|
 | `extension` | `extension` |
 | `output` | `output` |
 | `state` | `state` |
 | `multimodal` | `extension` |
 
-**Configuration** (`iota:config:backend:gemini`):
+**配置**（`iota:config:backend:gemini`）：
 ```bash
 iota config set env.GEMINI_MODEL "auto-gemini-3" --scope backend --scope-id gemini
 ```
 
-The verified setup uses Gemini OAuth (`oauth-personal`). Add API-key or base-url fields only for a real Google-compatible endpoint; do not store a dead local gateway URL.
+已验证配置使用 Gemini OAuth（`oauth-personal`）。仅在使用真实 Google 兼容端点时添加 API key 或 base-url 字段；不要存储无效的本地网关 URL。
 
-**Verification Procedure**:
+**验证步骤**：
 
-1. **Execute with trace**:
+1. **带 trace 执行**：
    ```bash
    iota run --backend gemini --trace "Hello"
    ```
 
-2. **Verify events**:
+2. **验证事件**：
    ```bash
    EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-   redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
+   redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
    ```
 
-3. **Test multimodal** (if supported):
+3. **测试多模态**（如支持）：
    ```bash
    iota run --backend gemini "Describe this image" -- attachment
    ```
 
 ---
 
-### Hermes Agent Adapter
+### Hermes Agent 适配器
 
-**File**: `src/backend/hermes.ts`
+**文件**：`src/backend/hermes.ts`
 
-**Subprocess command**:
+**子进程命令**：
 ```
 hermes acp
 ```
 
-**Protocol**: ACP JSON-RPC 2.0 over stdio
+**协议**：stdio 上的 ACP JSON-RPC 2.0
 
-**Message format (request)**:
+**消息格式（请求）**：
 ```json
 {"jsonrpc":"2.0","method":"execute","params":{"prompt":"...","..."},"id":1}
 ```
 
-**Message format (response)**:
+**消息格式（响应）**：
 ```json
 {"jsonrpc":"2.0","result":{"..."},"id":1}
 ```
 
-**Key characteristics**:
-- Long-running subprocess (stays alive across multiple executions)
-- JSON-RPC 2.0 request/response pairs
-- ID matching for request/response correlation
+**关键特性**：
+- 长驻子进程（跨多次执行保持存活）
+- JSON-RPC 2.0 请求/响应对
+- 基于 ID 的请求-响应关联
 
-**Configuration** (`iota:config:backend:hermes`):
+**配置**（`iota:config:backend:hermes`）：
 ```bash
 iota config set env.HERMES_API_KEY "<redacted>" --scope backend --scope-id hermes
 iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
@@ -411,212 +403,219 @@ iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id herme
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
-Iota does not rely on the user's global Hermes config for backend auth or model selection when these Redis fields are present. The adapter creates an isolated `HERMES_HOME`, writes Hermes-native `config.yaml` and `.env`, and maps `HERMES_API_KEY` / `HERMES_BASE_URL` to provider keys such as `MINIMAX_CN_API_KEY` / `MINIMAX_CN_BASE_URL`.
+当这些 Redis 字段存在时，Iota 不依赖用户的全局 Hermes 配置进行 Backend 认证或模型选择。适配器会创建隔离的 `HERMES_HOME`，写入 Hermes 原生的 `config.yaml` 和 `.env`，并将 `HERMES_API_KEY`/`HERMES_BASE_URL` 映射为 provider 专属键（如 `MINIMAX_CN_API_KEY`/`MINIMAX_CN_BASE_URL`）。
 
-**Hermes Configuration Verification** (critical):
+**Hermes 配置验证**（关键步骤）：
 
-1. **Check Hermes config**:
+1. **检查 Hermes 配置**：
    ```bash
    hermes config show
    ```
 
-2. **Verify model provider**:
-   - If `model.provider: custom` → requires local gateway running
-   - If `model.provider: minimax-cn` → requires valid MiniMax CN config
-   - If `model.provider: openai` → requires valid OpenAI config
+2. **验证 model provider**：
+   - 若 `model.provider: custom` → 需要本地网关正在运行
+   - 若 `model.provider: minimax-cn` → 需要有效的 MiniMax CN 配置
+   - 若 `model.provider: openai` → 需要有效的 OpenAI 配置
 
-3. **Fix invalid config**:
+3. **修复无效配置**：
    ```bash
    hermes config set model.provider minimax-cn
    hermes config set model.default MiniMax-M2.7
    hermes doctor --fix
    ```
 
-**Verification Procedure**:
+**验证步骤**：
 
-1. **Execute with trace**:
+1. **带 trace 执行**：
    ```bash
    iota run --backend hermes --trace "Hello"
    ```
 
-2. **Verify long-running process**:
+2. **验证长驻进程**：
    ```bash
-   # Before first execution
+   # 首次执行前
    ps aux | grep hermes
-   # Expected: No hermes process
+   # 预期：无 hermes 进程
 
-   # During execution
+   # 执行期间
    ps aux | grep hermes
-   # Expected: hermes process running
+   # 预期：hermes 进程运行中
 
-   # After execution
+   # 执行后
    ps aux | grep hermes
-   # Expected: hermes process still running (long-running)
+   # 预期：hermes 进程仍在运行（长驻）
    ```
 
-3. **Verify events**:
+3. **验证事件**：
    ```bash
    EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-   redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
+   redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
    ```
 
-4. **Verify JSON-RPC protocol**:
+4. **验证 JSON-RPC 协议**：
    ```bash
-   # Run with --trace and observe request/response format
    iota run --backend hermes --trace "test"
    ```
 
 ---
 
-### Protocol Parsing Details
+### 协议解析细节
 
-**NDJSON parsing** (Claude, Codex, Gemini):
+**NDJSON 解析**（Claude、Codex、Gemini）：
 ```typescript
-// Split stdout by newlines
-// Parse each line as JSON
-// Handle partial lines (buffering)
-// Handle malformed JSON (error handling)
+// 按换行符分割 stdout
+// 将每行解析为 JSON
+// 处理不完整行（缓冲）
+// 处理格式错误的 JSON（错误处理）
 ```
 
-**JSON-RPC 2.0 parsing** (Hermes):
+**JSON-RPC 2.0 解析**（Hermes）：
 ```typescript
-// Read complete JSON objects from stdout
-// Match request ID with response ID
-// Handle batch requests (array)
-// Handle notifications (no ID)
+// 从 stdout 读取完整 JSON 对象
+// 将请求 ID 与响应 ID 匹配
+// 处理批量请求（数组）
+// 处理通知（无 ID）
 ```
 
-**Error handling**:
-- Malformed JSON → emit `error` event
-- Unexpected event type → emit `extension` with raw data
-- Backend crash → emit `error` with exit code
+**错误处理**：
+- JSON 格式错误 → 发送 `error` 事件
+- 未知事件类型 → 以原始数据发送 `extension` 事件
+- Backend 崩溃 → 带退出码发送 `error` 事件
 
 ---
 
-### Backend-Specific Distributed Configuration
+### Backend 分布式配置
 
-| Backend | Redis Hash | Verified Redis Fields |
-|---------|------------|-----------------------|
-| Claude Code | `iota:config:backend:claude-code` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_MODEL` |
+| Backend | Redis 哈希 | 已验证的 Redis 字段 |
+|---------|-----------|-------------------|
+| Claude Code | `iota:config:backend:claude-code` | `env.ANTHROPIC_AUTH_TOKEN`、`env.ANTHROPIC_BASE_URL`、`env.ANTHROPIC_MODEL` |
 | Codex | `iota:config:backend:codex` | `env.OPENAI_MODEL=gpt-5.5` |
 | Gemini CLI | `iota:config:backend:gemini` | `env.GEMINI_MODEL=auto-gemini-3` |
-| Hermes Agent | `iota:config:backend:hermes` | `env.HERMES_API_KEY`, `env.HERMES_BASE_URL`, `env.HERMES_MODEL`, `env.HERMES_PROVIDER` |
+| Hermes Agent | `iota:config:backend:hermes` | `env.HERMES_API_KEY`、`env.HERMES_BASE_URL`、`env.HERMES_MODEL`、`env.HERMES_PROVIDER` |
 
-**Verification of distributed config**:
+**验证分布式配置**：
 ```bash
-# Check backend-scoped config
 iota config get --scope backend --scope-id claude-code
 redis-cli HGET "iota:config:backend:claude-code" "env.ANTHROPIC_AUTH_TOKEN"
-
-# Test execution
 iota run --backend claude-code --trace "test"
 ```
 
 ---
 
-## 6. Core Functionality — Memory System
+## 6. 核心功能 — Memory 记忆系统
 
-### Memory System Overview
+### Memory 系统概览
 
-The memory system implements an automatic memory loop:
+Memory 系统包含三个层次：
+
+1. **对话历史**（`DialogueMemory`）：进程内存中的多轮对话 `Map<sessionId, Message[]>`。**不持久化**——进程重启后丢失。仅用于同一进程中连续执行的上下文传递。
+2. **工作记忆**（`WorkingMemory`）：进程内存中的活跃文件集 `Map<sessionId, Map<path, ActiveFile>>`。**不持久化**——进程重启后丢失。
+3. **统一记忆**（Unified Memory）：持久化到 Redis 的四类长期记忆（episodic/procedural/factual/strategic），跨进程重启存活。
+
+> **⚠️ 重要**：Session 记录（`iota:session:{id}`）和统一记忆（`iota:memory:*`）持久化在 Redis 中，但对话历史和工作记忆仅存在于进程内存。Agent/CLI 进程重启后，对话上下文清零，需要依赖统一记忆恢复部分语境。
+
+Memory 系统实现自动记忆循环：
 
 ```
-Dialogue → Extraction → Storage → Retrieval → Injection → Future Context
+对话 → 提取 → 存储 → 检索 → 注入 → 未来上下文
 ```
 
-### Memory Extraction
+### Memory 提取
 
-**File**: `src/memory/extractor.ts`
+**文件**：
+- `src/memory/mapper.ts`
+- `src/memory/storage.ts`
+- `src/engine.ts`
 
-**Trigger**: Substantial output (typically >500 characters)
+**触发方式**：
+1. 优先路径：Backend 发出原生 `memory` 运行时事件
+2. 回退路径：Engine 从 prompt 加最终输出合成记忆
 
-**Process**:
-1. Analyze execution output
-2. Extract meaningful blocks (code, facts, decisions)
-3. Score for relevance
-4. Store in Redis sorted set
+**流程**：
+1. 将 Backend 原生记忆类型映射为统一类型（`episodic`、`procedural`、`factual`、`strategic`）
+2. 解析作用域（`session`、`project`、`user`）和 TTL
+3. 执行置信度阈值检验
+4. 按类型和作用域索引写入 Redis
 
-**Redis key**: `iota:memories:{sessionId}` (Sorted Set)
+**Redis 键**：
+- `iota:memory:{type}:{memoryId}`
+- `iota:memories:{type}:{scopeId}`
+- `iota:memory:by-backend:{backend}`
+- `iota:memory:by-tag:{tag}`
 
-**Verification**:
+**验证**：
 ```bash
-# Execute with substantial output
 iota run --backend claude-code "Explain binary search with code examples"
 
-# Check memory count
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
-redis-cli ZCARD "iota:memories:$SESSION_ID"
-# Expected: >= 1
-
-# View memories with scores
-redis-cli ZREVRANGE "iota:memories:$SESSION_ID" 0 -1 WITHSCORES
+redis-cli ZCARD "iota:memories:episodic:$SESSION_ID"
+redis-cli ZREVRANGE "iota:memories:episodic:$SESSION_ID" 0 -1
 ```
 
 ---
 
-### Memory Storage
+### Memory 存储
 
-**Files**:
-- `src/memory/store.ts` — Redis storage interface
-- `src/memory/embedding.ts` — Embedding generation
+**文件**：
+- `src/memory/storage.ts` — 统一存储门面
+- `src/storage/redis.ts` — Redis 实现
 
-**Primary storage**: Redis sorted set (`iota:memories:{sessionId}`)
+**主存储**：Redis 哈希 + 有序集合索引
 
-**Optional storage**: Milvus vector database for semantic search
-
-**Memory block structure**:
+**存储结构**：
 ```typescript
-interface MemoryBlock {
+interface StoredMemory {
   id: string;
-  sessionId: string;
-  executionId: string;
+  type: "episodic" | "procedural" | "factual" | "strategic";
+  scope: "session" | "project" | "user";
+  scopeId: string;
   content: string;
-  type: "procedural" | "episodic" | "semantic";
-  score: number;
+  source: { backend: BackendName; nativeType: string; executionId: string };
+  confidence: number;
+  timestamp: number;
   createdAt: number;
+  lastAccessedAt: number;
+  accessCount: number;
+  expiresAt: number;
 }
 ```
 
 ---
 
-### Memory Retrieval
+### Memory 检索
 
-**File**: `src/memory/retriever.ts`
+**文件**：`src/memory/injector.ts`
 
-**Process**:
-1. On execution start, query relevant memories
-2. Rank by relevance (score from sorted set, semantic similarity if Milvus)
-3. Select top-k memories for injection
-
-**Redis command**:
-```
-ZRANGEBYSCORE iota:memories:{sessionId} <min_score> +inf LIMIT 0 <limit>
-```
+**流程**：
+1. 执行开始时从四个桶加载记忆
+2. 从 session 作用域取情节记忆（episodic）
+3. 从 project 作用域取程序记忆（procedural）和战略记忆（strategic）
+4. 从 user 作用域取事实记忆（factual）
+5. 注入时执行置信度和 token 预算约束
 
 ---
 
-### Memory Injection
+### Memory 注入
 
-**File**: `src/memory/injector.ts`
+**文件**：`src/memory/injector.ts`
 
-**Process**:
-1. Retrieve top memories
-2. Format as context blocks
-3. Inject into prompt context before backend call
+**流程**：
+1. 从 session / project / user 作用域构建结构化记忆上下文
+2. 格式化为 factual / strategic / procedural / episodic 各节
+3. 在调用 Backend 前注入 prompt 上下文
 
-**Verification**:
+**验证**：
 ```bash
-# Check visibility for injection details
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli GET "iota:visibility:memory:$EXEC_ID"
-# Expected: JSON with candidates, selected, excluded counts
+# 预期：包含 candidates、selected、excluded 计数的 JSON
 ```
 
 ---
 
-### Memory Visibility Record
+### MemoryVisibilityRecord
 
-**File**: `src/visibility/types.ts` — `MemoryVisibilityRecord`
+**文件**：`src/visibility/types.ts`
 
 ```typescript
 interface MemoryVisibilityRecord {
@@ -625,69 +624,63 @@ interface MemoryVisibilityRecord {
   candidates: MemoryCandidateVisibility[];
   selected: MemorySelectedVisibility[];
   excluded: MemoryExcludedVisibility[];
-  extractionReason?: string;  // e.g., "substantial_output"
+  extractionReason?: string;  // 例如 "substantial_output"
 }
 ```
 
 ---
 
-## 7. Core Functionality — Visibility Plane
+## 7. 核心功能 — Visibility 可见性平面
 
-### Visibility Plane Overview
+### Visibility 平面概览
 
-The visibility plane records comprehensive data about each execution:
+Visibility 平面记录每次执行的完整数据：
 
-- **Token tracking**: Input/output token counts
-- **Span recording**: Timing and hierarchy of execution phases
-- **Context manifest**: Prompt composition details
-- **Memory visibility**: Memory selection process
-- **Link visibility**: Subprocess protocol details
+- **Token 跟踪**：输入/输出 token 计数
+- **Span 记录**：执行阶段的时间与层次
+- **Context 清单**：Prompt 组成详情
+- **Memory 可见性**：记忆选择过程
+- **Link 可见性**：子进程协议详情
 
 ### TokenLedger
 
-**File**: `src/visibility/types.ts`
+**文件**：`src/visibility/types.ts`
 
-**Redis key**: `iota:visibility:tokens:{executionId}` (String/JSON)
+**Redis 键**：`iota:visibility:tokens:{executionId}`（String/JSON）
 
 ```typescript
 interface TokenLedger {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  confidence: "native" | "estimated";
+  confidence: "native" | "mixed" | "estimated";
   breakdown?: {
-    native: {
-      input: number;
-      output: number;
-    };
-    estimated: {
-      input: number;
-      output: number;
-    };
+    native: { input: number; output: number; };
+    estimated: { input: number; output: number; };
   };
 }
 ```
 
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli GET "iota:visibility:tokens:$EXEC_ID"
-# Expected: JSON with token counts
+# 预期：包含 token 计数的 JSON
 ```
 
 ---
 
 ### TraceSpan
 
-**File**: `src/visibility/types.ts`
+**文件**：`src/visibility/types.ts`
 
-**Redis key**: `iota:visibility:spans:{executionId}` (List of JSON)
+**Redis 键**：`iota:visibility:spans:{executionId}`（JSON 列表）
 
 ```typescript
 interface TraceSpan {
   traceId: string;
   spanId: string;
-  parentSpanId: string | null;  // null for root
+  parentSpanId: string | null;  // 根 span 为 null
   sessionId: string;
   executionId: string;
   backend: string;
@@ -696,50 +689,41 @@ interface TraceSpan {
   endedAt: number;
   status: "ok" | "error";
   attributes: Record<string, unknown>;
-  redaction?: {
-    rule: string;
-    paths: string[];
-  };
+  redaction?: { rule: string; paths: string[]; };
 }
 ```
 
-**Span kinds**:
-| Kind | Description |
-|------|-------------|
-| `engine.request` | Top-level execution span |
-| `engine.context.build` | Context composition |
-| `memory.search` | Memory retrieval |
-| `memory.inject` | Memory injection into prompt |
-| `backend.resolve` | Backend selection |
-| `backend.spawn` | Subprocess creation |
-| `backend.stdin.write` | Prompt writing to stdin |
-| `backend.stdout.read` | Output reading from stdout |
-| `adapter.parse` | Protocol parsing |
-| `event.persist` | Event storage to Redis |
-| `approval.wait` | Approval prompt waiting |
-| `mcp.proxy` | MCP tool proxy |
-| `workspace.scan` | Directory scanning |
-| `memory.extract` | Memory extraction |
+**Span 类型**：
+| 类型 | 描述 |
+|------|------|
+| `engine.request` | 顶层执行 span |
+| `engine.context.build` | 上下文组成 |
+| `memory.search` | 记忆检索 |
+| `memory.inject` | 记忆注入到 prompt |
+| `backend.resolve` | Backend 选择 |
+| `backend.spawn` | 子进程创建 |
+| `backend.stdin.write` | 向 stdin 写入 prompt |
+| `backend.stdout.read` | 从 stdout 读取输出 |
+| `adapter.parse` | 协议解析 |
+| `event.persist` | 事件存储到 Redis |
+| `approval.wait` | 等待审批 |
+| `mcp.proxy` | MCP 工具代理 |
+| `workspace.scan` | 目录扫描 |
+| `memory.extract` | 记忆提取 |
 
-**Span hierarchy reconstruction**:
+**Span 层次重建**：
 ```typescript
 function buildSpanTree(spans: TraceSpan[]): TraceSpanNode {
   const root = spans.find(s => s.parentSpanId === null);
   const children = spans.filter(s => s.parentSpanId === root.spanId);
-  return {
-    span: root,
-    children: children.map(c => buildSpanTree(spans))
-  };
+  return { span: root, children: children.map(c => buildSpanTree(spans)) };
 }
 ```
 
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli LRANGE "iota:visibility:spans:$EXEC_ID" 0 -1 | jq '.[].kind'
-# Expected: Array of span kinds
-
-# Verify hierarchy
 redis-cli LRANGE "iota:visibility:spans:$EXEC_ID" 0 -1 | jq '[.[] | {spanId, parentSpanId, kind}]'
 ```
 
@@ -747,9 +731,9 @@ redis-cli LRANGE "iota:visibility:spans:$EXEC_ID" 0 -1 | jq '[.[] | {spanId, par
 
 ### ContextManifest
 
-**File**: `src/visibility/types.ts`
+**文件**：`src/visibility/types.ts`
 
-**Redis key**: `iota:visibility:context:{executionId}` (String/JSON)
+**Redis 键**：`iota:visibility:context:{executionId}`（String/JSON）
 
 ```typescript
 interface ContextManifest {
@@ -764,41 +748,23 @@ interface ContextSegment {
   kind: ContextSegmentKind;  // "system" | "user" | "memory" | "mcp" | "workspace"
   contentHash: string;
   tokenCount: number;
-  source?: string;  // file path for workspace
+  source?: string;  // workspace 的文件路径
 }
 ```
 
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli GET "iota:visibility:context:$EXEC_ID"
-# Expected: JSON with segments
-```
-
----
-
-### MemoryVisibilityRecord
-
-**File**: `src/visibility/types.ts`
-
-**Redis key**: `iota:visibility:memory:{executionId}` (String/JSON)
-
-**Structure**: Described in Memory System section above.
-
-**Verification**:
-```bash
-EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-redis-cli GET "iota:visibility:memory:$EXEC_ID"
-# Expected: JSON with candidates, selected, excluded
 ```
 
 ---
 
 ### LinkVisibilityRecord
 
-**File**: `src/visibility/types.ts`
+**文件**：`src/visibility/types.ts`
 
-**Redis key**: `iota:visibility:link:{executionId}` (String/JSON)
+**Redis 键**：`iota:visibility:link:{executionId}`（String/JSON）
 
 ```typescript
 interface LinkVisibilityRecord {
@@ -814,54 +780,52 @@ interface LinkVisibilityRecord {
 }
 ```
 
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli GET "iota:visibility:link:$EXEC_ID"
-# Expected: JSON with protocol details
 ```
 
 ---
 
 ### EventMappingVisibility
 
-**File**: `src/visibility/types.ts`
+**文件**：`src/visibility/types.ts`
 
-**Redis key**: `iota:visibility:mapping:{executionId}` (List of JSON)
+**Redis 键**：`iota:visibility:mapping:{executionId}`（JSON 列表）
 
-Tracks how native backend events map to RuntimeEvents.
+跟踪原生 Backend 事件如何映射为 RuntimeEvent。
 
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli LRANGE "iota:visibility:mapping:$EXEC_ID" 0 -1
-# Expected: List of event mappings
 ```
 
 ---
 
-## 8. Core Functionality — Configuration
+## 8. 核心功能 — 配置管理
 
 ### RedisConfigStore
 
-**File**: `src/config/redis-store.ts`
+**文件**：`src/config/redis-store.ts`
 
-**Purpose**: Distributed configuration storage in Redis with scope-based isolation.
+**用途**：Redis 中基于作用域隔离的分布式配置存储。
 
-**Scopes**:
-| Scope | Redis Key Pattern | Purpose |
-|-------|-------------------|---------|
-| `global` | `iota:config:global` | System-wide settings |
-| `backend` | `iota:config:backend:{backendName}` | Backend-specific settings |
-| `session` | `iota:config:session:{sessionId}` | Session-specific overrides |
-| `user` | `iota:config:user:{userId}` | User-specific preferences |
+**作用域**：
+| 作用域 | Redis 键模式 | 用途 |
+|--------|-------------|------|
+| `global` | `iota:config:global` | 系统级设置 |
+| `backend` | `iota:config:backend:{backendName}` | Backend 专属设置 |
+| `session` | `iota:config:session:{sessionId}` | Session 级覆盖 |
+| `user` | `iota:config:user:{userId}` | 用户偏好设置 |
 
-**Resolution order** (highest to lowest priority):
+**解析优先级**（从高到低）：
 ```
-user > session > backend > global > defaults
+user > session > backend > global > 默认值
 ```
 
-**Methods**:
+**方法**：
 ```typescript
 class RedisConfigStore {
   get(scope: ConfigScope, scopeId?: string): Promise<Record<string, string>>;
@@ -873,234 +837,199 @@ class RedisConfigStore {
 }
 ```
 
-**Verification**:
+**验证**：
 ```bash
-# Read global config
 redis-cli HGETALL "iota:config:global"
-
-# Read backend config
 redis-cli HGETALL "iota:config:backend:claude-code"
-
-# List backend scope IDs
 redis-cli KEYS "iota:config:backend:*"
 ```
 
 ---
 
-### Config Schema
+### 配置 Schema
 
-**File**: `src/config/schema.ts`
+**文件**：`src/config/schema.ts`
 
-**Key types**: Dot-notation keys like `approval.shell`, `backend.claude-code.timeout`
+**键类型**：点号分隔的键，如 `approval.shell`、`backend.claude-code.timeout`
 
-**Value types**: Auto-parsed from string:
-- `"true"` → boolean `true`
-- `"false"` → boolean `false`
+**值类型**：从字符串自动解析：
+- `"true"` → 布尔 `true`
+- `"false"` → 布尔 `false`
 - `"null"` → null
-- Number strings → number
-- JSON objects/arrays → parsed JSON
+- 数字字符串 → 数字
+- JSON 对象/数组 → 解析后的 JSON
 
-**Default values**: Documented in `src/config/schema.ts`
+**默认值**：见 `src/config/schema.ts`
 
 ---
 
-## 9. Core Functionality — Redis Data Structures
+## 9. 核心功能 — Redis 数据结构
 
-### Session Keys
+### Session 键
 
-**Pattern**: `iota:session:{sessionId}`
-**Type**: Hash
+**模式**：`iota:session:{sessionId}`  **类型**：Hash
 
-**Fields**:
-| Field | Type | Description |
-|-------|------|-------------|
+| 字段 | 类型 | 描述 |
+|------|------|------|
 | `id` | String | Session UUID |
-| `workingDirectory` | String | Absolute path |
-| `activeBackend` | String | Current backend name |
-| `createdAt` | String | Timestamp (ms) |
-| `updatedAt` | String | Timestamp (ms) |
-| `status` | String | `active` or `archived` |
+| `workingDirectory` | String | 绝对路径 |
+| `activeBackend` | String | 当前 Backend 名称 |
+| `createdAt` | String | 时间戳（ms） |
+| `updatedAt` | String | 时间戳（ms） |
+| `status` | String | `active` 或 `archived` |
 
-**Verification**:
+**验证**：
 ```bash
 redis-cli HGETALL "iota:session:{sessionId}"
 ```
 
-**Expected output**:
-```
-id
-abc-123-def
-workingDirectory
-/tmp
-activeBackend
-claude-code
-createdAt
-1714067200000
-updatedAt
-1714067250000
-status
-active
-```
-
 ---
 
-### Execution Keys
+### Execution 键
 
-**Pattern**: `iota:exec:{executionId}`
-**Type**: Hash
+**模式**：`iota:exec:{executionId}`  **类型**：Hash
 
-**Fields**:
-| Field | Type | Description |
-|-------|------|-------------|
+| 字段 | 类型 | 描述 |
+|------|------|------|
 | `id` | String | Execution UUID |
-| `sessionId` | String | Parent session UUID |
-| `prompt` | String | User prompt |
-| `output` | String | Final output text |
-| `status` | String | `queued`, `running`, `completed`, `failed`, `interrupted` |
-| `backend` | String | Backend used |
-| `createdAt` | String | Timestamp (ms) |
-| `completedAt` | String | Timestamp (ms) |
-| `errorJson` | String | Error details (if failed) |
+| `sessionId` | String | 父 Session UUID |
+| `prompt` | String | 用户 prompt |
+| `output` | String | 最终输出文本 |
+| `status` | String | `queued`、`running`、`completed`、`failed`、`interrupted` |
+| `backend` | String | 使用的 Backend |
+| `createdAt` | String | 时间戳（ms） |
+| `completedAt` | String | 时间戳（ms） |
+| `errorJson` | String | 错误详情（失败时） |
 
-**Verification**:
+**验证**：
 ```bash
 redis-cli HGETALL "iota:exec:{executionId}"
 ```
 
 ---
 
-### Event Streams
+### Event 流
 
-**Pattern**: `iota:events:{executionId}`
-**Type**: List
+**模式**：`iota:events:{executionId}`  **类型**：List
 
-**Content**: JSON-serialized RuntimeEvent objects (one per list element)
+**内容**：JSON 序列化的 RuntimeEvent 对象（每个列表元素一个）
 
-**Event types**: `output`, `state`, `tool_call`, `tool_result`, `file_delta`, `error`, `extension`
+**事件类型**：`output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`
 
-**Verification**:
+**验证**：
 ```bash
-redis-cli LRANGE "iota:events:{execId}" 0 -1
-redis-cli LRANGE "iota:events:{execId}" 0 -1 | jq '.[].type'
+redis-cli XRANGE "iota:events:{execId}" - +
+redis-cli XRANGE "iota:events:{execId}" - + | jq '.[].type'
 ```
 
 ---
 
-### Visibility Keys
+### Visibility 键汇总
 
-**Token ledger**: `iota:visibility:tokens:{executionId}` (String/JSON)
+- `iota:visibility:tokens:{executionId}` — Token 账本（String/JSON）
+- `iota:visibility:link:{executionId}` — Link 记录（String/JSON）
+- `iota:visibility:spans:{executionId}` — Trace span（JSON 列表）
+- `iota:visibility:mapping:{executionId}` — 事件映射（JSON 列表）
+- `iota:visibility:session:{sessionId}` — Session 索引（Sorted Set，按时间戳）
+- `iota:visibility:context:{executionId}` — Context 清单（String/JSON）
+- `iota:visibility:memory:{executionId}` — Memory 记录（String/JSON）
 
-**Link record**: `iota:visibility:link:{executionId}` (String/JSON)
-
-**Trace spans**: `iota:visibility:spans:{executionId}` (List of JSON)
-
-**Event mappings**: `iota:visibility:mapping:{executionId}` (List of JSON)
-
-**Session index**: `iota:visibility:session:{sessionId}` (Sorted Set — executionId by timestamp)
-
-**Context manifest**: `iota:visibility:context:{executionId}` (String/JSON)
-
-**Memory record**: `iota:visibility:memory:{executionId}` (String/JSON)
-
-**Verification**:
+**验证**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli KEYS "iota:visibility:*:$EXEC_ID"
-# Expected: visibility keys for this execution
 ```
 
 ---
 
-### Memory Keys
+### Memory 键
 
-**Pattern**: `iota:memories:{sessionId}`
-**Type**: Sorted Set
+**模式**：
+- `iota:memory:{type}:{memoryId}` — 单条记忆（Hash）
+- `iota:memories:{type}:{scopeId}` — 按类型/作用域索引（Sorted Set）
+- `iota:memory:by-backend:{backend}` — 按 Backend 索引（Set）
+- `iota:memory:by-tag:{tag}` — 按标签索引（Set）
 
-**Content**: Memory blocks with scores (higher = more relevant)
-
-**Verification**:
+**验证**：
 ```bash
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
-redis-cli ZCARD "iota:memories:$SESSION_ID"
-redis-cli ZRANGE "iota:memories:$SESSION_ID" 0 -1 WITHSCORES
+redis-cli ZCARD "iota:memories:episodic:$SESSION_ID"
+MEMORY_ID=$(redis-cli ZRANGE "iota:memories:episodic:$SESSION_ID" 0 0)
+redis-cli HGETALL "iota:memory:episodic:$MEMORY_ID"
 ```
 
 ---
 
-### Config Keys
+### Config 键
 
-**Global config**: `iota:config:global` (Hash)
+- `iota:config:global` — 全局配置（Hash）
+- `iota:config:backend:{backendName}` — Backend 配置（Hash）
+- `iota:config:session:{sessionId}` — Session 配置（Hash）
+- `iota:config:user:{userId}` — User 配置（Hash）
 
-**Backend config**: `iota:config:backend:{backendName}` (Hash)
-
-**Session config**: `iota:config:session:{sessionId}` (Hash)
-
-**User config**: `iota:config:user:{userId}` (Hash)
-
-**Verification**:
+**验证**：
 ```bash
 redis-cli HGETALL "iota:config:global"
 redis-cli KEYS "iota:config:backend:*"
-redis-cli KEYS "iota:config:session:*"
 ```
 
 ---
 
-### Audit Keys
+### Audit 键
 
-**Pattern**: `iota:audit`
-**Type**: List or Stream (implementation-dependent)
+**模式**：`iota:audit`  **类型**：List 或 Stream（取决于实现）
 
-**Content**: Audit events with timestamp, user, action, details
-
-**Verification**:
+**验证**：
 ```bash
 redis-cli LRANGE "iota:audit" 0 -1
-# or
+# 或
 redis-cli XRANGE "iota:audit" - + COUNT 10
 ```
 
 ---
 
-### Redis Key Pattern Summary
+### Redis 键模式汇总
 
-| Pattern | Type | Description |
-|---------|------|-------------|
-| `iota:session:{id}` | Hash | Session metadata |
-| `iota:exec:{executionId}` | Hash | Execution record |
-| `iota:session-execs:{sessionId}` | Set | Session → execution mappings |
-| `iota:executions` | Sorted Set | Global execution index |
-| `iota:events:{executionId}` | List | Event stream |
-| `iota:visibility:tokens:{executionId}` | String | Token counts |
-| `iota:visibility:spans:{executionId}` | List | Trace spans |
-| `iota:visibility:context:{executionId}` | String | Context manifest |
-| `iota:visibility:memory:{executionId}` | String | Memory visibility |
-| `iota:visibility:link:{executionId}` | String | Protocol link data |
-| `iota:visibility:{executionId}:chain` | List | Visibility chain (TraceSpan list) |
-| `iota:visibility:mapping:{executionId}` | List | Event mappings |
-| `iota:visibility:session:{sessionId}` | Sorted Set | Session visibility index |
-| `iota:fencing:execution:{executionId}` | String | Distributed execution lock |
-| `iota:memories:{sessionId}` | Sorted Set | Memory blocks |
-| `iota:config:global` | Hash | Global config |
-| `iota:config:backend:{name}` | Hash | Backend config |
-| `iota:config:session:{id}` | Hash | Session config |
-| `iota:config:user:{id}` | Hash | User config |
-| `iota:audit` | List | Audit log |
+| 模式 | 类型 | 描述 |
+|------|------|------|
+| `iota:session:{id}` | Hash | Session 元数据 |
+| `iota:exec:{executionId}` | Hash | Execution 记录 |
+| `iota:session-execs:{sessionId}` | Set | Session → Execution 映射 |
+| `iota:executions` | Sorted Set | 全局 Execution 索引 |
+| `iota:events:{executionId}` | Stream | 事件流 |
+| `iota:visibility:tokens:{executionId}` | String | Token 计数 |
+| `iota:visibility:spans:{executionId}` | List | Trace span |
+| `iota:visibility:context:{executionId}` | String | Context 清单 |
+| `iota:visibility:memory:{executionId}` | String | Memory 可见性 |
+| `iota:visibility:link:{executionId}` | String | 协议链路数据 |
+| `iota:visibility:{executionId}:chain` | Hash | Visibility chain（spanId -> TraceSpan） |
+| `iota:visibility:mapping:{executionId}` | List | 事件映射 |
+| `iota:visibility:session:{sessionId}` | Sorted Set | Session visibility 索引 |
+| `iota:fencing:execution:{executionId}` | String | 分布式执行锁 |
+| `iota:memory:{type}:{memoryId}` | Hash | 统一记忆对象 |
+| `iota:memories:{type}:{scopeId}` | Sorted Set | 按类型+作用域的记忆索引 |
+| `iota:memory:by-backend:{backend}` | Set | 按 Backend 的记忆 ID |
+| `iota:memory:by-tag:{tag}` | Set | 按标签的记忆 ID |
+| `iota:config:global` | Hash | 全局配置 |
+| `iota:config:backend:{name}` | Hash | Backend 配置 |
+| `iota:config:session:{id}` | Hash | Session 配置 |
+| `iota:config:user:{id}` | Hash | User 配置 |
+| `iota:audit` | Sorted Set | 审计日志（时间戳为分数，双写：JSONL 文件 + Redis） |
 
 ---
 
-## 10. Core Functionality — MCP Support
+## 10. 核心功能 — MCP 支持
 
-### Overview
+### 概览
 
-The Engine provides built-in Model Context Protocol (MCP) support, allowing sessions to connect to external MCP tool servers. MCP servers are managed as subprocesses communicating over stdio using JSON-RPC 2.0.
+Engine 内置 Model Context Protocol（MCP）支持，允许 Session 连接外部 MCP 工具服务器。MCP 服务器作为子进程管理，通过 stdio 使用 JSON-RPC 2.0 通信。
 
-**Source files**:
-- `src/mcp/client.ts` — `McpClient` interface and `StdioMcpClient` implementation
-- `src/mcp/manager.ts` — `McpServerManager` lifecycle management
-- `src/mcp/router.ts` — `McpRouter` orchestration layer
+**源文件**：
+- `src/mcp/client.ts` — `McpClient` 接口和 `StdioMcpClient` 实现
+- `src/mcp/manager.ts` — `McpServerManager` 生命周期管理
+- `src/mcp/router.ts` — `McpRouter` 编排层
 
-### Architecture
+### 架构
 
 ```mermaid
 graph LR
@@ -1108,20 +1037,18 @@ graph LR
     Router --> Manager[McpServerManager]
     Manager --> ClientA[StdioMcpClient A]
     Manager --> ClientB[StdioMcpClient B]
-    ClientA -->|JSON-RPC 2.0<br/>stdio| ServerA[MCP Server A]
-    ClientB -->|JSON-RPC 2.0<br/>stdio| ServerB[MCP Server B]
+    ClientA -->|JSON-RPC 2.0 stdio| ServerA[MCP Server A]
+    ClientB -->|JSON-RPC 2.0 stdio| ServerB[MCP Server B]
 ```
 
-### Key Types
+### 关键类型
 
 ```typescript
-// McpClient interface (src/mcp/client.ts)
 interface McpClient {
   request(method: string, params?: unknown): Promise<unknown>;
   close?(): Promise<void>;
 }
 
-// MCP Server descriptor (src/event/types.ts)
 interface McpServerDescriptor {
   name: string;
   command: string;
@@ -1129,14 +1056,12 @@ interface McpServerDescriptor {
   env?: Record<string, string>;
 }
 
-// Tool call request (src/mcp/router.ts)
 interface McpToolCall {
   serverName: string;
   toolName: string;
   arguments: Record<string, unknown>;
 }
 
-// Server status (src/mcp/manager.ts)
 interface McpServerStatus {
   name: string;
   connected: boolean;
@@ -1148,46 +1073,41 @@ interface McpServerStatus {
 
 ### McpRouter API
 
-| Method | Description |
-|--------|-------------|
-| `listServers()` | Return registered MCP server descriptors |
-| `status()` | Connection status of all servers |
-| `listTools()` | All available tools across connected servers |
-| `addServer(server)` | Register a new MCP server at runtime |
-| `removeServer(name)` | Remove and disconnect an MCP server |
-| `callTool(call)` | Invoke a tool on a specific server |
-| `startHealthChecks(intervalMs?)` | Start periodic ping-based health checks (default 30 s) |
-| `close()` | Shut down all connections |
+| 方法 | 描述 |
+|------|------|
+| `listServers()` | 返回已注册的 MCP 服务器描述符 |
+| `status()` | 所有服务器的连接状态 |
+| `listTools()` | 所有已连接服务器的可用工具 |
+| `addServer(server)` | 运行时注册新 MCP 服务器 |
+| `removeServer(name)` | 移除并断开 MCP 服务器 |
+| `callTool(call)` | 在指定服务器上调用工具 |
+| `startHealthChecks(intervalMs?)` | 启动基于 ping 的定期健康检查（默认 30s） |
+| `close()` | 关闭所有连接 |
 
-### Protocol Details
+### 协议详情
 
-- **Transport**: Subprocess stdio (stdin/stdout)
-- **Protocol**: JSON-RPC 2.0
-- **Initialization**: Sends `initialize` with `protocolVersion: "2024-11-05"`
-- **Tool discovery**: `tools/list` on connect, cached per server
-- **Tool invocation**: `tools/call` with `{ name, arguments }`
-- **Health check**: `ping` — failed servers are disconnected and reconnected on next `getClient()`
-- **Timeout**: 30 seconds per request (configurable)
+- **传输**：子进程 stdio（stdin/stdout）
+- **协议**：JSON-RPC 2.0
+- **初始化**：发送 `initialize`，`protocolVersion: "2024-11-05"`
+- **工具发现**：连接时执行 `tools/list`，每个服务器缓存结果
+- **工具调用**：`tools/call`，参数 `{ name, arguments }`
+- **健康检查**：`ping` — 失败服务器断开连接，下次 `getClient()` 时重连
+- **超时**：每个请求 30 秒（可配置）
 
-### Configuration
-
-MCP servers are configured via the Engine config schema:
+### 配置
 
 ```typescript
-// In config schema (src/config/schema.ts)
+// 配置 schema（src/config/schema.ts）
 mcp: {
-  servers: McpServerDescriptor[];  // default: []
+  servers: McpServerDescriptor[];  // 默认：[]
 }
 ```
 
-Set via CLI:
 ```bash
 iota config set mcp.servers '[{"name":"my-server","command":"npx","args":["-y","my-mcp-server"]}]'
 ```
 
-### Approval Policy
-
-MCP external tool calls are governed by the approval system:
+### 审批策略
 
 ```typescript
 approval: {
@@ -1195,64 +1115,48 @@ approval: {
 }
 ```
 
-### Verification
-
-MCP status is available programmatically via the Engine API (no dedicated REST endpoints):
+### 验证
 
 ```typescript
-// Via Engine instance (used internally by Agent/CLI)
 const engine = new IotaEngine({ workingDirectory: "/tmp" });
 await engine.init();
-
 const servers = engine.getMcpServers();   // McpServerStatus[]
-console.log(servers);
-// [{ name: "my-server", connected: true, tools: ["read_file", "write_file"] }]
 ```
 
 ```bash
-# MCP capabilities are surfaced in the backend status endpoint
 curl http://localhost:9666/api/v1/status | jq '.backends[].capabilities.mcp'
 ```
 
 ---
 
-## 11. Core Functionality — Metrics Collection
+## 11. 核心功能 — 指标采集
 
-### Overview
+### 概览
 
-The Engine collects in-process runtime metrics via `MetricsCollector`, tracking execution counts, latency percentiles, tool call usage, approval statistics, and visibility-derived quality indicators.
+Engine 通过 `MetricsCollector` 采集进程内运行时指标，跟踪执行计数、延迟百分位、工具调用量、审批统计以及基于 Visibility 的质量指标。
 
-**Source file**: `src/metrics/collector.ts`
+**源文件**：`src/metrics/collector.ts`
 
-### MetricsSnapshot Structure
+### MetricsSnapshot 结构
 
 ```typescript
 interface MetricsSnapshot {
-  // Execution counts
   executions: number;
   success: number;
   failure: number;
   interrupted: number;
   byBackend: Partial<Record<BackendName, number>>;
   backendCrashes: Partial<Record<BackendName, number>>;
-
-  // Event & tool counts
   eventCount: number;
   toolCallCount: number;
-
-  // Approval stats
   approvalCount: number;
   approvalDenied: number;
   approvalTimeout: number;
-
-  // Latency percentiles (LatencyStats)
   latencyMs: LatencyStats;
-
-  // Visibility-derived metrics
-  contextBudgetUsed: number[];   // ratio of context budget consumed
-  memoryHitRatio: number[];      // selected / candidates
-  nativeTokenTotal: number[];    // native tokens per execution
-  parseLossRatio: number[];      // lossy mappings / total refs
+  contextBudgetUsed: number[];   // 上下文预算消耗比例
+  memoryHitRatio: number[];      // 选中 / 候选比例
+  nativeTokenTotal: number[];    // 每次执行的原生 token 数
+  parseLossRatio: number[];      // 有损映射 / 总引用比例
 }
 
 interface LatencyStats {
@@ -1263,41 +1167,40 @@ interface LatencyStats {
 }
 ```
 
-### MetricsCollector Methods
+### MetricsCollector 方法
 
-| Method | Description |
-|--------|-------------|
-| `recordExecution(response)` | Track execution status and tool call count per backend |
-| `recordBackendCrash(backend)` | Increment crash counter for a backend |
-| `recordApproval(denied, timeout)` | Track approval requests, denials, timeouts |
-| `recordLatency(ms)` | Record execution latency sample |
-| `recordEvent(event)` | Increment global event counter |
-| `recordVisibility(visibility)` | Extract context budget, memory hit ratio, token counts, parse loss from visibility bundle |
-| `getSnapshot()` | Return a point-in-time `MetricsSnapshot` |
+| 方法 | 描述 |
+|------|------|
+| `recordExecution(response)` | 按 Backend 跟踪执行状态和工具调用计数 |
+| `recordBackendCrash(backend)` | 递增 Backend 崩溃计数器 |
+| `recordApproval(denied, timeout)` | 跟踪审批请求、拒绝、超时 |
+| `recordLatency(ms)` | 记录执行延迟样本 |
+| `recordEvent(event)` | 递增全局事件计数器 |
+| `recordVisibility(visibility)` | 从 visibility 束提取上下文预算、记忆命中率、token 计数、解析损失 |
+| `getSnapshot()` | 返回当前时刻的 `MetricsSnapshot` |
 
-### Sampling
+### 采样机制
 
-- Latency and visibility-derived arrays keep the **last 1,000 samples** — older entries are pruned automatically.
-- Percentiles (P50, P95, P99) are computed on-demand from the sorted sample array.
+- 延迟和基于 Visibility 的数组保留**最近 1000 个样本**，超出后自动裁剪。
+- 百分位（P50、P95、P99）按需从排序后的样本数组计算。
 
-### Verification
+### 验证
 
 ```bash
-# Get metrics via Agent API
 curl http://localhost:9666/api/v1/metrics
 ```
 
 ---
 
-## 12. Core Functionality — Audit Logging
+## 12. 核心功能 — 审计日志
 
-### Overview
+### 概览
 
-The Engine writes a tamper-evident audit trail recording every significant action — execution lifecycle, tool calls, approval decisions, backend switches, and errors. Entries are written in JSONL format to the local filesystem with an optional remote sink for centralized collection.
+Engine 写入防篡改审计跟踪，记录每个重要操作——执行生命周期、工具调用、审批决策、Backend 切换和错误。条目以 JSONL 格式写入本地文件系统，可选远端 sink 用于集中采集。
 
-**Source file**: `src/audit/logger.ts`
+**源文件**：`src/audit/logger.ts`
 
-### AuditEntry Structure
+### AuditEntry 结构
 
 ```typescript
 interface AuditEntry {
@@ -1318,24 +1221,25 @@ interface AuditEntry {
 }
 ```
 
-### Action Types
+### 操作类型
 
-| Action | When Recorded |
-|--------|---------------|
-| `execution_start` | An execution begins |
-| `execution_finish` | An execution completes (success/failure/interrupted) |
-| `tool_call` | A tool is invoked by the backend |
-| `approval_request` | User approval is requested |
-| `approval_decision` | User approves or denies |
-| `backend_switch` | Active backend changes |
-| `error` | A runtime error occurs |
+| 操作 | 记录时机 |
+|------|---------|
+| `execution_start` | 执行开始 |
+| `execution_finish` | 执行完成（成功/失败/中断） |
+| `tool_call` | Backend 调用工具 |
+| `approval_request` | 请求用户审批 |
+| `approval_decision` | 用户批准或拒绝 |
+| `backend_switch` | 活动 Backend 切换 |
+| `error` | 运行时错误发生 |
 
-### Storage
+### 存储
 
-- **Path**: `${IOTA_HOME}/audit.jsonl`
-- **Format**: JSONL — one JSON object per line
-- **Directory**: Created lazily on first write
-- **Dual write**: File system + optional `sink.appendAuditEntry()` for remote forwarding
+- **文件路径**：`${IOTA_HOME}/logs/audit.jsonl`
+- **格式**：JSONL — 每行一个 JSON 对象
+- **目录**：首次写入时懒创建
+- **Redis 双写**：同时写入 Redis Sorted Set `iota:audit`（时间戳为分数），通过 `storage.appendAuditEntry()` 实现
+- **远端转发**：可选 sink 用于集中采集
 
 ### AuditLogger API
 
@@ -1349,35 +1253,28 @@ class AuditLogger {
 }
 ```
 
-### Querying Audit Logs
+### 查询审计日志
 
 ```bash
-# View last 10 entries
 tail -10 ~/.iota/audit.jsonl | jq .
-
-# Filter by action
 cat ~/.iota/audit.jsonl | jq 'select(.action == "tool_call")'
-
-# Filter by session
 cat ~/.iota/audit.jsonl | jq 'select(.sessionId == "SESSION_ID")'
-
-# Count approvals denied
 cat ~/.iota/audit.jsonl | jq 'select(.action == "approval_decision" and .result == "denied")' | wc -l
 ```
 
-> **Safety**: API keys, tokens, and secret-like values are redacted from `details` before writing.
+> **安全提示**：写入前会自动脱敏 `details` 中的 API key、token 和类似密钥的值。
 
 ---
 
-## 13. Core Functionality — Workspace Snapshots
+## 13. 核心功能 — Workspace 快照
 
-### Overview
+### 概览
 
-The Engine captures workspace snapshots — point-in-time records of the full session state including conversation history, active tools, MCP servers, and file manifests. Snapshots enable session restore and workspace inspection.
+Engine 捕获 Workspace 快照——Session 完整状态的时间点记录，包括对话历史、活动工具、MCP 服务器和文件清单。快照支持 Session 恢复和 Workspace 检查。
 
-**Source file**: `src/workspace/snapshot.ts`
+**源文件**：`src/workspace/snapshot.ts`
 
-### WorkspaceSnapshot Structure
+### WorkspaceSnapshot 结构
 
 ```typescript
 interface WorkspaceSnapshot {
@@ -1391,63 +1288,52 @@ interface WorkspaceSnapshot {
   mcpServers: McpServerDescriptor[];
   fileManifest: FileManifestEntry[];
   metadata: Record<string, unknown>;
-  manifestPath?: string;        // set after write
+  manifestPath?: string;        // 写入后设置
 }
 ```
 
-### Storage Hierarchy
+### 存储结构
 
 ```
 ${IOTA_HOME}/workspaces/${sessionId}/
-├── manifest.json                          # Latest snapshot metadata
+├── manifest.json
 ├── snapshots/
-│   ├── snap_abc123_lmno456.manifest.json  # File manifest per snapshot
+│   ├── snap_abc123_lmno456.manifest.json
 │   └── snap_def789_pqrs012.manifest.json
 └── deltas/
-    ├── exec_001.jsonl                     # Delta journal per execution
+    ├── exec_001.jsonl
     └── exec_002.jsonl
 ```
 
 ### API
 
-| Function | Description |
-|----------|-------------|
-| `createWorkspaceSnapshot(input)` | Create a snapshot object with generated `snapshotId` and `createdAt` |
-| `writeWorkspaceSnapshot(iotaHome, snapshot, manifest)` | Write snapshot + manifest to disk, prune old snapshots |
-| `appendDeltaJournal(iotaHome, sessionId, executionId, deltas)` | Append deltas as JSONL for a specific execution |
+| 函数 | 描述 |
+|------|------|
+| `createWorkspaceSnapshot(input)` | 创建快照对象，生成 `snapshotId` 和 `createdAt` |
+| `writeWorkspaceSnapshot(iotaHome, snapshot, manifest)` | 写入快照和清单到磁盘，裁剪旧快照 |
+| `appendDeltaJournal(iotaHome, sessionId, executionId, deltas)` | 为指定执行追加 JSONL delta |
 
-### Snapshot Pruning
+每个 Session 只保留**最近 5 个快照**。每次写入时自动删除更早的清单文件。
 
-Only the **last 5 snapshots** are retained per session. Older `.manifest.json` files are automatically deleted on each write.
-
-### Delta Journal
-
-Each execution produces a JSONL delta file recording incremental changes during that execution. Deltas enable fine-grained replay without full snapshot comparison.
-
-### Verification
+### 验证
 
 ```bash
-# List snapshots for a session
 ls ~/.iota/workspaces/$SESSION_ID/snapshots/
-
-# Inspect latest manifest
 cat ~/.iota/workspaces/$SESSION_ID/manifest.json | jq .
-
-# View deltas for an execution
 cat ~/.iota/workspaces/$SESSION_ID/deltas/$EXEC_ID.jsonl | jq .
 ```
 
 ---
 
-## 14. Core Functionality — Token Estimation
+## 14. 核心功能 — Token 估算
 
-### Overview
+### 概览
 
-The Visibility Plane uses a pluggable token estimator to convert text into approximate token counts. The default implementation uses a simple character-based heuristic; it can be replaced with per-model tokenizers for higher accuracy.
+Visibility 平面使用可插拔的 Token 估算器将文本转换为近似 token 计数。默认实现使用简单的字符数启发式算法；可替换为逐模型分词器以提高精度。
 
-**Source file**: `src/visibility/token-estimator.ts`
+**源文件**：`src/visibility/token-estimator.ts`
 
-### TokenEstimator Interface
+### TokenEstimator 接口
 
 ```typescript
 interface TokenEstimator {
@@ -1455,10 +1341,10 @@ interface TokenEstimator {
 }
 ```
 
-### Default Implementation
+### 默认实现
 
 ```typescript
-// ceil(charCount / 4) — simple heuristic, ~75% accurate for English text
+// ceil(字符数 / 4) — 简单启发式，英文文本准确率约 75%
 const CHARS_PER_TOKEN = 4;
 
 class DefaultTokenEstimator implements TokenEstimator {
@@ -1468,15 +1354,15 @@ class DefaultTokenEstimator implements TokenEstimator {
 }
 ```
 
-### Public API
+### 公共 API
 
-| Function | Description |
-|----------|-------------|
-| `getTokenEstimator()` | Get the current estimator instance (singleton, lazy-initialized) |
-| `setTokenEstimator(estimator)` | Replace the global estimator with a custom implementation |
-| `estimateTokens(text, backend?, model?)` | Convenience function — estimate tokens for a string |
+| 函数 | 描述 |
+|------|------|
+| `getTokenEstimator()` | 获取当前估算器实例（单例，懒初始化） |
+| `setTokenEstimator(estimator)` | 替换全局估算器为自定义实现 |
+| `estimateTokens(text, backend?, model?)` | 便捷函数 — 估算字符串的 token 数 |
 
-### Custom Estimator Example
+### 自定义估算器示例
 
 ```typescript
 import { setTokenEstimator, type TokenEstimator } from "@iota/engine";
@@ -1491,541 +1377,420 @@ const tikTokenEstimator: TokenEstimator = {
 setTokenEstimator(tikTokenEstimator);
 ```
 
-### Integration Points
-
-The token estimator is used by:
-- **VisibilityCollector** (`src/visibility/collector.ts`) — token ledger computation
-- **MemoryInjector** (`src/memory/injector.ts`) — memory budget calculation
+**集成点**：
+- `VisibilityCollector`（`src/visibility/collector.ts`）— Token 账本计算
+- `MemoryInjector`（`src/memory/injector.ts`）— 记忆预算计算
 
 ---
 
-## 15. Distributed Features
+## 15. 分布式特性
 
-### Backend Pool Management
+### Backend Pool 管理
 
-**File**: `src/backend/pool.ts`
+**文件**：`src/backend/pool.ts`
 
-**Purpose**: Manages multiple backend instances for isolation and performance.
+管理多个 Backend 实例，实现隔离和性能优化。
 
-**Verification**:
+**验证**：
 ```bash
 iota status
-# Shows all backends and their status
+# 显示所有 Backend 及其状态
 ```
 
 ---
 
-### Distributed Event Streaming
+### 分布式事件流
 
-**File**: `src/storage/pubsub.ts`
+**文件**：`src/storage/pubsub.ts`
 
-**Channels**:
-- `iota:execution:events` — Execution event notifications
-- `iota:session:updates` — Session state changes
-- `iota:config:changes` — Config change notifications
+**Redis 频道**：
+- `iota:execution:events` — 执行事件通知
+- `iota:session:updates` — Session 状态变更
+- `iota:config:changes` — 配置变更通知
 
-**Verification**:
+**验证**：
 ```bash
-# Subscribe to events channel
 redis-cli SUBSCRIBE iota:execution:events
-# Then execute a prompt
-# Observe event notifications
+# 然后执行一个 prompt，观察实时事件通知
 ```
 
 ---
 
-### Cross-Backend Data Isolation
+### 跨 Backend 数据隔离
 
-**Purpose**: Each backend's data is properly partitioned.
-
-**Verification**:
+**验证**：
 ```bash
-# Execute with backend A
 iota run --backend claude-code "test A"
-
-# Execute with backend B
 iota run --backend gemini "test B"
-
-# Check isolation
 curl http://localhost:9666/api/v1/backend-isolation
-# Expected: Separate counts, no leakage
+# 预期：各 Backend 独立计数，无数据泄漏
 ```
 
 ---
 
-## 16. Manual Verification Methods
+## 16. 手动验证方法
 
-### Verification Checklist: Backend Adapter (Claude Code)
+### 验证清单：Backend 适配器（Claude Code）
 
-**Objective**: Verify Claude Code adapter works correctly.
+**目标**：验证 Claude Code 适配器正常工作。
 
-- [ ] **Setup**: Redis running, claude available
+- [ ] **准备**：Redis 运行中，claude 可用
   ```bash
-  redis-cli ping
-  which claude
+  redis-cli ping && which claude
   ```
 
-- [ ] **Execute with trace**:
+- [ ] **带 trace 执行**：
   ```bash
   redis-cli FLUSHALL
   iota run --backend claude-code --trace "What is 2+2?"
   ```
 
-- [ ] **Verify subprocess**:
+- [ ] **验证子进程**（执行期间）：
   ```bash
-  # During execution
   ps aux | grep claude
-  # Expected: claude process visible
+  # 预期：claude 进程可见
   ```
 
-- [ ] **Verify events**:
+- [ ] **验证事件**：
   ```bash
   EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-  redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
-  # Expected: state, output types present
+  redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
+  # 预期：包含 state、output 类型
   ```
 
-- [ ] **Verify visibility**:
+- [ ] **验证可见性**：
   ```bash
   redis-cli KEYS "iota:visibility:*:$EXEC_ID"
-  # Expected: tokens, spans, link, context, memory
+  # 预期：tokens、spans、link、context、memory
   ```
 
-- [ ] **Cleanup**:
-  ```bash
-  redis-cli FLUSHALL
-  ```
+- [ ] **清理**：`redis-cli FLUSHALL`
 
-**Success Criteria**:
-- ✅ Subprocess spawned
-- ✅ NDJSON parsed correctly
-- ✅ RuntimeEvents created and persisted
-- ✅ All visibility data recorded
-- ✅ Token counts accurate
+**成功标准**：✅ 子进程已启动 ✅ NDJSON 正确解析 ✅ RuntimeEvent 已持久化 ✅ Visibility 数据完整 ✅ Token 计数准确
 
 ---
 
-### Verification Checklist: Backend Adapter (Hermes)
+### 验证清单：Backend 适配器（Hermes）
 
-**Objective**: Verify Hermes adapter works with JSON-RPC protocol.
+**目标**：验证 Hermes 适配器使用 JSON-RPC 协议正常工作。
 
-- [ ] **Setup**: Redis running, hermes available
+- [ ] **准备**：
   ```bash
-  redis-cli ping
-  which hermes
+  redis-cli ping && which hermes
   hermes config show
-  # Verify model.provider is not "custom" with unreachable gateway
+  # 验证 model.provider 不是指向不可达网关的 "custom"
   ```
 
-- [ ] **Execute with trace**:
+- [ ] **带 trace 执行**：
   ```bash
   redis-cli FLUSHALL
   iota run --backend hermes --trace "Hello"
   ```
 
-- [ ] **Verify long-running process**:
+- [ ] **验证长驻进程**：
   ```bash
   ps aux | grep hermes
-  # Expected: hermes running (stays alive after execution)
+  # 预期：hermes 仍在运行（执行后保持存活）
   ```
 
-- [ ] **Execute again**:
+- [ ] **再次执行并验证复用**：
   ```bash
   iota run --backend hermes "Second prompt"
-  ```
-
-- [ ] **Verify same process used**:
-  ```bash
-  # Hermes should still be running (not respawned)
   ps aux | grep hermes
+  # 预期：同一进程，未重新启动
   ```
 
-- [ ] **Cleanup**:
-  ```bash
-  redis-cli FLUSHALL
-  ```
+- [ ] **清理**：`redis-cli FLUSHALL`
 
-**Success Criteria**:
-- ✅ JSON-RPC request/response works
-- ✅ Subprocess stays alive across executions
-- ✅ Events parsed correctly
-- ✅ Visibility recorded
+**成功标准**：✅ JSON-RPC 请求/响应正常 ✅ 子进程跨执行保持存活 ✅ 事件正确解析 ✅ Visibility 已记录
 
 ---
 
-### Verification Checklist: Memory System
+### 验证清单：Memory 系统
 
-**Objective**: Verify memory extraction, storage, retrieval, and injection.
+**目标**：验证记忆提取、存储、检索和注入。
 
-- [ ] **Setup**: Session with substantial conversation
+- [ ] **准备并执行**：
   ```bash
   redis-cli FLUSHALL
   iota run --backend claude-code "Explain binary search with code examples"
   ```
 
-- [ ] **Verify extraction**:
+- [ ] **验证提取**：
   ```bash
   SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
-  redis-cli ZCARD "iota:memories:$SESSION_ID"
-  # Expected: >= 1
+  redis-cli ZCARD "iota:memories:episodic:$SESSION_ID"
+  # 预期：>= 1
   ```
 
-- [ ] **View memory content**:
+- [ ] **查看记忆内容**：
   ```bash
-  redis-cli ZREVRANGE "iota:memories:$SESSION_ID" 0 -1 WITHSCORES | head -20
+  MEMORY_ID=$(redis-cli ZREVRANGE "iota:memories:episodic:$SESSION_ID" 0 0)
+  redis-cli HGETALL "iota:memory:episodic:$MEMORY_ID"
   ```
 
-- [ ] **Verify memory visibility**:
+- [ ] **验证 Memory Visibility**：
   ```bash
   EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
   redis-cli GET "iota:visibility:memory:$EXEC_ID" | jq '.selected'
-  # Expected: Selected memory blocks
   ```
 
-- [ ] **Cleanup**:
-  ```bash
-  redis-cli FLUSHALL
-  ```
+- [ ] **清理**：`redis-cli FLUSHALL`
 
 ---
 
-### Verification Checklist: TraceSpan Hierarchy
+### 验证清单：TraceSpan 层次
 
-**Objective**: Verify spans form correct hierarchy.
+**目标**：验证 span 构成正确的层次结构。
 
-- [ ] **Setup**: Execute prompt
+- [ ] **执行并获取 span**：
   ```bash
   redis-cli FLUSHALL
   iota run --backend claude-code "test"
-  ```
-
-- [ ] **Fetch all spans**:
-  ```bash
   EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
   redis-cli LRANGE "iota:visibility:spans:$EXEC_ID" 0 -1 > /tmp/spans.json
   ```
 
-- [ ] **Find root span**:
+- [ ] **找到根 span**：
   ```bash
   cat /tmp/spans.json | jq '[.[] | select(.parentSpanId == null)]'
-  # Expected: 1 root span with kind "engine.request"
+  # 预期：1 个根 span，类型为 "engine.request"
   ```
 
-- [ ] **Build hierarchy**:
+- [ ] **验证层次完整性**：
   ```bash
-  # Verify each non-root span has valid parent
   cat /tmp/spans.json | jq '[.[] | select(.parentSpanId != null)] | length'
-  # Should equal total spans - 1
+  # 应等于总 span 数 - 1
   ```
 
-- [ ] **Verify kinds present**:
+- [ ] **验证关键类型存在**：
   ```bash
   cat /tmp/spans.json | jq '[.[] | .kind] | unique'
-  # Expected: Contains backend.spawn, backend.stdout.read, adapter.parse, etc.
+  # 预期：包含 backend.spawn、backend.stdout.read、adapter.parse 等
   ```
 
-- [ ] **Cleanup**:
-  ```bash
-  redis-cli FLUSHALL
-  ```
+- [ ] **清理**：`redis-cli FLUSHALL`
 
 ---
 
-### Verification Checklist: Config Resolution
+### 验证清单：配置解析
 
-**Objective**: Verify config stored and resolved correctly.
+**目标**：验证配置正确存储和解析。
 
-- [ ] **Setup**: Clean config
+- [ ] **设置全局配置**：
   ```bash
   redis-cli FLUSHALL
-  ```
-
-- [ ] **Set global config**:
-  ```bash
   iota config set approval.shell "ask"
   redis-cli HGET "iota:config:global" "approval.shell"
-  # Expected: "ask"
+  # 预期："ask"
   ```
 
-- [ ] **Set backend config**:
+- [ ] **设置 Backend 配置**：
   ```bash
   iota config set timeout 60000 --scope backend --scope-id claude-code
   redis-cli HGET "iota:config:backend:claude-code" "timeout"
-  # Expected: "60000"
+  # 预期："60000"
   ```
 
-- [ ] **Verify resolution**:
+- [ ] **验证解析**：
   ```bash
   iota config get approval.shell
-  # Expected: "ask"
-  
   iota config get timeout --scope backend --scope-id claude-code
-  # Expected: "60000"
-  ```
-
-- [ ] **Verify via Agent API**:
-  ```bash
   curl http://localhost:9666/api/v1/config?backend=claude-code | jq '."approval.shell"'
-  # Expected: "ask"
   ```
 
-- [ ] **Cleanup**:
-  ```bash
-  redis-cli FLUSHALL
-  ```
+- [ ] **清理**：`redis-cli FLUSHALL`
 
 ---
 
-## 17. Troubleshooting
+## 17. 故障排查
 
-### Issue: Backend Spawn Failed
+### 问题：Backend 启动失败
 
-**Symptoms**: `Backend 'xxx' not found` or subprocess doesn't start
+**症状**：`Backend 'xxx' not found` 或子进程未启动
 
-**Diagnosis**:
+**诊断**：
 ```bash
 which <backend>
 iota status
 ps aux | grep <backend>
 ```
 
-**Solution**:
-- Install backend CLI
-- Add to PATH
-- Check backend config file exists and has required fields
+**解决方案**：安装 Backend CLI，添加到 PATH，检查配置文件。
 
 ---
 
-### Issue: Protocol Parsing Error
+### 问题：协议解析错误
 
-**Symptoms**: `adapter.parse` span shows errors
+**症状**：`adapter.parse` span 显示错误
 
-**Diagnosis**:
+**诊断**：
 ```bash
 iota run --backend claude-code --trace "test"
-# Check adapter.parse span for errors
+# 检查 adapter.parse span 的错误
 ```
 
-**Solution**:
-- Check backend is outputting valid NDJSON/JSON-RPC
-- Check backend version is supported
-- Verify stdin/stdout pipes are working
+**解决方案**：检查 Backend 版本是否受支持，验证 stdio 管道是否正常。
 
 ---
 
-### Issue: Memory Not Extracted
+### 问题：Memory 未提取
 
-**Symptoms**: `redis-cli ZCARD "iota:memories:..."` returns 0
+**症状**：`redis-cli ZCARD "iota:memories:episodic:..."` 返回 0
 
-**Diagnosis**:
+**诊断**：
 ```bash
-# Check output length
 redis-cli HGET "iota:exec:{executionId}" "output" | wc -c
-# If short: Below extraction threshold
+# 如果较短：低于提取阈值（通常 >500 字符）
 ```
 
-**Solution**:
-- Execute with longer/more substantial output
-- Check `iota:visibility:memory:{execId}` for extraction reason
-- Verify memory extraction threshold (typically >500 chars)
+**解决方案**：检查 `iota:visibility:memory:{execId}` 获取提取原因。
 
 ---
 
-### Issue: Visibility Data Missing
+### 问题：Visibility 数据缺失
 
-**Symptoms**: Some visibility keys not created
+**症状**：某些 visibility 键未创建
 
-**Diagnosis**:
+**诊断**：
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 redis-cli KEYS "iota:visibility:*:$EXEC_ID"
 ```
 
-**Solution**:
-- Check Redis is running and accessible
-- Check for errors in --trace output
-- Verify VisibilityCollector is initialized
+**解决方案**：确认 Redis 可访问，检查 `--trace` 输出中的错误。
 
 ---
 
-## 18. Cleanup
+## 18. 清理
 
-### Reset Redis
+### 重置 Redis
 
 ```bash
 redis-cli FLUSHALL
 ```
 
-### Stop Services
+### 停止服务
 
 ```bash
-# Stop Redis
 cd deployment/scripts && bash stop-storage.sh
 ```
 
 ---
 
-## 19. End-to-End Verification: Memory & Session Flow
+## 19. 端到端验证：Memory 与 Session 流程
 
-This section provides a step-by-step walkthrough to verify Iota's session management and automated memory system in a single end-to-end flow.
-
-### 14.1 Session Creation and Execution
+### 14.1 Session 创建与执行
 
 ```bash
-# Create session via API
 SESSION_ID=$(curl -s -X POST http://localhost:9666/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"workingDirectory": "/tmp"}' | jq -r '.sessionId')
 
-# Verify session persisted in Redis
 redis-cli HGETALL "iota:session:$SESSION_ID"
 ```
 
-**Expected fields**: `id`, `workingDirectory`, `activeBackend`, `createdAt`.
+**预期字段**：`id`、`workingDirectory`、`activeBackend`、`createdAt`。
 
-### 14.2 Dialogue Memory Accumulation
-
-Execute multiple prompts in the same session to verify conversation context builds up:
+### 14.2 对话记忆积累
 
 ```bash
 iota run --session $SESSION_ID "My favorite color is blue."
 iota run --session $SESSION_ID "What is my favorite color?"
-```
 
-**Verify** — Check that both user roles appear in event context:
-
-```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | tail -1 | cut -d: -f3)
-redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | grep -c '"role":"user"'
-# Expected: 2 (previous prompt carried as history)
+redis-cli XRANGE "iota:events:$EXEC_ID" - + | grep -c '"role":"user"'
+# 预期：2（前一个 prompt 作为历史携带）
 ```
 
-### 14.3 Memory Extraction
-
-Execute a prompt that produces substantial output to trigger extraction:
+### 14.3 Memory 提取
 
 ```bash
 iota run --session $SESSION_ID "Explain binary search in Python with code blocks."
+
+redis-cli ZCARD "iota:memories:episodic:$SESSION_ID"
+# 预期：>= 1
+
+MEMORY_ID=$(redis-cli ZREVRANGE "iota:memories:episodic:$SESSION_ID" 0 0)
+redis-cli HGET "iota:memory:episodic:$MEMORY_ID" type
 ```
 
-**Verify** — Check memories were extracted:
-
-```bash
-redis-cli ZCARD "iota:memories:$SESSION_ID"
-# Expected: >= 1
-
-# View extracted memory types
-redis-cli ZREVRANGE "iota:memories:$SESSION_ID" 0 0 | jq '.[].type'
-# Expected: e.g. "procedural"
-```
-
-### 14.4 Memory Injection
-
-Execute a related query that should trigger memory retrieval:
+### 14.4 Memory 注入
 
 ```bash
 iota run --session $SESSION_ID "Now implement the search function."
-```
 
-**Verify** — Check injection details via visibility:
-
-```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | tail -1 | cut -d: -f3)
 iota vis --execution $EXEC_ID --memory
-# Expected: "candidates" and "selected" fields populated
+# 预期：populated "candidates" 和 "selected" 字段
 ```
 
-### 14ony5 Security: Workspace Guard
-
-Test boundary enforcement:
+### 14.5 安全：Workspace 边界守卫
 
 ```bash
 iota run --session $SESSION_ID "Read /etc/passwd"
-# Expected: triggers fileOutside approval or direct denial
+# 预期：触发 fileOutside 审批或直接拒绝
 ```
 
-### 14.6 Approval Policy
-
-Configure and test approval mode:
+### 14.6 审批策略
 
 ```bash
 iota config set approval.shell ask
 iota interactive
-# Enter: run "rm -rf /tmp/test"
-# Expected: ⏳ Waiting for approval...
+# 输入：run "rm -rf /tmp/test"
+# 预期：⏳ Waiting for approval...
 ```
 
-### 14.7 Garbage Collection
+### 14.7 垃圾回收
 
 ```bash
 iota gc
-# Cleans stale execution records and expired visibility data
+# 清理过期的 Execution 记录和 Visibility 数据
 ```
 
-### 14.8 Session Cleanup
+### 14.8 Session 清理
 
 ```bash
 curl -X DELETE http://localhost:9666/api/v1/sessions/$SESSION_ID
 ```
 
-### 14.9 Command Quick Reference
+### 14.9 命令快速参考
 
-| Function | Command |
-|----------|---------|
-| Status check | `iota status` |
-| Interactive mode | `iota interactive` |
-| Visibility inspection | `iota vis --execution <id>` |
-| Session log search | `iota vis search --session <id> --prompt "keyword"` |
-| Backend switch | `iota switch <backend>` |
-| Export data | `iota vis --session <id> --export data.json` |
+| 功能 | 命令 |
+|------|------|
+| 状态检查 | `iota status` |
+| 交互模式 | `iota interactive` |
+| Visibility 检查 | `iota vis --execution <id>` |
+| Session 日志搜索 | `iota vis search --session <id> --prompt "keyword"` |
+| Backend 切换 | `iota switch <backend>` |
+| 数据导出 | `iota vis --session <id> --export data.json` |
 
 ---
 
-## 20. Observability Verification Reference
+## 20. 可观测性验证参考
 
-This section provides targeted verification checks for Iota's observability features.
-
-### 15.1 Session Inspection via Redis
+### 15.1 通过 Redis 检查 Session
 
 ```bash
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
 redis-cli HGETALL "iota:session:$SESSION_ID"
 ```
 
-**Expected output** (example):
-```
-id              abc-def-ghi
-workingDirectory /Users/han/codingx/iota
-activeBackend    claude-code
-createdAt       1714067200000
-updatedAt       1714067250000
-```
-
-### 15.2 Execution Events Type Distribution
+### 15.2 Execution 事件类型分布
 
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[].type'
+redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
+# 预期：包含 "state"、"output"、"extension" 类型
 ```
 
-**Expected**: Contains `"state"`, `"output"`, `"extension"` event types.
-
-### 15.3 Full Tracing via CLI
-
-Execute with `--trace` flag to see the complete Iota Engine → subprocess → protocol parse → event persist chain:
+### 15.3 通过 CLI 完整 Trace
 
 ```bash
 bun iota-cli/dist/index.js run --backend claude-code --trace "Hello"
-```
+# 预期 span 链：engine.request → workspace.scan → backend.spawn
+#   → backend.stdin.write → backend.stdout.read → adapter.parse → event.persist
 
-**Expected trace spans**:
-```
-engine.request → workspace.scan → backend.spawn → backend.stdin.write
-→ backend.stdout.read → adapter.parse → event.persist
-```
-
-Export trace as JSON:
-```bash
 bun iota-cli/dist/index.js run --backend claude-code --trace-json "Hello"
 ```
 
@@ -2036,7 +1801,7 @@ SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
 curl -s "http://localhost:9666/api/v1/sessions/$SESSION_ID/snapshot" | jq '{tokens: .tokens, memory: .memory}'
 ```
 
-**Expected**:
+**预期**：
 ```json
 {
   "tokens": { "inputTokens": 33819, "outputTokens": 81, "confidence": "estimated" },
@@ -2044,67 +1809,53 @@ curl -s "http://localhost:9666/api/v1/sessions/$SESSION_ID/snapshot" | jq '{toke
 }
 ```
 
-### 15.5 Token Visibility via Redis
+### 15.5 通过 Redis 查看 Token Visibility
 
 ```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
-redis-cli HGETALL "iota:visibility:$EXEC_ID:tokens"
+redis-cli GET "iota:visibility:tokens:$EXEC_ID"
+# 预期：JSON 包含 input、output、total、confidence 字段
 ```
 
-**Expected**: `input.nativeTokens`, `output.nativeTokens`, `confidence` fields.
-
-### 15.6 Multi-Backend Execution Distribution
+### 15.6 多 Backend 执行分布
 
 ```bash
 iota run --backend claude-code "Hello"
 iota run --backend codex "Hello"
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | tail -1 | cut -d: -f3)
 iota vis --session "$SESSION_ID"
-# Expected: Backend distribution with execution counts per backend
 ```
 
-### 15.7 Latency Percentiles
-
-Execute multiple prompts to gather latency data:
+### 15.7 延迟百分位
 
 ```bash
-for i in {1..3}; do
-  iota run --backend claude-code "Count to $i"
-done
-```
+for i in {1..3}; do iota run --backend claude-code "Count to $i"; done
 
-Query via API:
-```bash
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | tail -1 | cut -d: -f3)
 curl -s "http://localhost:9666/api/v1/executions/$EXEC_ID/app-snapshot" | jq '.tracing.tabs.performance.latencyMs'
+# 预期：{ "p50": 150, "p95": 320, "p99": 450 }
 ```
 
-**Expected**: `{ "p50": 150, "p95": 320, "p99": 450 }`
-
-### 15.8 Export Visibility Data
+### 15.8 导出 Visibility 数据
 
 ```bash
-# Export single execution as JSON
 EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
 iota vis "$EXEC_ID" --json > /tmp/visibility.json
-
-# Export session as CSV
 iota vis --session "$SESSION_ID" --format csv > /tmp/session.csv
 ```
 
-### 15.9 Redis Pub/Sub for Real-Time Monitoring
+### 15.9 Redis Pub/Sub 实时监控
 
 ```bash
-# Terminal 1: Subscribe
+# 终端 1：订阅
 redis-cli SUBSCRIBE iota:execution:events
 
-# Terminal 2: Execute
+# 终端 2：执行
 iota run --backend claude-code "test"
-
-# Terminal 1: Observe event notifications in real-time
+# 终端 1 实时观察事件通知
 ```
 
-### 15.10 Observability Data Cleanup
+### 15.10 可观测性数据清理
 
 ```bash
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | tail -1 | cut -d: -f3)
@@ -2123,9 +1874,9 @@ redis-cli DEL "iota:session:$SESSION_ID" "iota:memories:$SESSION_ID" "iota:sessi
 
 ---
 
-## 21. References
+## 21. 参考资料
 
-### Related Guides
+### 相关指南
 
 - [00-architecture-overview.md](./00-architecture-overview.md)
 - [01-cli-guide.md](./01-cli-guide.md)
@@ -2133,22 +1884,23 @@ redis-cli DEL "iota:session:$SESSION_ID" "iota:memories:$SESSION_ID" "iota:sessi
 - [03-agent-guide.md](./03-agent-guide.md)
 - [04-app-guide.md](./04-app-guide.md)
 
-### Source File Locations
+### 源文件位置
 
-| Component | File |
-|-----------|------|
-| Engine core | `iota-engine/src/engine.ts` |
-| Backend interface | `iota-engine/src/backend/interface.ts` |
-| Claude adapter | `iota-engine/src/backend/claude-code.ts` |
-| Codex adapter | `iota-engine/src/backend/codex.ts` |
-| Gemini adapter | `iota-engine/src/backend/gemini.ts` |
-| Hermes adapter | `iota-engine/src/backend/hermes.ts` |
+| 组件 | 文件 |
+|------|------|
+| Engine 核心 | `iota-engine/src/engine.ts` |
+| Backend 接口 | `iota-engine/src/backend/interface.ts` |
+| Claude 适配器 | `iota-engine/src/backend/claude-code.ts` |
+| Codex 适配器 | `iota-engine/src/backend/codex.ts` |
+| Gemini 适配器 | `iota-engine/src/backend/gemini.ts` |
+| Hermes 适配器 | `iota-engine/src/backend/hermes.ts` |
 | RedisConfigStore | `iota-engine/src/config/redis-store.ts` |
-| Memory extractor | `iota-engine/src/memory/extractor.ts` |
+| Memory mapper | `iota-engine/src/memory/mapper.ts` |
+| Memory storage | `iota-engine/src/memory/storage.ts` |
 | Memory injector | `iota-engine/src/memory/injector.ts` |
 | VisibilityCollector | `iota-engine/src/visibility/collector.ts` |
 | RedisVisibilityStore | `iota-engine/src/visibility/redis-store.ts` |
-| Visibility types | `iota-engine/src/visibility/types.ts` |
+| Visibility 类型 | `iota-engine/src/visibility/types.ts` |
 | Token estimator | `iota-engine/src/visibility/token-estimator.ts` |
 | MCP client | `iota-engine/src/mcp/client.ts` |
 | MCP router | `iota-engine/src/mcp/router.ts` |
@@ -2156,19 +1908,19 @@ redis-cli DEL "iota:session:$SESSION_ID" "iota:memories:$SESSION_ID" "iota:sessi
 | Metrics collector | `iota-engine/src/metrics/collector.ts` |
 | Audit logger | `iota-engine/src/audit/logger.ts` |
 | Workspace snapshot | `iota-engine/src/workspace/snapshot.ts` |
-| Approval hook interface | `iota-engine/src/approval/hook.ts` |
+| Approval hook 接口 | `iota-engine/src/approval/hook.ts` |
 | CLI approval hook | `iota-engine/src/approval/cli-hook.ts` |
 | Deferred approval hook | `iota-engine/src/approval/deferred-hook.ts` |
 | Approval helpers | `iota-engine/src/approval/helpers.ts` |
-| Approval guard (**unused**) | `iota-engine/src/approval/guard.ts` |
+| Approval guard（**未使用**） | `iota-engine/src/approval/guard.ts` |
 
-> **Note on `approval/guard.ts`**: The `ApprovalGuard` class is a refactoring-in-progress that is **not wired into the main execution path**. Approval logic is currently inlined in `engine.ts` via the `guardEvent` async generator. The guard file is retained for potential future extraction but should not be referenced as an active module. See `approval/CONSOLIDATION.md` for details.
+> **关于 `approval/guard.ts`**：`ApprovalGuard` 类是重构进行中的产物，**未接入主执行路径**。审批逻辑目前通过 `guardEvent` 异步生成器内联在 `engine.ts` 中。该文件保留供未来提取使用，不应作为活跃模块引用。详见 `approval/CONSOLIDATION.md`。
 
 ---
 
-## Version History
+## 版本历史
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | April 2026 | Initial release |
-| 1.1 | April 2026 | Added MCP Support, Metrics Collection, Audit Logging, Workspace Snapshots, Token Estimation sections |
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0 | 2026 年 4 月 | 初始版本 |
+| 1.1 | 2026 年 4 月 | 新增 MCP 支持、指标采集、审计日志、Workspace 快照、Token 估算章节 |

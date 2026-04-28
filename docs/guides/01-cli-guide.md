@@ -1,101 +1,101 @@
-# CLI Guide
+# CLI 命令行接口指南
 
-**Version:** 1.0
-**Last Updated:** April 2026
+**版本:** 1.0
+**最后更新:** 2026 年 4 月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#1-introduction)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Prerequisites](#3-prerequisites)
-4. [Installation and Setup](#4-installation-and-setup)
-   - [Step 1: Start Redis](#step-1-start-redis)
-   - [Step 2: Build Packages](#step-2-build-packages)
-   - [Step 3: Make `iota` Available (PATH Setup)](#step-3-make-iota-available-path-setup)
-   - [Step 4: Configure Backend](#step-4-configure-backend)
-   - [Step 5: Verify Backend Health](#step-5-verify-backend-health)
-5. [Core Functionality](#5-core-functionality)
-   - [`iota run` — Execute a Prompt](#feature-iota-run--execute-a-prompt)
-   - [`iota status` — Backend Health Check](#feature-iota-status--backend-health-check)
-   - [`iota switch` — Backend Switching](#feature-iota-switch--backend-switching)
-   - [`iota config` — Configuration Management](#feature-iota-config--configuration-management)
-   - [`iota gc` — Garbage Collection](#feature-iota-gc--garbage-collection)
-   - [`iota logs` — Distributed Log Query](#feature-iota-logs--distributed-log-query)
-   - [`iota trace` — Distributed Trace Query](#feature-iota-trace--distributed-trace-query)
-   - [`iota visibility` — Visibility Data Inspection](#feature-iota-visibility--visibility-data-inspection)
-6. [Distributed Features](#6-distributed-features)
-7. [Manual Verification Methods](#7-manual-verification-methods)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Cleanup](#9-cleanup)
-10. [References](#10-references)
-
----
-
-## 1. Introduction
-
-### Purpose and Scope
-
-This guide covers all `iota` CLI commands and how to manually verify their behavior. The CLI is the primary user-facing interface to the Iota Engine, enabling prompt execution, session management, backend configuration, and distributed observability.
-
-### Target Audience
-
-- Developers verifying CLI functionality
-- Users testing backend configurations
-- Contributors debugging CLI-Engine interactions
-
-### Prerequisites Overview
-
-- Redis running on port 6379
-- Iota Engine and CLI packages built
-- At least one backend (Claude Code, Codex, Gemini CLI, or Hermes Agent) installed and accessible
+1. [简介](#1-简介)
+2. [架构概览](#2-架构概览)
+3. [前置要求](#3-前置要求)
+4. [安装与设置](#4-安装与设置)
+   - [步骤 1: 启动 Redis](#步骤-1-启动-redis)
+   - [步骤 2: 构建软件包](#步骤-2-构建软件包)
+   - [步骤 3: 使 `iota` 可用（PATH 设置）](#步骤-3-使-iota-可用path-设置)
+   - [步骤 4: 配置 Backend 后端](#步骤-4-配置-backend-后端)
+   - [步骤 5: 验证 Backend 后端健康状态](#步骤-5-验证-backend-后端健康状态)
+5. [核心功能](#5-核心功能)
+   - [`iota run` — 执行提示词](#功能-iota-run--执行提示词)
+   - [`iota status` — Backend 后端健康检查](#功能-iota-status--backend-后端健康检查)
+   - [`iota switch` — Backend 后端切换](#功能-iota-switch--backend-后端切换)
+   - [`iota config` — 配置管理](#功能-iota-config--配置管理)
+   - [`iota gc` — 垃圾回收](#功能-iota-gc--垃圾回收)
+   - [`iota logs` — 分布式日志查询](#功能-iota-logs--分布式日志查询)
+   - [`iota trace` — 分布式 Trace 追踪查询](#功能-iota-trace--分布式-trace-追踪查询)
+   - [`iota visibility` — Visibility 可见性数据检查](#功能-iota-visibility--visibility-可见性数据检查)
+6. [分布式特性](#6-分布式特性)
+7. [手动验证方法](#7-手动验证方法)
+8. [故障排查](#8-故障排查)
+9. [清理](#9-清理)
+10. [参考资料](#10-参考资料)
 
 ---
 
-## 2. Architecture Overview
+## 1. 简介
 
-### Component Diagram
+### 目的与范围
+
+本指南涵盖所有 `iota` CLI 命令行接口命令及其手动验证方法。CLI 是 Iota Engine 引擎的主要用户界面，支持提示词执行、Session 会话管理、Backend 后端配置和分布式可观测性。
+
+### 目标读者
+
+- 验证 CLI 功能的开发者
+- 测试 Backend 后端配置的用户
+- 调试 CLI-Engine 交互的贡献者
+
+### 前置要求概览
+
+- Redis 数据库运行在 6379 端口
+- Iota Engine 引擎和 CLI 软件包已构建
+- 至少安装并可访问一个 Backend 后端（Claude Code、Codex、Gemini CLI 或 Hermes Agent）
+
+---
+
+## 2. 架构概览
+
+### 组件图
 
 ```mermaid
 graph LR
-    User[User] -->|Commands| CLI[CLI Process<br/>iota-cli]
-    CLI -->|TypeScript Calls| Engine[Engine Library<br/>iota-engine]
-    Engine -->|Redis Protocol| Redis[(Redis<br/>:6379)]
-    Engine -->|Spawn| Backend[Backend Subprocess<br/>Claude/Codex/Gemini/Hermes]
+    User[用户] -->|命令| CLI[CLI 进程<br/>iota-cli]
+    CLI -->|TypeScript 调用| Engine[Engine 引擎库<br/>iota-engine]
+    Engine -->|Redis 协议| Redis[(Redis 数据库<br/>:6379)]
+    Engine -->|启动| Backend[Backend 后端子进程<br/>Claude/Codex/Gemini/Hermes]
     Backend -->|stdout/NDJSON| Engine
-    Engine -->|Events| CLI
-    CLI -->|Output| User
+    Engine -->|事件| CLI
+    CLI -->|输出| User
 ```
 
-### Dependencies
+### 依赖项
 
-| Dependency | Version | Purpose | Connection Method |
+| 依赖项 | 版本 | 用途 | 连接方式 |
 |------------|---------|---------|-------------------|
-| `@iota/engine` | built from source | Core runtime library | TypeScript imports |
-| Redis | running on :6379 | Session, execution, visibility storage | Redis protocol/TCP |
-| Backend executables | latest | AI coding assistant | Subprocess stdio |
+| `@iota/engine` | 从源码构建 | 核心运行时库 | TypeScript 导入 |
+| Redis | 运行在 :6379 | Session 会话、Execution 执行、Visibility 可见性存储 | Redis 协议/TCP |
+| Backend 后端可执行文件 | 最新版 | AI 编码助手 | 子进程 stdio |
 
-### Communication Protocols
+### 通信协议
 
-- **CLI → Engine**: Direct TypeScript function calls via `@iota/engine`
-- **Engine → Redis**: Redis protocol over TCP (SET, GET, HSET, LPUSH, ZADD, etc.)
-- **Engine → Backend**: Subprocess stdio pipes — NDJSON (Claude/Codex/Gemini) or JSON-RPC 2.0 (Hermes)
-- **Backend → Engine**: stdout/stderr pipes emitting NDJSON events or JSON-RPC responses
+- **CLI → Engine 引擎**: 通过 `@iota/engine` 直接调用 TypeScript 函数
+- **Engine 引擎 → Redis 数据库**: 通过 TCP 的 Redis 协议（SET、GET、HSET、XADD、XRANGE、ZADD 等）
+- **Engine 引擎 → Backend 后端**: 子进程 stdio 管道 — NDJSON（Claude/Codex/Gemini）或 JSON-RPC 2.0（Hermes）
+- **Backend 后端 → Engine 引擎**: stdout/stderr 管道发出 NDJSON 事件或 JSON-RPC 响应
 
-**Reference**: See [00-architecture-overview.md](./00-architecture-overview.md) for system-wide architecture.
+**参考**: 查看 [00-architecture-overview.md](./00-architecture-overview.md) 了解系统级架构。
 
 ---
 
-## 3. Prerequisites
+## 3. 前置要求
 
-### Required Software
+### 必需软件
 
-| Software | Verification Command |
+| 软件 | 验证命令 |
 |----------|---------------------|
 | Redis | `redis-cli ping` → `PONG` |
 | Bun | `bun --version` |
-| Backend CLI | See below |
+| Backend 后端 CLI | 见下文 |
 
-**Backend executable discovery**:
+**Backend 后端可执行文件发现**:
 ```bash
 which claude    # Claude Code
 which codex     # Codex
@@ -103,86 +103,86 @@ which gemini    # Gemini CLI
 which hermes    # Hermes Agent
 ```
 
-### Environment Variables
+### 环境变量
 
 ```bash
-# Redis connection bootstrap (defaults shown)
+# Redis 连接引导（显示默认值）
 export REDIS_HOST="127.0.0.1"
 export REDIS_PORT="6379"
 ```
 
-Backend credentials and model settings are not read from `iota-engine/claude.env`, `codex.env`, `gemini.env`, or `hermes.env`. Store backend configuration in Redis through `iota config set`.
+Backend 后端凭证和模型设置不从 `iota-engine/claude.env`、`codex.env`、`gemini.env` 或 `hermes.env` 读取。通过 `iota config set` 将 Backend 后端配置存储在 Redis 数据库中。
 
-### Infrastructure Requirements
+### 基础设施要求
 
-- **Redis**: Must be running before executing any `iota` command
-- **Working directory**: Any directory — the CLI creates a session context automatically
+- **Redis 数据库**: 执行任何 `iota` 命令前必须运行
+- **工作目录**: 任意目录 — CLI 自动创建 Session 会话上下文
 
 ---
 
-## 4. Installation and Setup
+## 4. 安装与设置
 
-### Step 1: Start Redis
+### 步骤 1: 启动 Redis
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期: PONG
 ```
 
-### Step 2: Build Packages
+### 步骤 2: 构建软件包
 
 ```bash
-# Build Engine
+# 构建 Engine 引擎
 cd iota-engine && bun install && bun run build
 
-# Build CLI
+# 构建 CLI
 cd ../iota-cli && bun install && bun run build
 ```
 
-**Verification**:
+**验证**:
 ```bash
-ls iota-engine/dist/index.js    # Engine bundle exists
-ls iota-cli/dist/index.js        # CLI bundle exists
+ls iota-engine/dist/index.js    # Engine 引擎包存在
+ls iota-cli/dist/index.js        # CLI 包存在
 ```
 
-### Step 3: Make `iota` Available (PATH Setup)
+### 步骤 3: 使 `iota` 可用（PATH 设置）
 
-> **Note**: The `iota` command may not be automatically available in your PATH after building. Use one of these approaches before proceeding:
+> **注意**: 构建后 `iota` 命令可能不会自动添加到 PATH。继续之前使用以下方法之一:
 
-**Option A — Use `bun` with the built bundle** (recommended for development):
+**选项 A — 使用 `bun` 运行构建包**（推荐用于开发）:
 ```bash
 bun iota-cli/dist/index.js <command...>
-# Example: bun iota-cli/dist/index.js status
+# 示例: bun iota-cli/dist/index.js status
 ```
 
-**Option B — Install globally with npm link**:
+**选项 B — 使用 npm link 全局安装**:
 ```bash
 cd iota-cli && npm link
-# Now `iota` is globally available
+# 现在 `iota` 全局可用
 iota status
 ```
 
-**Option C — Add to PATH**:
+**选项 C — 添加到 PATH**:
 ```bash
 export PATH="/path/to/iota/iota-cli/dist:$PATH"
 ```
 
-> All examples below use bare `iota` for brevity. Replace with `bun iota-cli/dist/index.js` if you chose Option A.
+> 下面所有示例为简洁起见使用 `iota`。如果选择选项 A，请替换为 `bun iota-cli/dist/index.js`。
 
-### Step 4: Configure Backends in Redis
+### 步骤 4: 在 Redis 中配置 Backend 后端
 
-Backend config is stored in Redis hashes under `iota:config:backend:<backend>`. Use backend-scoped keys relative to the backend section. The current verified development Redis state is:
+Backend 后端配置存储在 Redis 哈希 `iota:config:backend:<backend>` 中。使用相对于 Backend 后端部分的作用域键。当前已验证的开发 Redis 状态为:
 
-| Backend | Redis hash | Verified Redis fields | Auth source used in verification |
+| Backend 后端 | Redis 哈希 | 已验证的 Redis 字段 | 验证中使用的认证源 |
 |---|---|---|---|
-| Claude Code | `iota:config:backend:claude-code` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`, `env.ANTHROPIC_MODEL=MiniMax-M2.7` | Redis distributed config |
-| Codex | `iota:config:backend:codex` | `env.OPENAI_MODEL=gpt-5.5` | Codex ChatGPT auth in the local Codex profile; no Redis API key required for this verified setup |
-| Gemini CLI | `iota:config:backend:gemini` | `env.GEMINI_MODEL=auto-gemini-3` | Gemini OAuth (`oauth-personal`) in local Gemini settings; no Redis API key required for this verified setup |
-| Hermes Agent | `iota:config:backend:hermes` | `env.HERMES_API_KEY`, `env.HERMES_BASE_URL=https://api.minimaxi.com/anthropic`, `env.HERMES_MODEL=MiniMax-M2.7`, `env.HERMES_PROVIDER=minimax-cn` | Redis distributed config; Iota translates these into an isolated Hermes runtime config |
+| Claude Code | `iota:config:backend:claude-code` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic`, `env.ANTHROPIC_MODEL=MiniMax-M2.7` | Redis 分布式配置 |
+| Codex | `iota:config:backend:codex` | `env.OPENAI_MODEL=gpt-5.5` | 本地 Codex 配置文件中的 Codex ChatGPT 认证；此已验证设置不需要 Redis API 密钥 |
+| Gemini CLI | `iota:config:backend:gemini` | `env.GEMINI_MODEL=auto-gemini-3` | 本地 Gemini 设置中的 Gemini OAuth（`oauth-personal`）；此已验证设置不需要 Redis API 密钥 |
+| Hermes Agent | `iota:config:backend:hermes` | `env.HERMES_API_KEY`, `env.HERMES_BASE_URL=https://api.minimaxi.com/anthropic`, `env.HERMES_MODEL=MiniMax-M2.7`, `env.HERMES_PROVIDER=minimax-cn` | Redis 分布式配置；Iota 将这些转换为隔离的 Hermes 运行时配置 |
 
-Recreate the verified Redis configuration with these commands. Replace secret values with real credentials only in Redis; do not commit them to files or docs.
+使用以下命令重建已验证的 Redis 配置。仅在 Redis 中用真实凭证替换密钥值；不要将它们提交到文件或文档。
 
 **Claude Code**:
 ```bash
@@ -196,14 +196,14 @@ iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id cl
 iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
 ```
 
-Codex can also use `env.OPENAI_API_KEY`, `env.OPENAI_BASE_URL`, or `env.CODEX_MODEL_PROVIDER` when the chosen Codex provider requires them. In the verified ChatGPT-auth setup, `gpt-5-mini` is not supported; `gpt-5.5` completed successfully.
+Codex 也可以使用 `env.OPENAI_API_KEY`、`env.OPENAI_BASE_URL` 或 `env.CODEX_MODEL_PROVIDER`，当所选 Codex 提供商需要时。在已验证的 ChatGPT 认证设置中，不支持 `gpt-5-mini`；`gpt-5.5` 成功完成。
 
 **Gemini CLI**:
 ```bash
 iota config set env.GEMINI_MODEL "auto-gemini-3" --scope backend --scope-id gemini
 ```
 
-Gemini can also use `env.GEMINI_API_KEY`, `env.GEMINI_BASE_URL`, `env.GOOGLE_GEMINI_API_KEY`, `env.GOOGLE_GEMINI_BASE_URL`, or `env.GOOGLE_GEMINI_MODEL` when using API-key based auth. Do not store a local gateway such as `http://127.0.0.1:8045` unless that gateway is running.
+Gemini 也可以使用 `env.GEMINI_API_KEY`、`env.GEMINI_BASE_URL`、`env.GOOGLE_GEMINI_API_KEY`、`env.GOOGLE_GEMINI_BASE_URL` 或 `env.GOOGLE_GEMINI_MODEL`，当使用基于 API 密钥的认证时。除非该网关正在运行，否则不要存储本地网关如 `http://127.0.0.1:8045`。
 
 **Hermes Agent**:
 ```bash
@@ -213,74 +213,74 @@ iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id herme
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 ```
 
-Hermes uses the same verified provider values as Claude Code, but with Hermes-specific Redis keys. At startup, Iota creates an isolated `HERMES_HOME` for the subprocess and translates these fields to Hermes-native `config.yaml` and provider env such as `MINIMAX_CN_API_KEY` / `MINIMAX_CN_BASE_URL`, so backend auth and model selection still come from Redis rather than the user's global Hermes config.
+Hermes 使用与 Claude Code 相同的已验证提供商值，但使用 Hermes 特定的 Redis 键。启动时，Iota 为子进程创建隔离的 `HERMES_HOME`，并将这些字段转换为 Hermes 原生的 `config.yaml` 和提供商环境变量如 `MINIMAX_CN_API_KEY` / `MINIMAX_CN_BASE_URL`，因此 Backend 后端认证和模型选择仍来自 Redis 而非用户的全局 Hermes 配置。
 
-You can inspect any backend scope directly:
+您可以直接检查任何 Backend 后端作用域:
 
 ```bash
 iota config get --scope backend --scope-id claude-code
 redis-cli HGETALL iota:config:backend:claude-code
 ```
 
-### Step 5: Verify Backend Health
+### 步骤 5: 验证 Backend 后端健康状态
 
 ```bash
 iota status
-# Expected: JSON showing backend health status
+# 预期: 显示 Backend 后端健康状态的 JSON
 ```
 
 ---
 
-## 5. Core Functionality
+## 5. 核心功能
 
-### Feature: `iota run` — Execute a Prompt
+### 功能: `iota run` — 执行提示词
 
-**Purpose**: Execute a single prompt through the Engine and selected backend.
+**目的**: 通过 Engine 引擎和选定的 Backend 后端执行单个提示词。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota run [options] <prompt...>
-iota [options] <prompt...>     # shorthand (iota with no subcommand)
+iota [options] <prompt...>     # 简写（iota 无子命令）
 ```
 
-**Options**:
-- `--backend <backend>` — Backend to use (`claude-code`, `codex`, `gemini`, `hermes`)
-- `--cwd <cwd>` — Working directory (default: current directory)
-- `--trace` — Show full trace details after the run
-- `--trace-json` — Show trace data as JSON
+**选项**:
+- `--backend <backend>` — 使用的 Backend 后端（`claude-code`、`codex`、`gemini`、`hermes`）
+- `--cwd <cwd>` — 工作目录（默认: 当前目录）
+- `--trace` — 运行后显示完整 Trace 追踪详情
+- `--trace-json` — 以 JSON 格式显示 Trace 追踪数据
 
-**Example**:
+**示例**:
 ```bash
 iota run --backend claude-code "What is 2+2?"
 ```
 
-**Expected Output**: Streaming response from the backend, ending with exit code 0.
+**预期输出**: Backend 后端的流式响应，以退出码 0 结束。
 
-**Side Effects**:
-- Creates Redis keys: `iota:session:{id}`, `iota:exec:{executionId}`, `iota:events:{executionId}`
-- Creates visibility keys: `iota:visibility:tokens:{executionId}`, `iota:visibility:spans:{executionId}`, `iota:visibility:link:{executionId}`, `iota:visibility:context:{executionId}`, `iota:visibility:memory:{executionId}`, `iota:visibility:{executionId}:chain`, `iota:visibility:mapping:{executionId}`
-- Creates session-exec mapping: `iota:session-execs:{sessionId}` (Set)
-- Creates distributed lock: `iota:fencing:execution:{executionId}`
+**副作用**:
+- 创建 Redis 键: `iota:session:{id}`、`iota:exec:{executionId}`、`iota:events:{executionId}`
+- 创建 Visibility 可见性键: `iota:visibility:tokens:{executionId}`、`iota:visibility:spans:{executionId}`、`iota:visibility:link:{executionId}`、`iota:visibility:context:{executionId}`、`iota:visibility:memory:{executionId}`、`iota:visibility:{executionId}:chain`、`iota:visibility:mapping:{executionId}`
+- 创建 Session-Exec 会话-执行映射: `iota:session-execs:{sessionId}`（Set）
+- 创建分布式锁: `iota:fencing:execution:{executionId}`
 
 ---
 
-### Feature: `iota interactive` — Interactive TUI Mode
+### 功能: `iota interactive` — 交互式 TUI 模式
 
-**Purpose**: Start an interactive REPL session with streaming output.
+**目的**: 启动带流式输出的交互式 REPL Session 会话。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota interactive
-iota i              # shorthand
+iota i              # 简写
 ```
 
-**In-session commands**:
-- `switch <backend>` — Switch active backend
-- `status` — Show backend health
-- `metrics` — Show engine metrics
-- `exit` / `quit` — End session
+**会话内命令**:
+- `switch <backend>` — 切换活动 Backend 后端
+- `status` — 显示 Backend 后端健康状态
+- `metrics` — 显示 Engine 引擎指标
+- `exit` / `quit` — 结束 Session 会话
 
-**Example**:
+**示例**:
 ```bash
 iota interactive
 # iota> What is the capital of France?
@@ -291,16 +291,16 @@ iota interactive
 
 ---
 
-### Feature: `iota status` — Backend Health Check
+### 功能: `iota status` — Backend 后端健康检查
 
-**Purpose**: Show health status of all configured backends.
+**目的**: 显示所有已配置 Backend 后端的健康状态。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota status
 ```
 
-**Expected Output**:
+**预期输出**:
 ```json
 {
   "claude-code": { "healthy": true, "status": "ready", "uptimeMs": 3 },
@@ -312,115 +312,115 @@ iota status
 
 ---
 
-### Feature: `iota switch` — Backend Switching
+### 功能: `iota switch` — Backend 后端切换
 
-**Purpose**: Change the default backend for the current working directory's session.
+**目的**: 更改当前工作目录 Session 会话的默认 Backend 后端。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota switch <backend>
 ```
 
-**Example**:
+**示例**:
 ```bash
 iota switch gemini
 redis-cli HGETALL "iota:session:{id}" | grep activeBackend
-# Expected: activeBackend: gemini
+# 预期: activeBackend: gemini
 ```
 
 ---
 
-### Feature: `iota config` — Configuration Management
+### 功能: `iota config` — 配置管理
 
-**Purpose**: Read and write distributed configuration from Redis.
+**目的**: 从 Redis 数据库读写分布式配置。
 
-#### `iota config get` — Read Configuration
+#### `iota config get` — 读取配置
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config get [path]
 iota config get [path] --scope <scope> --scope-id <id>
 ```
 
-**Examples**:
+**示例**:
 ```bash
-# Read resolved config (all sources merged)
+# 读取解析后的配置（所有源合并）
 iota config get
 
-# Read specific key
+# 读取特定键
 iota config get approval.shell
 
-# Read from specific Redis scope
+# 从特定 Redis 作用域读取
 iota config get env.ANTHROPIC_MODEL --scope backend --scope-id claude-code
 iota config get --scope global
 ```
 
-**Output**: JSON object or single value.
+**输出**: JSON 对象或单个值。
 
-#### `iota config set` — Write Configuration
+#### `iota config set` — 写入配置
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config set <path> <value>
 iota config set <path> <value> --scope <scope> --scope-id <id>
 ```
 
-**Examples**:
+**示例**:
 ```bash
-# Write to Redis global scope (default)
+# 写入 Redis 全局作用域（默认）
 iota config set approval.shell "ask"
 
-# Write to backend-specific scope
+# 写入 Backend 后端特定作用域
 iota config set timeoutMs 60000 --scope backend --scope-id claude-code
 iota config set env.ANTHROPIC_MODEL "claude-opus-4.6" --scope backend --scope-id claude-code
 ```
 
-**Scope types**: `global`, `backend`, `session`, `user`
+**作用域类型**: `global`、`backend`、`session`、`user`
 
-#### `iota config delete` — Delete Configuration Key
+#### `iota config delete` — 删除配置键
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config delete <path> --scope <scope> --scope-id <id>
 ```
 
-**Example**:
+**示例**:
 ```bash
 iota config delete approval.shell --scope global
 ```
 
-#### `iota config export` — Export Configuration
+#### `iota config export` — 导出配置
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config export <file>
 ```
 
-**Example**:
+**示例**:
 ```bash
 iota config export config-backup.yaml
 ```
 
-#### `iota config import` — Import Configuration
+#### `iota config import` — 导入配置
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config import <file>
 ```
 
-**Example**:
+**示例**:
 ```bash
 iota config import config-backup.yaml
 ```
 
-#### `iota config list-scopes` — List Scope IDs
+#### `iota config list-scopes` — 列出作用域 ID
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota config list-scopes <scope>
 ```
 
-**Example**:
+**示例**:
 ```bash
 iota config list-scopes backend
 # claude-code
@@ -431,155 +431,155 @@ iota config list-scopes backend
 
 ---
 
-### Feature: `iota gc` — Garbage Collection
+### 功能: `iota gc` — 垃圾回收
 
-**Purpose**: Clean up expired sessions, executions, and visibility data from Redis.
+**目的**: 从 Redis 数据库清理过期的 Session 会话、Execution 执行和 Visibility 可见性数据。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota gc
 ```
 
-**Expected Output**: Summary of cleaned keys.
+**预期输出**: 已清理键的摘要。
 
 ---
 
-### Feature: `iota logs` — Distributed Log Query
+### 功能: `iota logs` — 分布式日志查询
 
-**Purpose**: Query execution event logs from Redis with filtering.
+**目的**: 从 Redis 数据库查询带过滤的 Execution 执行事件日志。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota logs [options]
 ```
 
-**Options**:
-- `--session <sessionId>` — Filter by session ID
-- `--execution <executionId>` — Filter by execution ID
-- `--backend <backend>` — Filter by backend name
-- `--event-type <type>` — Filter by event type (`output`, `state`, `tool_call`, `tool_result`, `file_delta`, `error`, `extension`)
-- `--since <time>` — Events after ISO time or Unix ms
-- `--until <time>` — Events before ISO time or Unix ms
-- `--offset <n>` — Offset for pagination (default: 0)
-- `--limit <n>` — Maximum events (default: 100)
-- `--aggregate` — Show aggregate counts instead of raw events
-- `--json` — Output raw JSON events
+**选项**:
+- `--session <sessionId>` — 按 Session 会话 ID 过滤
+- `--execution <executionId>` — 按 Execution 执行 ID 过滤
+- `--backend <backend>` — 按 Backend 后端名称过滤
+- `--event-type <type>` — 按事件类型过滤（`output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`）
+- `--since <time>` — ISO 时间或 Unix 毫秒之后的事件
+- `--until <time>` — ISO 时间或 Unix 毫秒之前的事件
+- `--offset <n>` — 分页偏移量（默认: 0）
+- `--limit <n>` — 最大事件数（默认: 100）
+- `--aggregate` — 显示聚合计数而非原始事件
+- `--json` — 输出原始 JSON 事件
 
-**Examples**:
+**示例**:
 ```bash
-# Get all recent logs
+# 获取所有最近日志
 iota logs --limit 50
 
-# Get logs for specific session
+# 获取特定 Session 会话的日志
 iota logs --session a1b2c3d4-5678-90ab-cdef-1234567890ab --limit 20
 
-# Get logs for specific execution
+# 获取特定 Execution 执行的日志
 iota logs --execution e1f2g3h4-5678-90ab-cdef-345678901234
 
-# Filter by backend
+# 按 Backend 后端过滤
 iota logs --backend claude-code --limit 20
 
-# Filter by event type
+# 按事件类型过滤
 iota logs --event-type output --limit 20
 
-# Time range
+# 时间范围
 iota logs --since 2026-04-01T00:00:00Z --until 2026-04-26T23:59:59Z
 
-# Aggregate counts
+# 聚合计数
 iota logs --backend claude-code --aggregate
 ```
 
 ---
 
-### Feature: `iota trace` — Distributed Trace Query
+### 功能: `iota trace` — 分布式 Trace 追踪查询
 
-**Purpose**: Query execution trace/visibility data with filtering.
+**目的**: 查询带过滤的 Execution 执行 Trace 追踪/Visibility 可见性数据。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota trace [options]
 ```
 
-**Options**:
-- `--execution <executionId>` — Show one execution trace
-- `--session <sessionId>` — Aggregate traces for a session
-- `--backend <backend>` — Filter by backend
-- `--since <time>` — Traces after ISO time or Unix ms
-- `--until <time>` — Traces before ISO time or Unix ms
-- `--offset <n>` — Offset (default: 0)
-- `--limit <n>` — Maximum executions (default: 100)
-- `--aggregate` — Aggregate even when `--execution` is provided
-- `--json` — Output raw JSON
+**选项**:
+- `--execution <executionId>` — 显示单个 Execution 执行 Trace 追踪
+- `--session <sessionId>` — 聚合 Session 会话的 Trace 追踪
+- `--backend <backend>` — 按 Backend 后端过滤
+- `--since <time>` — ISO 时间或 Unix 毫秒之后的 Trace 追踪
+- `--until <time>` — ISO 时间或 Unix 毫秒之前的 Trace 追踪
+- `--offset <n>` — 偏移量（默认: 0）
+- `--limit <n>` — 最大 Execution 执行数（默认: 100）
+- `--aggregate` — 即使提供 `--execution` 也聚合
+- `--json` — 输出原始 JSON
 
-**Examples**:
+**示例**:
 ```bash
-# Show one execution trace
+# 显示单个 Execution 执行 Trace 追踪
 iota trace --execution e1f2g3h4-5678-90ab-cdef-345678901234
 
-# Aggregate traces for a session
+# 聚合 Session 会话的 Trace 追踪
 iota trace --session a1b2c3d4-5678-90ab-cdef-1234567890ab
 ```
 
 ---
 
-### Feature: `iota visibility` — Visibility Data Inspection
+### 功能: `iota visibility` — Visibility 可见性数据检查
 
-**Purpose**: Inspect execution visibility data (tokens, spans, memory, context, chain).
+**目的**: 检查 Execution 执行 Visibility 可见性数据（tokens、spans、memory、context、chain）。
 
-**Command Syntax**:
+**命令语法**:
 ```bash
 iota visibility [options]
-iota vis [options]           # shorthand
+iota vis [options]           # 简写
 ```
 
-**Options**:
-- `--execution <executionId>` — Execution ID to inspect
-- `--summary` — Show summary output for a session
-- `--memory` — Show memory visibility only
-- `--tokens` — Show token visibility only
-- `--chain` — Show chain visibility only
-- `--trace` — Show full tracing details with spans
-- `--backend <backend>` — Filter by backend
-- `--export <file>` — Export visibility data to file
-- `--format <format>` — Export format: `json`, `yaml`, or `csv`
-- `--limit <n>` — Maximum records for session queries
-- `--offset <n>` — Offset for session queries
-- `--json` — Output as JSON
+**选项**:
+- `--execution <executionId>` — 要检查的 Execution 执行 ID
+- `--summary` — 显示 Session 会话的摘要输出
+- `--memory` — 仅显示 memory 可见性
+- `--tokens` — 仅显示 token 可见性
+- `--chain` — 仅显示 chain 可见性
+- `--trace` — 显示带 span 的完整 Trace 追踪详情
+- `--backend <backend>` — 按 Backend 后端过滤
+- `--export <file>` — 导出 Visibility 可见性数据到文件
+- `--format <format>` — 导出格式: `json`、`yaml` 或 `csv`
+- `--limit <n>` — Session 会话查询的最大记录数
+- `--offset <n>` — Session 会话查询的偏移量
+- `--json` — 输出为 JSON
 
-**Examples**:
+**示例**:
 ```bash
-# Show full visibility for execution
+# 显示 Execution 执行的完整 Visibility 可见性
 iota visibility --execution e1f2g3h4-5678-90ab-cdef-345678901234
 
-# List session visibility records
+# 列出 Session 会话 Visibility 可见性记录
 iota visibility list --session a1b2c3d4-5678-90ab-cdef-1234567890ab
 
-# Export to JSON
+# 导出为 JSON
 iota visibility --execution e1f2g3h4 --export visibility.json --format json
 
-# Memory visibility only
+# 仅 Memory 可见性
 iota visibility --execution e1f2g3h4 --memory
 
-# Tokens visibility only
+# 仅 Token 可见性
 iota visibility --execution e1f2g3h4 --tokens
 
-# Chain (spans) visibility only
+# 仅 Chain（spans）可见性
 iota visibility --execution e1f2g3h4 --chain
 ```
 
-#### `iota visibility list` — List Visibility Records
+#### `iota visibility list` — 列出 Visibility 可见性记录
 
 ```bash
 iota visibility list --session <sessionId> [options]
 ```
 
-#### `iota visibility search` — Search by Prompt Preview
+#### `iota visibility search` — 按提示词预览搜索
 
 ```bash
 iota visibility search --session <sessionId> --prompt "binary search"
 ```
 
-#### `iota visibility interactive` — Live Polling View
+#### `iota visibility interactive` — 实时轮询视图
 
 ```bash
 iota visibility interactive --session <sessionId> --interval 1000
@@ -587,404 +587,404 @@ iota visibility interactive --session <sessionId> --interval 1000
 
 ---
 
-## 6. Distributed Features
+## 6. 分布式特性
 
-### Distributed Feature: Cross-Session Log Queries
+### 分布式特性: 跨 Session 会话日志查询
 
-**Purpose**: Query logs across all sessions without specifying a session ID.
+**目的**: 无需指定 Session 会话 ID 即可跨所有 Session 会话查询日志。
 
-**Procedure**:
+**步骤**:
 
-1. **Create multiple sessions with different backends**:
+1. **使用不同 Backend 后端创建多个 Session 会话**:
    ```bash
-   # Execute with Claude Code
+   # 使用 Claude Code 执行
    iota run --backend claude-code "test"
    
-   # Execute with Gemini
+   # 使用 Gemini 执行
    iota run --backend gemini "test"
    ```
 
-2. **Query logs by backend**:
+2. **按 Backend 后端查询日志**:
    ```bash
    iota logs --backend claude-code --limit 50
    iota logs --backend gemini --limit 50
    ```
 
-3. **Verify**: Logs from different sessions appear with correct backend labels.
+3. **验证**: 来自不同 Session 会话的日志显示正确的 Backend 后端标签。
 
 ---
 
-### Distributed Feature: Distributed Configuration Management
+### 分布式特性: 分布式配置管理
 
-**Purpose**: Configuration is stored in Redis with scope-based isolation and resolution priority.
+**目的**: 配置存储在 Redis 数据库中，具有基于作用域的隔离和解析优先级。
 
-**Configuration Resolution Order** (highest to lowest priority):
-1. `user` scope
-2. `session` scope
-3. `backend` scope
-4. `global` scope
-5. Default values
+**配置解析顺序**（从高到低优先级）:
+1. `user` 用户作用域
+2. `session` 会话作用域
+3. `backend` 后端作用域
+4. `global` 全局作用域
+5. 默认值
 
-**Procedure**:
+**步骤**:
 
-1. **Set global config**:
+1. **设置全局配置**:
    ```bash
    iota config set approval.shell "ask"
    redis-cli HGET "iota:config:global" "approval.shell"
-   # Expected: "ask"
+   # 预期: "ask"
    ```
 
-2. **Set backend-specific config**:
+2. **设置 Backend 后端特定配置**:
    ```bash
    iota config set timeout 60000 --scope backend --scope-id claude-code
    redis-cli HGET "iota:config:backend:claude-code" "timeout"
-   # Expected: "60000"
+   # 预期: "60000"
    ```
 
-3. **Verify resolution**:
+3. **验证解析**:
    ```bash
    iota config get approval.shell
-   # Expected: "ask" (from global)
+   # 预期: "ask"（来自全局）
    ```
 
 ---
 
-### Distributed Feature: Backend Switching with State Preservation
+### 分布式特性: Backend 后端切换与状态保留
 
-**Purpose**: Switching backends preserves session state (working directory, memory, conversation history).
+**目的**: 切换 Backend 后端时保留 Session 会话状态（工作目录、memory、对话历史）。
 
-**Procedure**:
+**步骤**:
 
-1. **Create session and execute**:
+1. **创建 Session 会话并执行**:
    ```bash
    SESSION_ID=$(iota run --backend claude-code "test" 2>&1 | grep -oP 'sessionId:\s*\K[a-f0-9-]+' || echo "")
-   # Or create via Agent API and pass session
+   # 或通过 Agent API 创建并传递 Session 会话
    ```
 
-2. **Switch backend**:
+2. **切换 Backend 后端**:
    ```bash
    iota switch gemini
    ```
 
-3. **Verify session preserved**:
+3. **验证 Session 会话保留**:
    ```bash
    redis-cli HGET "iota:session:{sessionId}" "workingDirectory"
-   # Expected: Same directory as before switch
+   # 预期: 与切换前相同的目录
    ```
 
-4. **Execute with new backend**:
+4. **使用新 Backend 后端执行**:
    ```bash
    iota run --backend gemini "test 2"
    ```
 
-5. **Verify execution records**:
+5. **验证 Execution 执行记录**:
    ```bash
    redis-cli HGET "iota:exec:{executionId1}" "backend"
-   # Expected: "claude-code"
+   # 预期: "claude-code"
    redis-cli HGET "iota:exec:{executionId2}" "backend"
-   # Expected: "gemini"
+   # 预期: "gemini"
    ```
 
 ---
 
-### Distributed Feature: Backend Isolation Verification
+### 分布式特性: Backend 后端隔离验证
 
-**Purpose**: Data is properly partitioned by backend.
+**目的**: 数据按 Backend 后端正确分区。
 
-**Procedure**:
+**步骤**:
 
-1. **Query isolation report via Agent API**:
+1. **通过 Agent API 查询隔离报告**:
    ```bash
    curl http://localhost:9666/api/v1/backend-isolation
    ```
 
-2. **Expected behavior**: Shows session and execution counts per backend with no cross-backend data leakage.
+2. **预期行为**: 显示每个 Backend 后端的 Session 会话和 Execution 执行计数，无跨 Backend 后端数据泄漏。
 
 ---
 
-## 7. Manual Verification Methods
+## 7. 手动验证方法
 
-### Verification Checklist: `iota run` Command
+### 验证清单: `iota run` 命令
 
-**Objective**: Verify `iota run` creates correct Redis data structures.
+**目标**: 验证 `iota run` 创建正确的 Redis 数据结构。
 
-- [ ] **Setup**: Redis running, packages built
+- [ ] **设置**: Redis 运行中，软件包已构建
   ```bash
   redis-cli ping
-  # Expected: PONG
+  # 预期: PONG
   ```
 
-- [ ] **Execute**: Run a prompt
+- [ ] **执行**: 运行提示词
   ```bash
-  redis-cli FLUSHALL   # Clean slate
+  redis-cli FLUSHALL   # 清空状态
   iota run --backend claude-code "What is 2+2?"
-  # Expected: Streaming output, exit code 0
+  # 预期: 流式输出，退出码 0
   ```
 
-- [ ] **Observe**: Check Redis keys created
+- [ ] **观察**: 检查创建的 Redis 键
   ```bash
   redis-cli KEYS "iota:session:*"
-  # Expected: 1 session key
+  # 预期: 1 个 Session 会话键
   
   redis-cli KEYS "iota:exec:*"
-  # Expected: 1 execution key
+  # 预期: 1 个 Execution 执行键
   
   redis-cli KEYS "iota:events:*"
-  # Expected: 1 events key
+  # 预期: 1 个事件键
   
   redis-cli KEYS "iota:visibility:*"
-  # Expected: Multiple visibility keys (tokens, spans, link, context, memory)
+  # 预期: 多个 Visibility 可见性键（tokens、spans、link、context、memory）
   ```
 
-- [ ] **Validate**: Inspect execution record
+- [ ] **验证**: 检查 Execution 执行记录
   ```bash
   EXEC_ID=$(redis-cli KEYS "iota:exec:*" | head -1 | cut -d: -f3)
   redis-cli HGET "iota:exec:$EXEC_ID" "status"
-  # Expected: "completed" (or "failed" if backend unavailable)
+  # 预期: "completed"（或 "failed" 如果 Backend 后端不可用）
   redis-cli HGET "iota:exec:$EXEC_ID" "backend"
-  # Expected: "claude-code"
+  # 预期: "claude-code"
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**:
   ```bash
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Exit code 0
-- ✅ Streaming output appears
-- ✅ Session, execution, events, and visibility keys created in Redis
-- ✅ Execution record shows correct backend and status
+**成功标准**:
+- ✅ 退出码 0
+- ✅ 出现流式输出
+- ✅ 在 Redis 中创建 Session 会话、Execution 执行、事件和 Visibility 可见性键
+- ✅ Execution 执行记录显示正确的 Backend 后端和状态
 
-**Failure Indicators**:
-- ❌ Non-zero exit code
-- ❌ No Redis keys created
-- ❌ Wrong backend in execution record
+**失败指标**:
+- ❌ 非零退出码
+- ❌ 未创建 Redis 键
+- ❌ Execution 执行记录中 Backend 后端错误
 
 ---
 
-### Verification Checklist: Backend Switching
+### 验证清单: Backend 后端切换
 
-**Objective**: Verify backend switching preserves session state.
+**目标**: 验证 Backend 后端切换保留 Session 会话状态。
 
-- [ ] **Setup**: Redis running, existing session with data
+- [ ] **设置**: Redis 运行中，现有 Session 会话有数据
   ```bash
   redis-cli ping
   ```
 
-- [ ] **Execute (Backend A)**: Run with initial backend
+- [ ] **执行（Backend 后端 A）**: 使用初始 Backend 后端运行
   ```bash
   iota run --backend claude-code "test with Claude"
   ```
 
-- [ ] **Observe (Backend A)**: Record session ID and backend
+- [ ] **观察（Backend 后端 A）**: 记录 Session 会话 ID 和 Backend 后端
   ```bash
   SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
   redis-cli HGET "iota:session:$SESSION_ID" "activeBackend"
-  # Expected: "claude-code"
+  # 预期: "claude-code"
   redis-cli HGET "iota:session:$SESSION_ID" "workingDirectory"
-  # Note this value
+  # 记录此值
   ```
 
-- [ ] **Execute (Switch)**: Switch to different backend
+- [ ] **执行（切换）**: 切换到不同 Backend 后端
   ```bash
   iota switch gemini --cwd $(redis-cli HGET "iota:session:$SESSION_ID" "workingDirectory")
   redis-cli HGET "iota:session:$SESSION_ID" "activeBackend"
-  # Expected: "gemini"
+  # 预期: "gemini"
   ```
 
-- [ ] **Execute (Backend B)**: Run with new backend
+- [ ] **执行（Backend 后端 B）**: 使用新 Backend 后端运行
   ```bash
   iota run --backend gemini "test with Gemini"
   ```
 
-- [ ] **Validate**: Verify execution records and state preservation
+- [ ] **验证**: 验证 Execution 执行记录和状态保留
   ```bash
-  # Check both executions have correct backends
-  # Check workingDirectory preserved
+  # 检查两个 Execution 执行都有正确的 Backend 后端
+  # 检查 workingDirectory 已保留
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**:
   ```bash
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Backend field updated in Redis session
-- ✅ New executions use selected backend
-- ✅ Session workingDirectory preserved
-- ✅ No data loss during switch
+**成功标准**:
+- ✅ Redis Session 会话中的 Backend 后端字段已更新
+- ✅ 新 Execution 执行使用选定的 Backend 后端
+- ✅ Session 会话 workingDirectory 已保留
+- ✅ 切换期间无数据丢失
 
 ---
 
-### Redis Inspection Commands
+### Redis 检查命令
 
 ```bash
-# List all Iota keys
+# 列出所有 Iota 键
 redis-cli KEYS "iota:*"
 
-# Inspect session hash
+# 检查 Session 会话哈希
 redis-cli HGETALL "iota:session:{sessionId}"
 
-# Inspect execution hash
+# 检查 Execution 执行哈希
 redis-cli HGETALL "iota:exec:{executionId}"
 
-# View event stream
-redis-cli LRANGE "iota:events:{execId}" 0 -1
+# 查看事件流（Redis Stream，使用 XRANGE 而非 LRANGE）
+redis-cli XRANGE "iota:events:{execId}" - +
 
-# Check memory count
+# 检查 memory 计数
 redis-cli ZCARD "iota:memories:{sessionId}"
 
-# View visibility tokens
+# 查看 Visibility 可见性 token
 redis-cli GET "iota:visibility:tokens:{execId}"
 
-# View visibility spans
+# 查看 Visibility 可见性 span（List）
 redis-cli LRANGE "iota:visibility:spans:{execId}" 0 -1
 
-# View visibility chain (TraceSpan list)
-redis-cli LRANGE "iota:visibility:{executionId}:chain" 0 -1
+# 查看 Visibility 可见性 chain（Hash: spanId → TraceSpan）
+redis-cli HGETALL "iota:visibility:{executionId}:chain"
 
-# View visibility mapping (native → runtime event mappings)
+# 查看 Visibility 可见性映射（原生 → 运行时事件映射）
 redis-cli LRANGE "iota:visibility:mapping:{executionId}" 0 -1
 
-# View session-exec mapping (Set of executionIds)
+# 查看 Session-Exec 会话-执行映射（executionId 的 Set）
 redis-cli SMEMBERS "iota:session-execs:{sessionId}"
 
-# View global execution index (Sorted Set)
+# 查看全局 Execution 执行索引（Sorted Set）
 redis-cli ZRANGE "iota:executions" 0 -1
 
-# View distributed lock (fencing)
+# 查看分布式锁（fencing）
 redis-cli GET "iota:fencing:execution:{executionId}"
 
-# View audit log
+# 查看审计日志
 redis-cli LRANGE "iota:audit" 0 -1
 
-# View session visibility index
+# 查看 Session 会话 Visibility 可见性索引
 redis-cli ZRANGE "iota:visibility:session:{sessionId}" 0 -1
 
-# View visibility memory
+# 查看 Visibility 可见性 memory
 redis-cli GET "iota:visibility:memory:{execId}"
 
-# View visibility context
+# 查看 Visibility 可见性 context
 redis-cli GET "iota:visibility:context:{execId}"
 
-# View visibility link
+# 查看 Visibility 可见性 link
 redis-cli GET "iota:visibility:link:{execId}"
 
-# Check config keys
+# 检查配置键
 redis-cli HGETALL "iota:config:global"
 redis-cli HGETALL "iota:config:backend:{backendName}"
 
-# List backend scope IDs
+# 列出 Backend 后端作用域 ID
 redis-cli KEYS "iota:config:backend:*"
 ```
 
 ---
 
-## 8. Troubleshooting
+## 8. 故障排查
 
-### Issue: Redis Connection Failed
+### 问题: Redis 连接失败
 
-**Symptoms**:
+**症状**:
 - `ECONNREFUSED 127.0.0.1:6379`
-- Commands fail with connection errors
+- 命令失败并显示连接错误
 
-**Diagnosis**:
+**诊断**:
 ```bash
 redis-cli ping
-# If fails: Redis not running
+# 如果失败: Redis 未运行
 ```
 
-**Solution**:
+**解决方案**:
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期: PONG
 ```
 
-**Prevention**: Always start Redis before running Iota commands.
+**预防**: 运行 Iota 命令前始终启动 Redis。
 
 ---
 
-### Issue: Backend Not Found
+### 问题: Backend 后端未找到
 
-**Symptoms**:
+**症状**:
 - `Backend 'claude-code' not found`
-- `iota status` shows backend as unhealthy
+- `iota status` 显示 Backend 后端不健康
 
-**Diagnosis**:
+**诊断**:
 ```bash
 which claude
-# If empty: Claude CLI not in PATH
+# 如果为空: Claude CLI 不在 PATH 中
 
 iota status
-# Check "healthy" field for backend
+# 检查 Backend 后端的 "healthy" 字段
 ```
 
-**Solution**:
+**解决方案**:
 ```bash
-# Install Claude CLI and add to PATH
+# 安装 Claude CLI 并添加到 PATH
 export PATH="/path/to/claude:$PATH"
 
-# Verify
+# 验证
 which claude
 iota status
 ```
 
 ---
 
-### Issue: Config Not Persisting
+### 问题: 配置未持久化
 
-**Symptoms**:
-- `iota config set` succeeds but value not found in Redis
-- Config reverts after restart
+**症状**:
+- `iota config set` 成功但在 Redis 中找不到值
+- 重启后配置恢复
 
-**Diagnosis**:
+**诊断**:
 ```bash
 redis-cli HGET "iota:config:global" "approval.shell"
-# If empty: Config not written to Redis
+# 如果为空: 配置未写入 Redis
 ```
 
-**Solution**:
+**解决方案**:
 ```bash
-# Write to Redis distributed config
+# 写入 Redis 分布式配置
 iota config set approval.shell "ask"
 redis-cli HGET "iota:config:global" "approval.shell"
 ```
 
 ---
 
-### Issue: No Streaming Output
+### 问题: 无流式输出
 
-**Symptoms**:
-- Command runs but output appears all at once, not streamed
+**症状**:
+- 命令运行但输出一次性全部显示，而非流式
 
-**Diagnosis**:
+**诊断**:
 ```bash
-# Check backend is functioning
+# 检查 Backend 后端是否正常运行
 iota status
 
-# Check execution completed
+# 检查 Execution 执行是否完成
 redis-cli HGETALL "iota:exec:{executionId}" | grep status
 ```
 
-**Solution**:
-- Check backend CLI is properly installed
-- Try with `--trace` to see internal flow
-- Verify backend supports streaming
+**解决方案**:
+- 检查 Backend 后端 CLI 是否正确安装
+- 尝试使用 `--trace` 查看内部流程
+- 验证 Backend 后端是否支持流式传输
 
 ---
 
-## 9. Cleanup
+## 9. 清理
 
-### Reset CLI State
+### 重置 CLI 状态
 
 ```bash
-# Flush all Redis data (clean slate)
+# 清空所有 Redis 数据（清空状态）
 redis-cli FLUSHALL
 
-# Or selectively delete test session
+# 或选择性删除测试 Session 会话
 SESSION_ID="test-session-id"
 redis-cli DEL "iota:session:$SESSION_ID"
 redis-cli KEYS "iota:exec:*" | xargs redis-cli DEL
@@ -993,27 +993,27 @@ redis-cli KEYS "iota:visibility:*" | xargs redis-cli DEL
 redis-cli DEL "iota:memories:$SESSION_ID" "iota:session-execs:$SESSION_ID"
 ```
 
-### Environment Teardown
+### 环境清理
 
 ```bash
-# Stop Redis
+# 停止 Redis
 cd deployment/scripts
 bash stop-storage.sh
 ```
 
 ---
 
-## 10. References
+## 10. 参考资料
 
-### Related Guides
+### 相关指南
 
-- [00-architecture-overview.md](./00-architecture-overview.md) — System architecture
-- [02-tui-guide.md](./02-tui-guide.md) — Interactive TUI mode
-- [03-agent-guide.md](./03-agent-guide.md) — Agent API verification
-- [04-app-guide.md](./04-app-guide.md) — App UI verification
-- [05-engine-guide.md](./05-engine-guide.md) — Engine internals
+- [00-architecture-overview.md](./00-architecture-overview.md) — 系统架构
+- [02-tui-guide.md](./02-tui-guide.md) — 交互式 TUI 模式
+- [03-agent-guide.md](./03-agent-guide.md) — Agent API 验证
+- [04-app-guide.md](./04-app-guide.md) — App UI 验证
+- [05-engine-guide.md](./05-engine-guide.md) — Engine 引擎内部
 
-### External Documentation
+### 外部文档
 
 - [CLI README](../../iota-cli/README.md)
 - [Engine README](../../iota-engine/README.md)
@@ -1021,8 +1021,8 @@ bash stop-storage.sh
 
 ---
 
-## Version History
+## 版本历史
 
-| Version | Date | Changes |
+| 版本 | 日期 | 变更 |
 |---------|------|---------|
-| 1.0 | April 2026 | Initial release |
+| 1.0 | 2026 年 4 月 | 初始版本 |

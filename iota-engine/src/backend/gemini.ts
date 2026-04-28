@@ -146,6 +146,29 @@ function mapGeminiEvent(
     };
   }
 
+  if (type === "memory") {
+    return {
+      type: "memory",
+      sessionId: request.sessionId,
+      executionId: request.executionId,
+      backend,
+      sequence: 0,
+      timestamp:
+        typeof value.timestamp === "number" ? value.timestamp : Date.now(),
+      data: {
+        nativeType:
+          typeof value.nativeType === "string"
+            ? value.nativeType
+            : "interaction_log",
+        content: extractGeminiText(value) ?? "",
+        metadata:
+          typeof value.metadata === "object" && value.metadata !== null
+            ? (value.metadata as Record<string, unknown>)
+            : undefined,
+      },
+    };
+  }
+
   if (type === "result" || type === "done") {
     const text = extractGeminiText(value);
     // Extract native usage from usageMetadata (Section 5.3) or stats (current CLI)

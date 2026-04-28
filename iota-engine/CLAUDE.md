@@ -30,7 +30,7 @@ If code and docs conflict, prefer the current implementation and then update doc
 
 | Backend | Process | Protocol |
 |---|---|---|
-| Claude Code | `claude --print --output-format stream-json --verbose --permission-mode auto` | NDJSON stream-json output |
+| Claude Code | `claude --print --output-format stream-json --verbose --bare --permission-mode auto` | NDJSON stream-json output |
 | Codex | `codex exec [-c model=...]` | NDJSON output |
 | Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | NDJSON stream-json output |
 | Hermes Agent | `hermes acp` | ACP JSON-RPC 2.0 |

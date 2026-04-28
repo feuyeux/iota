@@ -1,86 +1,84 @@
-# Iota Architecture Overview
+# Iota 架构概览
 
-**Version:** 1.0  
-**Last Updated:** April 2026
+**版本：** 1.0
+**最后更新：** 2026年4月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#introduction)
-2. [System Architecture Diagram](#system-architecture-diagram)
-3. [Component Overview](#component-overview)
-4. [Engine Internal Architecture](#engine-internal-architecture)
-5. [Execution Flow](#execution-flow)
-6. [Communication Protocols](#communication-protocols)
-7. [Data Flow](#data-flow)
-8. [Deployment Architecture](#deployment-architecture)
-
----
-
-## Introduction
-
-This document provides a comprehensive architectural overview of the Iota system, including:
-
-- **System-level architecture**: How CLI, TUI, Agent, App, and Engine interact
-- **Engine internal architecture**: Detailed view of Engine components and their relationships
-- **Execution flow**: Step-by-step visualization of request processing
-- **Communication protocols**: How components communicate with each other
-- **Data flow**: How data moves through the system
-- **Deployment architecture**: How components are deployed and scaled
-
-This overview serves as a reference for all other guide documents and helps developers understand the complete system structure before diving into specific components.
+1. [引言](#引言)
+2. [系统架构图](#系统架构图)
+3. [组件概述](#组件概述)
+4. [Engine 内部架构](#engine-内部架构)
+5. [执行流程](#执行流程)
+6. [通信协议](#通信协议)
+7. [数据流](#数据流)
+8. [部署架构](#部署架构)
 
 ---
 
-## System Architecture Diagram
+## 引言
 
-### High-Level System Architecture
+本文档提供 Iota 系统的全面架构概览，包括：
+
+- **系统级架构**：CLI、TUI、Agent、App、Engine 如何交互
+- **Engine 内部架构**：Engine 组件及其关系的详细视图
+- **执行流程**：请求处理的逐步可视化
+- **通信协议**：组件间如何通信
+- **数据流**：数据如何在系统中流动
+- **部署架构**：组件如何部署和扩展
+
+本概览作为所有其他指南文档的参考，帮助开发者在深入特定组件前理解完整的系统结构。
+
+---
+
+## 系统架构图
+
+### 高层系统架构
 
 ```mermaid
 graph TB
-    subgraph "User Interface Layer"
-        CLI[CLI<br/>iota-cli<br/>Command Line]
-        TUI[TUI<br/>Interactive Mode<br/>Terminal UI]
-        Browser[Browser<br/>Web Client]
+    subgraph "用户界面层 (User Interface Layer)"
+        CLI[CLI<br/>iota-cli<br/>命令行工具]
+        TUI[TUI<br/>交互模式<br/>终端UI]
+        Browser[浏览器<br/>Web客户端]
     end
-    
-    subgraph "Service Layer"
-        Agent[Agent Service<br/>iota-agent<br/>Port 9666]
-        App[App Frontend<br/>iota-app<br/>Port 9888]
+
+    subgraph "服务层 (Service Layer)"
+        Agent[Agent 服务<br/>iota-agent<br/>端口 9666]
+        App[App 前端<br/>iota-app<br/>端口 9888]
     end
-    
-    subgraph "Core Layer"
-        Engine[Engine Runtime<br/>iota-engine<br/>Core Library]
+
+    subgraph "核心层 (Core Layer)"
+        Engine[Engine 运行时<br/>iota-engine<br/>核心库]
     end
-    
-    subgraph "Storage Layer"
-        Redis[(Redis<br/>Port 6379<br/>Primary Storage — Required)]
-        Milvus[(Milvus<br/>Port 19530<br/>Vector Storage — Optional)]
-        MinIO[(MinIO<br/>Port 9000<br/>Object Storage — Optional)]
+
+    subgraph "存储层 (Storage Layer)"
+        Redis[(Redis<br/>端口 6379<br/>主存储 — 必需)]
+        MinIO[(MinIO<br/>端口 9000<br/>对象存储 — 可选)]
     end
-    
-    subgraph "External Layer"
-        Claude[Claude Code<br/>CLI Subprocess]
-        Codex[Codex<br/>CLI Subprocess]
-        Gemini[Gemini CLI<br/>CLI Subprocess]
-        Hermes[Hermes Agent<br/>Long-running Subprocess]
+
+    subgraph "外部层 (External Layer)"
+        Claude[Claude Code<br/>CLI 子进程]
+        Codex[Codex<br/>CLI 子进程]
+        Gemini[Gemini CLI<br/>CLI 子进程]
+        Hermes[Hermes Agent<br/>长运行子进程]
     end
-    
-    CLI -->|TypeScript imports<br/>in-process| Engine
-    TUI -->|TypeScript imports<br/>in-process| Engine
+
+    CLI -->|TypeScript 导入<br/>进程内调用| Engine
+    TUI -->|TypeScript 导入<br/>进程内调用| Engine
     Browser -->|HTTP<br/>TCP :9888| App
     App -->|HTTP REST<br/>TCP :9666| Agent
     App -->|WebSocket<br/>TCP :9666| Agent
-    Agent -->|TypeScript imports<br/>in-process| Engine
-    
-    Engine -->|Redis Protocol<br/>TCP :6379| Redis
-    Engine -.->|gRPC<br/>TCP :19530| Milvus
+    Agent -->|TypeScript 导入<br/>进程内调用| Engine
+
+    Engine -->|Redis 协议<br/>TCP :6379| Redis
     Engine -.->|S3 API<br/>HTTP :9000| MinIO
-    
-    Engine -->|stdio pipes<br/>NDJSON| Claude
-    Engine -->|stdio pipes<br/>NDJSON| Codex
-    Engine -->|stdio pipes<br/>NDJSON| Gemini
-    Engine -->|stdio pipes<br/>JSON-RPC 2.0| Hermes
-    
+
+    Engine -->|stdio 管道<br/>NDJSON| Claude
+    Engine -->|stdio 管道<br/>NDJSON| Codex
+    Engine -->|stdio 管道<br/>NDJSON| Gemini
+    Engine -->|stdio 管道<br/>JSON-RPC 2.0| Hermes
+
     style CLI fill:#e1f5ff
     style TUI fill:#e1f5ff
     style Browser fill:#e1f5ff
@@ -88,7 +86,6 @@ graph TB
     style App fill:#fff4e1
     style Engine fill:#ffe1e1
     style Redis fill:#e1ffe1
-    style Milvus fill:#e1ffe1
     style MinIO fill:#e1ffe1
     style Claude fill:#f0f0f0
     style Codex fill:#f0f0f0
@@ -96,180 +93,176 @@ graph TB
     style Hermes fill:#f0f0f0
 ```
 
-### Legend
+### 图例
 
-- **Solid arrows (→)**: Direct dependencies (TypeScript imports, in-process calls)
-- **Dashed arrows (-.->)**: Optional network dependencies
-- **Line labels**: Communication protocol and port information
-
-
+- **实线箭头 (→)**：直接依赖（TypeScript 导入、进程内调用）
+- **虚线箭头 (-.->)**：可选网络依赖
+- **线条标签**：通信协议和端口信息
 
 ---
 
-## Component Overview
+## 组件概述
 
-### Layer 1: User Interface Layer
+### 第 1 层：用户界面层 (User Interface Layer)
 
-| Component | Type | Port | Description |
+| 组件 | 类型 | 端口 | 描述 |
 |-----------|------|------|-------------|
-| **CLI** | Command-line tool | N/A | Direct command execution, imports Engine library |
-| **TUI** | Interactive terminal | N/A | Interactive mode launched via CLI, imports Engine library |
-| **Browser** | Web client | N/A | User's web browser accessing App frontend |
+| **CLI** | 命令行工具 | N/A | 直接执行命令，导入 Engine 库 |
+| **TUI** | 交互式终端 | N/A | 通过 CLI 启动的交互模式，导入 Engine 库 |
+| **Browser** | Web 客户端 | N/A | 用户访问 App 前端的 Web 浏览器 |
 
-### Layer 2: Service Layer
+### 第 2 层：服务层 (Service Layer)
 
-| Component | Type | Port | Description |
+| 组件 | 类型 | 端口 | 描述 |
 |-----------|------|------|-------------|
-| **Agent** | Fastify HTTP/WebSocket service | 9666 | Exposes REST API and WebSocket for remote access, imports Engine library |
-| **App** | Vite React frontend | 9888 | Web UI for visualization, communicates with Agent |
+| **Agent** | Fastify HTTP/WebSocket 服务 | 9666 | 暴露 REST API 和 WebSocket 用于远程访问，导入 Engine 库 |
+| **App** | Vite React 前端 | 9888 | 可视化的 Web UI，与 Agent 通信 |
 
-### Layer 3: Core Layer
+### 第 3 层：核心层 (Core Layer)
 
-| Component | Type | Port | Description |
+| 组件 | 类型 | 端口 | 描述 |
 |-----------|------|------|-------------|
-| **Engine** | TypeScript library | N/A | Core runtime orchestrating execution, memory, visibility, storage |
+| **Engine** | TypeScript 库 | N/A | 核心运行时，协调执行、记忆、可见性、存储 |
 
-### Layer 4: Storage Layer
+### 第 4 层：存储层 (Storage Layer)
 
-| Component | Type | Port | Description |
+| 组件 | 类型 | 端口 | 描述 |
 |-----------|------|------|-------------|
-| **Redis** | In-memory database | 6379 | **Required** — primary storage for sessions, executions, events, visibility, config |
-| **Milvus** | Vector database | 19530 | **Optional** — vector storage for memory embeddings; system degrades gracefully without it |
-| **MinIO** | Object storage | 9000 | **Optional** — object storage for large artifacts; system degrades gracefully without it |
+| **Redis** | 内存数据库 | 6379 | **必需** — sessions、executions、events、visibility、config 的主存储 |
+| **MinIO** | 对象存储 | 9000 | **可选** — 大型制品的对象存储；缺失时系统优雅降级 |
 
-### Layer 5: External Layer
+### 第 5 层：外部层 (External Layer)
 
-| Component | Type | Protocol | Description |
+| 组件 | 类型 | 协议 | 描述 |
 |-----------|------|----------|-------------|
-| **Claude Code** | CLI subprocess | NDJSON over stdio | Anthropic's Claude Code CLI |
-| **Codex** | CLI subprocess | NDJSON over stdio | Codex CLI |
-| **Gemini CLI** | CLI subprocess | NDJSON over stdio | Google's Gemini CLI |
-| **Hermes Agent** | Long-running subprocess | JSON-RPC 2.0 over stdio | Hermes Agent with ACP protocol |
-
-
+| **Claude Code** | CLI 子进程 | NDJSON over stdio | Anthropic 的 Claude Code CLI |
+| **Codex** | CLI 子进程 | NDJSON over stdio | OpenAI Codex CLI |
+| **Gemini CLI** | CLI 子进程 | NDJSON over stdio | Google 的 Gemini CLI |
+| **Hermes Agent** | 长运行子进程 | JSON-RPC 2.0 over stdio | 带 ACP 协议的 Hermes Agent |
 
 ---
 
-## Engine Internal Architecture
+## Engine 内部架构
 
-### Engine Component Diagram
+### Engine 组件图
 
 ```mermaid
 graph TB
-    subgraph "Engine Entry Points"
-        ExecuteAPI[Execute API<br/>Main entry point]
-        ConfigAPI[Config API<br/>Configuration management]
-        VisibilityAPI[Visibility API<br/>Query interface]
+    subgraph "Engine 入口点 (Entry Points)"
+        ExecuteAPI[Execute API<br/>主入口点]
+        ConfigAPI[Config API<br/>配置管理]
+        VisibilityAPI[Visibility API<br/>查询接口]
     end
-    
-    subgraph "Routing Layer"
-        Router[Backend Router<br/>Select backend]
-        Pool[Backend Pool<br/>Manage subprocesses]
+
+    subgraph "路由层 (Routing Layer)"
+        Router[Backend Router<br/>选择后端]
+        Pool[Backend Pool<br/>管理子进程]
     end
-    
-    subgraph "Execution Core"
-        Executor[Executor<br/>Orchestrate execution]
-        Workspace[Workspace Manager<br/>Path guards, snapshots]
-        Approval[Approval System<br/>Hooks & policies]
+
+    subgraph "执行核心 (Execution Core)"
+        Executor[Executor<br/>编排执行]
+        Workspace[Workspace Manager<br/>路径守卫、快照]
+        Approval[Approval System<br/>钩子与策略]
     end
-    
-    subgraph "Backend Adapters"
-        ClaudeAdapter[Claude Code Adapter<br/>NDJSON parser]
-        CodexAdapter[Codex Adapter<br/>NDJSON parser]
-        GeminiAdapter[Gemini Adapter<br/>NDJSON parser]
-        HermesAdapter[Hermes Adapter<br/>JSON-RPC parser]
+
+    subgraph "后端适配器 (Backend Adapters)"
+        ClaudeAdapter[Claude Code Adapter<br/>NDJSON 解析器]
+        CodexAdapter[Codex Adapter<br/>NDJSON 解析器]
+        GeminiAdapter[Gemini Adapter<br/>NDJSON 解析器]
+        HermesAdapter[Hermes Adapter<br/>JSON-RPC 解析器]
     end
-    
-    subgraph "Event Processing"
-        Protocol[Protocol Parser<br/>Parse native events]
-        EventMapper[Event Mapper<br/>Map to RuntimeEvent]
-        EventStream[Event Stream<br/>Emit events]
+
+    subgraph "事件处理 (Event Processing)"
+        Protocol[Protocol Parser<br/>解析原生事件]
+        EventMapper[Event Mapper<br/>映射到 RuntimeEvent]
+        EventStream[Event Stream<br/>发送事件]
     end
-    
-    subgraph "Memory System"
-        Dialogue[Dialogue Memory<br/>Conversation history]
-        Working[Working Memory<br/>Current context]
-        Retrieval[Memory Retrieval<br/>Search & rank]
-        Injection[Memory Injection<br/>Add to prompt]
-        Extraction[Memory Extraction<br/>Extract from output]
+
+    subgraph "记忆系统 (Memory System)"
+        Dialogue[Dialogue Memory<br/>对话历史]
+        Working[Working Memory<br/>当前上下文]
+        Mapping[Memory Mapping<br/>原生类型映射]
+        Retrieval[Memory Retrieval<br/>按 scope 检索]
+        Injection[Memory Injection<br/>添加到 prompt]
+        Extraction[Memory Extraction<br/>后端事件与回退提取]
     end
-    
-    subgraph "Visibility System"
-        Context[Context Recorder<br/>Prompt analysis]
-        Tokens[Token Counter<br/>Usage tracking]
-        Chain[Chain Tracer<br/>Span recording]
-        MemVis[Memory Visibility<br/>Selection tracking]
+
+    subgraph "可见性系统 (Visibility System)"
+        Context[Context Recorder<br/>Prompt 分析]
+        Tokens[Token Counter<br/>使用量跟踪]
+        Chain[Chain Tracer<br/>Span 记录]
+        MemVis[Memory Visibility<br/>选择跟踪]
     end
-    
-    subgraph "Storage Abstraction"
-        SessionStore[Session Store<br/>CRUD operations]
-        ExecStore[Execution Store<br/>CRUD operations]
-        EventStore[Event Store<br/>Stream operations]
-        MemoryStore[Memory Store<br/>Vector operations]
-        ConfigStore[Config Store<br/>Key-value operations]
+
+    subgraph "存储抽象 (Storage Abstraction)"
+        SessionStore[Session Store<br/>CRUD 操作]
+        ExecStore[Execution Store<br/>CRUD 操作]
+        EventStore[Event Store<br/>流操作]
+        MemoryStore[Memory Store<br/>统一记忆索引]
+        ConfigStore[Config Store<br/>键值操作]
     end
-    
-    subgraph "Storage Backends"
-        RedisClient[Redis Client<br/>Primary storage]
-        MilvusClient[Milvus Client<br/>Vector storage]
-        MinIOClient[MinIO Client<br/>Object storage]
+
+    subgraph "存储后端 (Storage Backends)"
+        RedisClient[Redis Client<br/>主存储]
+        MinIOClient[MinIO Client<br/>对象存储]
     end
-    
+
     ExecuteAPI --> Router
     Router --> Pool
     Pool --> Executor
-    
+
     Executor --> Workspace
     Executor --> Approval
     Executor --> Dialogue
     Executor --> Working
+    Executor --> Mapping
     Executor --> Retrieval
-    
+
     Retrieval --> Injection
     Injection --> Router
-    
+
     Router --> ClaudeAdapter
     Router --> CodexAdapter
     Router --> GeminiAdapter
     Router --> HermesAdapter
-    
+
     ClaudeAdapter --> Protocol
     CodexAdapter --> Protocol
     GeminiAdapter --> Protocol
     HermesAdapter --> Protocol
-    
+
     Protocol --> EventMapper
     EventMapper --> EventStream
-    EventStream --> Extraction
-    
+    EventStream --> Mapping
+    Mapping --> Extraction
+
     Extraction --> MemoryStore
-    
+
     EventStream --> Context
     EventStream --> Tokens
     EventStream --> Chain
     EventStream --> MemVis
-    
+
     Executor --> SessionStore
     Executor --> ExecStore
     EventStream --> EventStore
-    
+
     Context --> ExecStore
     Tokens --> ExecStore
     Chain --> ExecStore
     MemVis --> ExecStore
-    
+
     SessionStore --> RedisClient
     ExecStore --> RedisClient
     EventStore --> RedisClient
     MemoryStore --> RedisClient
-    MemoryStore -.-> MilvusClient
     ConfigStore --> RedisClient
-    
+
     ExecStore -.-> MinIOClient
-    
+
     ConfigAPI --> ConfigStore
     VisibilityAPI --> ExecStore
-    
+
     style ExecuteAPI fill:#e1f5ff
     style ConfigAPI fill:#e1f5ff
     style VisibilityAPI fill:#e1f5ff
@@ -278,65 +271,63 @@ graph TB
     style RedisClient fill:#e1ffe1
 ```
 
-### Engine Component Responsibilities
+### Engine 组件职责
 
-#### Entry Points
-- **Execute API**: Main entry point for executing prompts
-- **Config API**: Load, get, set, and persist configuration
-- **Visibility API**: Query execution visibility data
+#### 入口点 (Entry Points)
+- **Execute API**：执行 prompt 的主入口点
+- **Config API**：加载、获取、设置、持久化配置
+- **Visibility API**：查询执行可见性数据
 
-#### Routing Layer
-- **Backend Router**: Select appropriate backend based on config and availability
-- **Backend Pool**: Manage backend subprocess lifecycle (spawn, reuse, terminate)
+#### 路由层 (Routing Layer)
+- **Backend Router**：基于配置和可用性选择合适的后端
+- **Backend Pool**：管理后端子进程生命周期（spawn、reuse、terminate）
 
-#### Execution Core
-- **Executor**: Orchestrate the complete execution flow
-- **Workspace Manager**: Guard file access, create snapshots, track deltas
-- **Approval System**: Intercept operations requiring approval, apply policies
+#### 执行核心 (Execution Core)
+- **Executor**：编排完整执行流程
+- **Workspace Manager**：守卫文件访问、创建快照、跟踪 delta
+- **Approval System**：拦截需要审批的操作，应用策略
 
-#### Backend Adapters
-- **Claude Code Adapter**: Parse Claude Code NDJSON output, map to RuntimeEvents
-- **Codex Adapter**: Parse Codex NDJSON output, map to RuntimeEvents
-- **Gemini Adapter**: Parse Gemini NDJSON output, map to RuntimeEvents
-- **Hermes Adapter**: Handle JSON-RPC 2.0 protocol, map to RuntimeEvents
+#### 后端适配器 (Backend Adapters)
+- **Claude Code Adapter**：解析 Claude Code NDJSON 输出，映射到 RuntimeEvents
+- **Codex Adapter**：解析 Codex NDJSON 输出，映射到 RuntimeEvents
+- **Gemini Adapter**：解析 Gemini NDJSON 输出，映射到 RuntimeEvents
+- **Hermes Adapter**：处理 JSON-RPC 2.0 协议，映射到 RuntimeEvents
 
-#### Event Processing
-- **Protocol Parser**: Parse backend-specific protocol (NDJSON, JSON-RPC)
-- **Event Mapper**: Map native backend events to normalized RuntimeEvents
-- **Event Stream**: Emit RuntimeEvents to consumers (storage, visibility, memory)
+#### 事件处理 (Event Processing)
+- **Protocol Parser**：解析后端特定协议（NDJSON、JSON-RPC）
+- **Event Mapper**：将原生后端事件映射到标准化的 RuntimeEvents
+- **Event Stream**：向消费者发送 RuntimeEvents（存储、可见性、记忆）
 
-#### Memory System
-- **Dialogue Memory**: Store conversation history for context
-- **Working Memory**: Maintain current execution context
-- **Memory Retrieval**: Search and rank relevant memories
-- **Memory Injection**: Add selected memories to prompt
-- **Memory Extraction**: Extract valuable information from output
+#### 记忆系统 (Memory System)
+- **Dialogue Memory**：存储对话历史以供上下文使用
+- **Working Memory**：维护当前执行上下文
+- **Memory Mapping**：将后端原生记忆类型映射到统一四类记忆
+- **Memory Retrieval**：按 session / project / user scope 检索和排序相关记忆
+- **Memory Injection**：将选定记忆添加到 prompt
+- **Memory Extraction**：优先消费后端原生 memory 事件，必要时从执行结果回退提取
 
-#### Visibility System
-- **Context Recorder**: Analyze prompt composition and token budget
-- **Token Counter**: Track input/output token usage
-- **Chain Tracer**: Record execution spans with timing
-- **Memory Visibility**: Track memory selection and trimming
+#### 可见性系统 (Visibility System)
+- **Context Recorder**：分析 prompt 组成和 token 预算
+- **Token Counter**：跟踪输入/输出 token 使用量
+- **Chain Tracer**：记录带时间的执行 span
+- **Memory Visibility**：跟踪记忆选择和修剪
 
-#### Storage Abstraction
-- **Session Store**: CRUD operations for sessions
-- **Execution Store**: CRUD operations for executions
-- **Event Store**: Stream operations for events
-- **Memory Store**: Vector operations for memories
-- **Config Store**: Key-value operations for configuration
+#### 存储抽象 (Storage Abstraction)
+- **Session Store**：sessions 的 CRUD 操作
+- **Execution Store**：executions 的 CRUD 操作
+- **Event Store**：events 的流操作
+- **Memory Store**：统一记忆对象的存取、索引与跨 scope 查询
+- **Config Store**：配置的键值操作
 
-#### Storage Backends
-- **Redis Client**: Primary storage for all data structures
-- **Milvus Client**: Optional vector storage for memory embeddings
-- **MinIO Client**: Optional object storage for large artifacts
-
-
+#### 存储后端 (Storage Backends)
+- **Redis Client**：所有数据结构的 主存储
+- **MinIO Client**：大型制品的可选对象存储
 
 ---
 
-## Execution Flow
+## 执行流程
 
-### Complete Execution Flow Diagram
+### 完整执行流程图
 
 ```mermaid
 sequenceDiagram
@@ -352,199 +343,196 @@ sequenceDiagram
     participant Redis
     participant EventStream
     participant Visibility
-    
-    User->>CLI: Execute command
+
+    User->>CLI: 执行命令
     CLI->>Engine: execute(prompt, options)
-    
-    Note over Engine: Phase 1: Initialization
-    Engine->>Redis: Create session (if new)
+
+    Note over Engine: 阶段 1: 初始化
+    Engine->>Redis: 创建 session（如果是新的）
     Redis-->>Engine: sessionId
-    Engine->>Redis: Create execution record
+    Engine->>Redis: 创建 execution 记录
     Redis-->>Engine: executionId
-    Engine->>EventStream: Emit state=queued
-    EventStream->>Redis: Persist event
-    
-    Note over Engine: Phase 2: Workspace Preparation
-    Engine->>Workspace: Scan working directory
-    Workspace->>Workspace: Build file tree
+    Engine->>EventStream: 发送 state=queued 事件
+    EventStream->>Redis: 持久化事件
+
+    Note over Engine: 阶段 2: Workspace 准备
+    Engine->>Workspace: 扫描工作目录
+    Workspace->>Workspace: 构建文件树
     Workspace-->>Engine: Workspace snapshot
-    Engine->>Approval: Check workspace access
-    Approval-->>Engine: Access granted
-    
-    Note over Engine: Phase 3: Memory Retrieval
-    Engine->>Memory: Retrieve dialogue history
-    Memory->>Redis: Query conversation
-    Redis-->>Memory: Previous messages
-    Engine->>Memory: Retrieve relevant memories
-    Memory->>Redis: Search memories
-    Redis-->>Memory: Candidate memories
-    Memory->>Memory: Rank and select
-    Memory-->>Engine: Selected memories
-    
-    Note over Engine: Phase 4: Prompt Composition
-    Engine->>Engine: Compose final prompt
-    Engine->>Visibility: Record context
-    Visibility->>Redis: Store context data
-    
-    Note over Engine: Phase 5: Backend Selection
-    Engine->>Router: Select backend
-    Router->>Router: Check availability
-    Router->>Router: Apply routing rules
-    Router-->>Engine: Selected backend
-    
-    Note over Engine: Phase 6: Backend Execution
-    Engine->>Adapter: Execute with backend
-    Adapter->>Backend: Spawn subprocess
-    Backend-->>Adapter: Process started
-    Adapter->>Backend: Write prompt to stdin
-    Engine->>EventStream: Emit state=starting
-    EventStream->>Redis: Persist event
-    
-    loop Stream output
-        Backend->>Adapter: Write to stdout (NDJSON/JSON-RPC)
-        Adapter->>Adapter: Parse protocol
-        Adapter->>Adapter: Map to RuntimeEvent
-        Adapter->>EventStream: Emit event
-        EventStream->>Redis: Persist event
-        EventStream->>Visibility: Update visibility
-        Visibility->>Redis: Store visibility data
-        EventStream->>CLI: Stream to user
-        CLI->>User: Display output
+    Engine->>Approval: 检查 workspace 访问权限
+    Approval-->>Engine: 授权通过
+
+    Note over Engine: 阶段 3: 记忆检索
+    Engine->>Memory: 检索对话历史
+    Memory->>Redis: 查询对话
+    Redis-->>Memory: 历史消息
+    Engine->>Memory: 检索相关记忆
+    Memory->>Redis: 搜索记忆
+    Redis-->>Memory: 候选记忆
+    Memory->>Memory: 排序和选择
+    Memory-->>Engine: 选定的记忆
+
+    Note over Engine: 阶段 4: Prompt 组成
+    Engine->>Engine: 组合最终 prompt
+    Engine->>Visibility: 记录上下文
+    Visibility->>Redis: 存储上下文数据
+
+    Note over Engine: 阶段 5: 后端选择
+    Engine->>Router: 选择后端
+    Router->>Router: 检查可用性
+    Router->>Router: 应用路由规则
+    Router-->>Engine: 选定的后端
+
+    Note over Engine: 阶段 6: 后端执行
+    Engine->>Adapter: 使用后端执行
+    Adapter->>Backend: 启动子进程
+    Backend-->>Adapter: 进程启动
+    Adapter->>Backend: 写入 prompt 到 stdin
+    Engine->>EventStream: 发送 state=starting 事件
+    EventStream->>Redis: 持久化事件
+
+    loop 流式输出
+        Backend->>Adapter: 写入 stdout (NDJSON/JSON-RPC)
+        Adapter->>Adapter: 解析协议
+        Adapter->>Adapter: 映射到 RuntimeEvent
+        Adapter->>EventStream: 发送事件
+        EventStream->>Redis: 持久化事件
+        EventStream->>Visibility: 更新可见性
+        Visibility->>Redis: 存储可见性数据
+        EventStream->>CLI: 流式发送给用户
+        CLI->>User: 显示输出
     end
-    
-    Backend->>Adapter: Process exit
-    Adapter->>EventStream: Emit state=completed
-    EventStream->>Redis: Persist event
-    
-    Note over Engine: Phase 7: Memory Extraction
-    Engine->>Memory: Extract from output
-    Memory->>Memory: Analyze content
-    Memory->>Redis: Store new memories
-    
-    Note over Engine: Phase 8: Visibility Recording
-    Engine->>Visibility: Record tokens
-    Visibility->>Redis: Store token data
-    Engine->>Visibility: Record chain
-    Visibility->>Redis: Store span data
-    Engine->>Visibility: Record memory usage
-    Visibility->>Redis: Store memory data
-    
-    Note over Engine: Phase 9: Finalization
-    Engine->>Redis: Update execution status
-    Engine->>EventStream: Emit complete
-    EventStream->>Redis: Persist event
-    Engine-->>CLI: Execution result
-    CLI-->>User: Final output
+
+    Backend->>Adapter: 进程退出
+    Adapter->>EventStream: 发送 state=completed 事件
+    EventStream->>Redis: 持久化事件
+
+    Note over Engine: 阶段 7: 记忆提取
+    Engine->>Memory: 从输出提取
+    Memory->>Memory: 分析内容
+    Memory->>Redis: 存储新记忆
+
+    Note over Engine: 阶段 8: 可见性记录
+    Engine->>Visibility: 记录 tokens
+    Visibility->>Redis: 存储 token 数据
+    Engine->>Visibility: 记录 chain
+    Visibility->>Redis: 存储 span 数据
+    Engine->>Visibility: 记录 memory 使用
+    Visibility->>Redis: 存储 memory 数据
+
+    Note over Engine: 阶段 9: 最终化
+    Engine->>Redis: 更新 execution 状态
+    Engine->>EventStream: 发送 complete 事件
+    EventStream->>Redis: 持久化事件
+    Engine-->>CLI: 执行结果
+    CLI-->>User: 最终输出
 ```
 
-### Execution Phases Explained
+### 执行阶段详解
 
-#### Phase 1: Initialization (0-10ms)
-1. Create or load session from Redis
-2. Generate execution ID
-3. Create execution record in Redis
-4. Emit `state=queued` event
-5. Acquire distributed execution lock
+#### 阶段 1：初始化 (0-10ms)
+1. 从 Redis 创建或加载 session
+2. 生成 execution ID
+3. 在 Redis 中创建 execution 记录
+4. 发送 `state=queued` 事件
+5. 获取分布式执行锁
 
-#### Phase 2: Workspace Preparation (10-100ms)
-1. Scan working directory
-2. Build file tree snapshot
-3. Check workspace access permissions
-4. Apply approval policies if needed
+#### 阶段 2：Workspace 准备 (10-100ms)
+1. 扫描工作目录
+2. 构建文件树快照
+3. 检查 workspace 访问权限
+4. 如需要应用审批策略
 
-#### Phase 3: Memory Retrieval (50-200ms)
-1. Load dialogue history from Redis
-2. Search for relevant memories
-3. Rank memories by relevance
-4. Select top memories within token budget
-5. Prepare memories for injection
+#### 阶段 3：记忆检索 (50-200ms)
+1. 从进程内存加载对话历史（`DialogueMemory`，非持久化——进程重启后丢失）
+2. 从 Redis 搜索统一记忆（episodic/procedural/factual/strategic）
+3. 按相关性排序记忆
+4. 在 token 预算内选择顶部记忆
+5. 准备注入的记忆
 
-#### Phase 4: Prompt Composition (10-50ms)
-1. Combine system prompt, user prompt, memories
-2. Calculate token budget
-3. Record context visibility data
-4. Prepare final prompt for backend
+#### 阶段 4：Prompt 组成 (10-50ms)
+1. 组合 system prompt、user prompt、memories
+2. 计算 token 预算
+3. 记录上下文可见性数据
+4. 准备发给后端的最终 prompt
 
-#### Phase 5: Backend Selection (5-20ms)
-1. Check backend availability
-2. Apply routing rules (config, load balancing)
-3. Select backend from pool
-4. Prepare backend-specific options
+#### 阶段 5：后端选择 (5-20ms)
+1. 检查后端可用性
+2. 应用路由规则（配置、负载均衡）
+3. 从池中选择后端
+4. 准备后端特定选项
 
-#### Phase 6: Backend Execution (1000-30000ms)
-1. Spawn backend subprocess (or reuse for Hermes)
-2. Write prompt to stdin
-3. Emit `state=starting` event
-4. Read stdout in streaming mode
-5. Parse protocol (NDJSON or JSON-RPC)
-6. Map native events to RuntimeEvents
-7. Emit events to stream
-8. Persist events to Redis
-9. Update visibility data
-10. Stream output to user
-11. Wait for process exit
-12. Emit `state=completed` event
+#### 阶段 6：后端执行 (1000-30000ms)
+1. 启动后端子进程（或复用 Hermes）
+2. 写入 prompt 到 stdin
+3. 发送 `state=starting` 事件
+4. 以流式模式读取 stdout
+5. 解析协议（NDJSON 或 JSON-RPC）
+6. 将原生事件映射到 RuntimeEvents
+7. 向流发送事件
+8. 持久化事件到 Redis
+9. 更新可见性数据
+10. 流式输出给用户
+11. 等待进程退出
+12. 发送 `state=completed` 事件
 
-#### Phase 7: Memory Extraction (50-200ms)
-1. Analyze output content
-2. Identify valuable information
-3. Extract procedural/episodic memories
-4. Store memories in Redis (and optionally Milvus)
+#### 阶段 7：记忆提取 (50-200ms)
+1. 分析输出内容
+2. 识别有价值的信息
+3. 提取程序性/情节性记忆
+4. 存储记忆到 Redis 统一记忆索引
 
-#### Phase 8: Visibility Recording (20-100ms)
-1. Record token usage (input/output)
-2. Record execution chain (spans with timing)
-3. Record memory selection metadata
-4. Store all visibility data in Redis
+#### 阶段 8：可见性记录 (20-100ms)
+1. 记录 token 使用量（输入/输出）
+2. 记录执行链（带时间的 spans）
+3. 记录记忆选择元数据
+4. 存储所有可见性数据到 Redis
 
-#### Phase 9: Finalization (10-50ms)
-1. Update execution status to completed
-2. Release distributed execution lock
-3. Emit final complete event
-4. Return result to caller
+#### 阶段 9：最终化 (10-50ms)
+1. 更新 execution 状态为 completed
+2. 释放分布式执行锁
+3. 发送最终 complete 事件
+4. 返回结果给调用方
 
-### Total Execution Time
-- **Minimum**: ~1.2 seconds (fast backend response)
-- **Typical**: ~5-10 seconds (normal backend response)
-- **Maximum**: ~30+ seconds (complex requests or slow backend)
-
-
+### 总执行时间
+- **最短**：约 1.2 秒（快速后端响应）
+- **典型**：约 5-10 秒（正常后端响应）
+- **最长**：约 30+ 秒（复杂请求或慢后端）
 
 ---
 
-## Communication Protocols
+## 通信协议
 
-### Protocol Summary Table
+### 协议汇总表
 
-| Source | Target | Protocol | Port | Data Format | Connection Type |
+| 源 | 目标 | 协议 | 端口 | 数据格式 | 连接类型 |
 |--------|--------|----------|------|-------------|-----------------|
-| CLI | Engine | TypeScript imports | N/A | Function calls | In-process |
-| TUI | Engine | TypeScript imports | N/A | Function calls | In-process |
-| Browser | App | HTTP | 9888 | HTML/CSS/JS | Request-response |
-| App | Agent | HTTP REST | 9666 | JSON | Request-response |
-| App | Agent | WebSocket | 9666 | JSON messages | Persistent connection |
-| Agent | Engine | TypeScript imports | N/A | Function calls | In-process |
-| Engine | Redis | Redis protocol | 6379 | Redis commands | Connection pool |
-| Engine | Milvus | gRPC | 19530 | Protobuf | Connection pool |
-| Engine | MinIO | S3 API | 9000 | HTTP/XML | Request-response |
-| Engine | Claude Code | stdio | N/A | NDJSON | Subprocess pipes |
-| Engine | Codex | stdio | N/A | NDJSON | Subprocess pipes |
-| Engine | Gemini CLI | stdio | N/A | NDJSON | Subprocess pipes |
-| Engine | Hermes | stdio | N/A | JSON-RPC 2.0 | Subprocess pipes |
+| CLI | Engine | TypeScript 导入 | N/A | 函数调用 | 进程内 |
+| TUI | Engine | TypeScript 导入 | N/A | 函数调用 | 进程内 |
+| Browser | App | HTTP | 9888 | HTML/CSS/JS | 请求-响应 |
+| App | Agent | HTTP REST | 9666 | JSON | 请求-响应 |
+| App | Agent | WebSocket | 9666 | JSON 消息 | 持久连接 |
+| Agent | Engine | TypeScript 导入 | N/A | 函数调用 | 进程内 |
+| Engine | Redis | Redis 协议 | 6379 | Redis 命令 | 连接池 |
+| Engine | MinIO | S3 API | 9000 | HTTP/XML | 请求-响应 |
+| Engine | Claude Code | stdio | N/A | NDJSON | 子进程管道 |
+| Engine | Codex | stdio | N/A | NDJSON | 子进程管道 |
+| Engine | Gemini CLI | stdio | N/A | NDJSON | 子进程管道 |
+| Engine | Hermes | stdio | N/A | JSON-RPC 2.0 | 子进程管道 |
 
-### Protocol Details
+### 协议详解
 
-#### 1. TypeScript Imports (In-Process)
+#### 1. TypeScript 导入（进程内）
 
-**Used by**: CLI → Engine, TUI → Engine, Agent → Engine
+**使用者**：CLI → Engine、TUI → Engine、Agent → Engine
 
-**Characteristics**:
-- Direct function calls within same Node.js/Bun process
-- No serialization overhead
-- Shared memory space
-- Synchronous and asynchronous calls supported
+**特性**：
+- 在同一 Node.js/Bun 进程内的直接函数调用
+- 无序列化开销
+- 共享内存空间
+- 支持同步和异步调用
 
-**Example**:
+**示例**：
 ```typescript
 import { execute } from '@iota/engine';
 
@@ -555,17 +543,17 @@ const result = await execute({
 });
 ```
 
-#### 2. HTTP REST (Request-Response)
+#### 2. HTTP REST（请求-响应）
 
-**Used by**: App → Agent, Engine → MinIO
+**使用者**：App → Agent、Engine → MinIO
 
-**Characteristics**:
-- Stateless request-response pattern
-- JSON payload for structured data
-- Standard HTTP methods (GET, POST, PUT, DELETE)
-- CORS support for browser clients
+**特性**：
+- 无状态请求-响应模式
+- JSON 负载用于结构化数据
+- 标准 HTTP 方法（GET、POST、PUT、DELETE）
+- 浏览器客户端的 CORS 支持
 
-**Example**:
+**示例**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/execute \
   -H "Content-Type: application/json" \
@@ -576,7 +564,7 @@ curl -X POST http://localhost:9666/api/v1/execute \
   }'
 ```
 
-**Response**:
+**响应**：
 ```json
 {
   "executionId": "exec_456",
@@ -584,19 +572,19 @@ curl -X POST http://localhost:9666/api/v1/execute \
 }
 ```
 
-#### 3. WebSocket (Persistent Connection)
+#### 3. WebSocket（持久连接）
 
-**Used by**: App → Agent
+**使用者**：App → Agent
 
-**Characteristics**:
-- Bidirectional communication
-- Real-time event streaming
-- JSON message format
-- Subscription-based updates
+**特性**：
+- 双向通信
+- 实时事件流
+- JSON 消息格式
+- 基于订阅的更新
 
-**Message Types**:
+**消息类型**：
 
-**Client → Server**:
+**客户端 → 服务器**：
 ```json
 {
   "type": "execute",
@@ -613,7 +601,7 @@ curl -X POST http://localhost:9666/api/v1/execute \
 }
 ```
 
-**Server → Client**:
+**服务器 → 客户端**：
 ```json
 {
   "type": "event",
@@ -632,85 +620,69 @@ curl -X POST http://localhost:9666/api/v1/execute \
 }
 ```
 
-#### 4. Redis Protocol (TCP)
+#### 4. Redis 协议（TCP）
 
-**Used by**: Engine → Redis
+**使用者**：Engine → Redis
 
-**Characteristics**:
-- Binary-safe protocol
-- Command-response pattern
-- Pipelining support
-- Pub/sub for real-time updates
+**特性**：
+- 二进制安全协议
+- 命令-响应模式
+- 流水线支持
+- Pub/sub 用于实时更新
 
-**Commands Used**:
-- `SET`, `GET`: Simple key-value
-- `HSET`, `HGET`, `HGETALL`: Hash operations
-- `LPUSH`, `LRANGE`: List operations
-- `ZADD`, `ZRANGE`, `ZCARD`: Sorted set operations
-- `PUBLISH`, `SUBSCRIBE`: Pub/sub messaging
+**使用的命令**：
+- `SET`、`GET`：简单键值
+- `HSET`、`HGET`、`HGETALL`：哈希操作
+- `XADD`、`XRANGE`：流操作
+- `ZADD`、`ZRANGE`、`ZCARD`：有序集合操作
+- `PUBLISH`、`SUBSCRIBE`：发布/订阅消息
 
-**Example**:
+**示例**：
 ```bash
-# Store session
+# 存储 session
 HSET iota:session:session_123 workingDirectory /tmp activeBackend claude-code
 
-# Store execution
+# 存储 execution
 HSET iota:exec:exec_456 prompt "What is 2+2?" status completed
 
-# Store event
-LPUSH iota:events:exec_456 '{"type":"output","content":"4"}'
+# 存储事件
+XADD iota:events:exec_456 * event '{"type":"output","content":"4"}'
 ```
 
-#### 5. gRPC (Protobuf over HTTP/2)
+#### 5. S3 API（HTTP/XML）
 
-**Used by**: Engine → Milvus
+**使用者**：Engine → MinIO
 
-**Characteristics**:
-- Binary protocol (Protobuf)
-- Efficient serialization
-- Streaming support
-- Type-safe schema
-
-**Operations**:
-- `Insert`: Add vector embeddings
-- `Search`: Query similar vectors
-- `Delete`: Remove vectors
-- `CreateCollection`: Initialize collection
-
-#### 6. S3 API (HTTP/XML)
-
-**Used by**: Engine → MinIO
-
-**Characteristics**:
+**特性**：
 - RESTful API
-- XML or JSON payloads
-- Multipart upload support
-- Presigned URLs for secure access
+- XML 或 JSON 负载
+- 分片上传支持
+- 预签名 URL 用于安全访问
 
-**Operations**:
-- `PutObject`: Upload artifact
-- `GetObject`: Download artifact
-- `ListObjects`: List bucket contents
-- `DeleteObject`: Remove artifact
+**操作**：
+- `PutObject`：上传制品
+- `GetObject`：下载制品
+- `ListObjects`：列出 bucket 内容
+- `DeleteObject`：删除制品
 
-#### 7. NDJSON over stdio (Subprocess)
+#### 6. NDJSON over stdio（子进程）
 
-**Used by**: Engine → Claude Code, Codex, Gemini CLI
+**使用者**：Engine → Claude Code、Codex、 Gemini CLI
 
-**Characteristics**:
-- Newline-delimited JSON
-- One JSON object per line
-- Streaming-friendly
-- Unidirectional (subprocess → Engine)
+**特性**：
+- 换行分隔的 JSON
+- 每行一个 JSON 对象
+- 适合流式处理
+- 单向（子进程 → Engine）
 
-**Example Output**:
+**输出示例**：
 ```json
 {"type":"extension","content":"Let me think about this..."}
 {"type":"output","content":"The answer is 4."}
 {"type":"state","status":"completed"}
 ```
 
-**Parsing**:
+**解析**：
 ```typescript
 subprocess.stdout.on('data', (chunk) => {
   const lines = chunk.toString().split('\n');
@@ -723,17 +695,17 @@ subprocess.stdout.on('data', (chunk) => {
 });
 ```
 
-#### 8. JSON-RPC 2.0 over stdio (Subprocess)
+#### 7. JSON-RPC 2.0 over stdio（子进程）
 
-**Used by**: Engine → Hermes Agent
+**使用者**：Engine → Hermes Agent
 
-**Characteristics**:
-- Request-response pairs
-- Bidirectional communication
-- ID-based correlation
-- Error handling built-in
+**特性**：
+- 请求-响应对
+- 双向通信
+- 基于 ID 的关联
+- 内置错误处理
 
-**Request**:
+**请求**：
 ```json
 {
   "jsonrpc": "2.0",
@@ -746,7 +718,7 @@ subprocess.stdout.on('data', (chunk) => {
 }
 ```
 
-**Response**:
+**响应**：
 ```json
 {
   "jsonrpc": "2.0",
@@ -758,7 +730,7 @@ subprocess.stdout.on('data', (chunk) => {
 }
 ```
 
-**Error Response**:
+**错误响应**：
 ```json
 {
   "jsonrpc": "2.0",
@@ -770,197 +742,201 @@ subprocess.stdout.on('data', (chunk) => {
 }
 ```
 
-
-
 ---
 
-## Data Flow
+## 数据流
 
-### Data Flow Diagram
+### 数据流图
 
 ```mermaid
 flowchart LR
     subgraph Input
-        UserPrompt[User Prompt]
-        Config[Configuration]
-        History[Conversation History]
-        Memories[Stored Memories]
+        UserPrompt[User Prompt 用户 Prompt]
+        Config[Configuration 配置]
+        History[Conversation History 对话历史]
+        Memories[Stored Memories 存储的记忆]
     end
-    
+
     subgraph Processing
-        Compose[Prompt Composition]
-        Route[Backend Routing]
-        Execute[Backend Execution]
-        Parse[Protocol Parsing]
-        Map[Event Mapping]
+        Compose[Prompt Composition Prompt 组成]
+        Route[Backend Routing 后端路由]
+        Execute[Backend Execution 后端执行]
+        Parse[Protocol Parsing 协议解析]
+        Map[Event Mapping 事件映射]
     end
-    
+
     subgraph Output
-        Events[Runtime Events]
-        Response[User Response]
-        NewMemories[New Memories]
-        Visibility[Visibility Data]
+        Events[Runtime Events 运行时事件]
+        Response[User Response 用户响应]
+        NewMemories[New Memories 新记忆]
+        Visibility[Visibility Data 可见性数据]
     end
-    
+
     subgraph Storage
         Redis[(Redis)]
-        Milvus[(Milvus)]
         MinIO[(MinIO)]
     end
-    
+
     UserPrompt --> Compose
     Config --> Route
     History --> Compose
     Memories --> Compose
-    
+
     Compose --> Route
     Route --> Execute
     Execute --> Parse
     Parse --> Map
-    
+
     Map --> Events
     Events --> Response
     Events --> NewMemories
     Events --> Visibility
-    
+
     Response --> Redis
     NewMemories --> Redis
-    NewMemories -.-> Milvus
     Visibility --> Redis
     Visibility -.-> MinIO
-    
+
     Redis --> History
     Redis --> Memories
     Redis --> Config
 ```
 
-### Data Types and Storage
+### 数据类型和存储
 
-#### Session Data
-**Storage**: Redis Hash  
-**Key Pattern**: `iota:session:{sessionId}`  
-**Fields**:
-- `id`: Session UUID
-- `workingDirectory`: Absolute path
-- `activeBackend`: Current backend name
-- `createdAt`: Timestamp (ms)
-- `updatedAt`: Timestamp (ms)
+#### Session 数据
+**存储**：Redis Hash
+**键模式**：`iota:session:{sessionId}`
+**字段**：
+- `id`：Session UUID
+- `workingDirectory`：绝对路径
+- `activeBackend`：当前后端名称
+- `createdAt`：时间戳（ms）
+- `updatedAt`：时间戳（ms）
 
-**Lifecycle**: Created on first execution, persists until explicitly deleted
+**生命周期**：首次执行时创建，显式删除前持久化
 
-#### Execution Data
-**Storage**: Redis Hash  
-**Key Pattern**: `iota:exec:{executionId}`  
-**Fields**:
-- `id`: Execution UUID
-- `sessionId`: Parent session UUID
-- `prompt`: User prompt text
-- `backend`: Backend used
-- `status`: queued | starting | running | completed | failed
-- `output`: Final output text
-- `startedAt`: Timestamp (ms)
-- `finishedAt`: Timestamp (ms)
+> **⚠️ 持久化边界**：Session 记录和统一记忆（episodic/procedural/factual/strategic）持久化在 Redis 中，跨进程重启存活。但对话历史（`DialogueMemory`）和工作文件集（`WorkingMemory`）仅存在于进程内存——Agent/CLI 重启后丢失。后端切换在同一进程生命周期内保留完整对话上下文，但跨进程重启后只能通过统一记忆恢复部分语境。
 
-**Lifecycle**: Created at execution start, updated during execution, persists indefinitely
+#### Execution 数据
+**存储**：Redis Hash
+**键模式**：`iota:exec:{executionId}`
+**字段**：
+- `id`：Execution UUID
+- `sessionId`：父 Session UUID
+- `prompt`：用户 prompt 文本
+- `backend`：使用的前端
+- `status`：queued | starting | running | completed | failed
+- `output`：最终输出文本
+- `startedAt`：时间戳（ms）
+- `finishedAt`：时间戳（ms）
 
-#### Event Data
-**Storage**: Redis List  
-**Key Pattern**: `iota:events:{executionId}`  
-**Format**: JSON array of RuntimeEvent objects  
-**Event Types**:
-- `state`: Status changes (queued, starting, running, completed)
-- `output`: Response text chunks
-- `extension`: Backend-specific data (thinking, tool use)
-- `error`: Error messages
+**生命周期**：执行开始时创建，执行期间更新，永久持久化
 
-**Lifecycle**: Appended during execution, persists indefinitely
+#### Event 数据
+**存储**：Redis Stream
+**键模式**：`iota:events:{executionId}`
+**格式**：Stream field `event` 中存储 RuntimeEvent JSON
+**事件类型**：
+- `state`：状态变化（queued、starting、running、completed）
+- `output`：响应文本块
+- `extension`：后端特定数据（thinking、tool use）
+- `error`：错误消息
 
-#### Memory Data
-**Storage**: Redis Sorted Set + Optional Milvus Collection  
-**Key Pattern**: `iota:memories:{sessionId}`  
-**Format**: JSON objects with score-based ranking  
-**Fields**:
-- `id`: Memory UUID
-- `type`: procedural | episodic
-- `content`: Memory text
-- `embedding`: Vector (if using Milvus)
-- `score`: Relevance score
-- `createdAt`: Timestamp (ms)
+**生命周期**：执行期间追加，永久持久化
 
-**Lifecycle**: Extracted after execution, persists indefinitely, ranked by relevance
+#### Memory 数据
+**存储**：Redis Hash + Sorted Set + Set 索引
+**键模式**：
+- `iota:memory:{type}:{memoryId}`
+- `iota:memories:{type}:{scopeId}`
+- `iota:memory:by-backend:{backend}`
+- `iota:memory:by-tag:{tag}`
+**格式**：统一记忆对象，按记忆类型和 scope 建立索引
+**字段**：
+- `id`：Memory UUID
+- `type`：episodic | procedural | factual | strategic
+- `scope`：session | project | user
+- `scopeId`：对应 scope 的唯一标识
+- `content`：记忆文本
+- `confidence`：置信度
+- `createdAt`：时间戳（ms）
 
-#### Visibility Data
-**Storage**: Redis Hashes  
-**Key Patterns**:
-- `iota:visibility:context:{executionId}`: Prompt composition analysis
-- `iota:visibility:tokens:{executionId}`: Token usage tracking
-- `iota:visibility:{executionId}:chain`: Execution span timing
-- `iota:visibility:memory:{executionId}`: Memory selection metadata
+**生命周期**：执行后提取，永久持久化，按相关性排序
 
-**Lifecycle**: Recorded during execution, persists indefinitely
+#### Visibility 数据
+**存储**：Redis Hashes
+**键模式**：
+- `iota:visibility:context:{executionId}`：Prompt 组成分析
+- `iota:visibility:tokens:{executionId}`：Token 使用跟踪
+- `iota:visibility:{executionId}:chain`：执行 span 哈希索引（spanId -> TraceSpan）
+- `iota:visibility:memory:{executionId}`：记忆选择元数据
 
-#### Configuration Data
-**Storage**: Redis Hashes  
-**Key Patterns**:
-- `iota:config:global`: System-wide settings
-- `iota:config:backend:{backendName}`: Backend-specific settings
-- `iota:config:session:{sessionId}`: Session-specific overrides
+**生命周期**：执行期间记录，永久持久化
 
-**Lifecycle**: Loaded on startup, updated via API, persists indefinitely
+#### Configuration 数据
+**存储**：Redis Hashes
+**键模式**：
+- `iota:config:global`：系统范围设置
+- `iota:config:backend:{backendName}`：后端特定设置
+- `iota:config:session:{sessionId}`：Session 特定覆盖
 
-#### Audit Data
-**Storage**: Redis Sorted Set  
-**Key Pattern**: `iota:audit`  
-**Format**: JSON objects with timestamp scores  
-**Event Types**:
-- `execution_start`: Execution initiated
-- `execution_finish`: Execution completed
-- `config_change`: Configuration updated
-- `approval_request`: Approval required
-- `approval_decision`: Approval granted/denied
+**生命周期**：启动时加载，通过 API 更新，永久持久化
 
-**Lifecycle**: Appended on events, persists indefinitely, can be pruned by GC
+#### Audit 数据
+**存储**：双写——本地 JSONL 文件 + Redis Sorted Set
+- **文件路径**：`${IOTA_HOME}/logs/audit.jsonl`（JSONL 格式，每行一个 JSON 对象，首次写入时懒创建目录）
+- **Redis 键**：`iota:audit`（Sorted Set，时间戳为分数）
+**事件类型**：
+- `execution_start`：执行启动
+- `execution_finish`：执行完成
+- `config_change`：配置更新
+- `approval_request`：需要审批
+- `approval_decision`：审批通过/拒绝
+- `tool_call`：工具调用
+- `backend_switch`：Backend 切换
+- `error`：错误
 
-
+**生命周期**：事件时追加，永久持久化，可被 GC 清理
 
 ---
 
-## Deployment Architecture
+## 部署架构
 
-### Single-Machine Development Deployment
+### 单机开发部署
 
 ```mermaid
 graph TB
-    subgraph "Developer Machine"
-        subgraph "Terminal 1"
-            CLI[CLI Process<br/>bun iota-cli/dist/index.js]
+    subgraph "开发者机器"
+        subgraph "终端 1"
+            CLI[CLI 进程<br/>bun iota-cli/dist/index.js]
         end
-        
-        subgraph "Terminal 2"
-            Agent[Agent Process<br/>bun iota-agent/src/index.ts<br/>Port 9666]
+
+        subgraph "终端 2"
+            Agent[Agent 进程<br/>bun iota-agent/src/index.ts<br/>端口 9666]
         end
-        
-        subgraph "Terminal 3"
-            App[App Dev Server<br/>bun iota-app<br/>Port 9888]
+
+        subgraph "终端 3"
+            App[App 开发服务器<br/>bun iota-app<br/>端口 9888]
         end
-        
-        subgraph "Background Services"
-            Redis[Redis<br/>Port 6379]
+
+        subgraph "后台服务"
+            Redis[Redis<br/>端口 6379]
         end
-        
-        subgraph "Backend Executables"
+
+        subgraph "后端可执行文件"
             Claude[claude CLI]
             Gemini[gemini CLI]
         end
     end
-    
-    CLI -->|imports| Engine[Engine Library<br/>@iota/engine]
+
+    CLI -->|imports| Engine[Engine 库<br/>@iota/engine]
     Agent -->|imports| Engine
     Engine -->|TCP| Redis
     Engine -->|spawn| Claude
     Engine -->|spawn| Gemini
     App -->|HTTP/WS| Agent
-    
+
     style CLI fill:#e1f5ff
     style Agent fill:#fff4e1
     style App fill:#fff4e1
@@ -968,89 +944,84 @@ graph TB
     style Redis fill:#e1ffe1
 ```
 
-**Setup Steps**:
-1. Start Redis: `cd deployment/scripts && bash start-storage.sh`
-2. Build packages: `cd iota-engine && bun run build && cd ../iota-cli && bun run build`
-3. Start Agent (optional): `cd iota-agent && bun run dev`
-4. Start App (optional): `cd iota-app && bun run dev`
-5. Use CLI: `bun iota-cli/dist/index.js run "test prompt"`
+**设置步骤**：
+1. 启动 Redis：`cd deployment/scripts && bash start-storage.sh`
+2. 构建包：`cd iota-engine && bun run build && cd ../iota-cli && bun run build`
+3. 启动 Agent（可选）：`cd iota-agent && bun run dev`
+4. 启动 App（可选）：`cd iota-app && bun run dev`
+5. 使用 CLI：`bun iota-cli/dist/index.js run "test prompt"`
 
-**Characteristics**:
-- All components on same machine
-- Shared file system
-- Low latency
-- Easy debugging
-- No network security concerns
+**特性**：
+- 所有组件在同一台机器上
+- 共享文件系统
+- 低延迟
+- 易于调试
+- 无网络安全顾虑
 
-### Distributed Production Deployment
+### 分布式生产部署
 
 ```mermaid
 graph TB
-    subgraph "User Machines"
-        Browser1[Browser 1]
-        Browser2[Browser 2]
+    subgraph "用户机器"
+        Browser1[浏览器 1]
+        Browser2[浏览器 2]
         CLI1[CLI 1]
     end
-    
-    subgraph "Load Balancer"
-        LB[Nginx/HAProxy<br/>Port 443]
+
+    subgraph "负载均衡器"
+        LB[Nginx/HAProxy<br/>端口 443]
     end
-    
-    subgraph "App Tier"
-        App1[App Instance 1<br/>Port 9888]
-        App2[App Instance 2<br/>Port 9888]
+
+    subgraph "App 层"
+        App1[App 实例 1<br/>端口 9888]
+        App2[App 实例 2<br/>端口 9888]
     end
-    
-    subgraph "Agent Tier"
-        Agent1[Agent Instance 1<br/>Port 9666]
-        Agent2[Agent Instance 2<br/>Port 9666]
-        Agent3[Agent Instance 3<br/>Port 9666]
+
+    subgraph "Agent 层"
+        Agent1[Agent 实例 1<br/>端口 9666]
+        Agent2[Agent 实例 2<br/>端口 9666]
+        Agent3[Agent 实例 3<br/>端口 9666]
     end
-    
-    subgraph "Storage Tier"
-        Redis1[(Redis Primary<br/>Port 6379)]
-        Redis2[(Redis Replica<br/>Port 6379)]
-        Milvus[(Milvus Cluster<br/>Port 19530)]
-        MinIO[(MinIO Cluster<br/>Port 9000)]
+
+    subgraph "存储层"
+        Redis1[(Redis 主节点<br/>端口 6379)]
+        Redis2[(Redis 副本<br/>端口 6379)]
+        MinIO[(MinIO 集群<br/>端口 9000)]
     end
-    
-    subgraph "Backend Tier"
-        Claude[Claude Code<br/>Subprocesses]
-        Gemini[Gemini CLI<br/>Subprocesses]
-        Hermes[Hermes Agent<br/>Subprocesses]
+
+    subgraph "后端层"
+        Claude[Claude Code<br/>子进程]
+        Gemini[Gemini CLI<br/>子进程]
+        Hermes[Hermes Agent<br/>子进程]
     end
-    
+
     Browser1 -->|HTTPS| LB
     Browser2 -->|HTTPS| LB
     CLI1 -->|HTTPS| LB
-    
+
     LB --> App1
     LB --> App2
-    
+
     App1 -->|HTTP/WS| Agent1
     App1 -->|HTTP/WS| Agent2
     App2 -->|HTTP/WS| Agent2
     App2 -->|HTTP/WS| Agent3
-    
-    Agent1 -->|Redis Protocol| Redis1
-    Agent2 -->|Redis Protocol| Redis1
-    Agent3 -->|Redis Protocol| Redis1
-    
-    Redis1 -->|Replication| Redis2
-    
-    Agent1 -.->|gRPC| Milvus
-    Agent2 -.->|gRPC| Milvus
-    Agent3 -.->|gRPC| Milvus
-    
+
+    Agent1 -->|Redis 协议| Redis1
+    Agent2 -->|Redis 协议| Redis1
+    Agent3 -->|Redis 协议| Redis1
+
+    Redis1 -->|复制| Redis2
+
     Agent1 -.->|S3 API| MinIO
     Agent2 -.->|S3 API| MinIO
     Agent3 -.->|S3 API| MinIO
-    
+
     Agent1 -->|spawn| Claude
     Agent1 -->|spawn| Gemini
     Agent2 -->|spawn| Hermes
     Agent3 -->|spawn| Claude
-    
+
     style Browser1 fill:#e1f5ff
     style Browser2 fill:#e1f5ff
     style CLI1 fill:#e1f5ff
@@ -1062,37 +1033,35 @@ graph TB
     style Agent3 fill:#ffe1e1
     style Redis1 fill:#e1ffe1
     style Redis2 fill:#e1ffe1
-    style Milvus fill:#e1ffe1
     style MinIO fill:#e1ffe1
 ```
 
-**Deployment Characteristics**:
+**部署特性**：
 
-#### App Tier
-- **Scaling**: Horizontal (add more instances)
-- **State**: Stateless (no local state)
-- **Load Balancing**: Round-robin or least-connections
-- **Health Check**: `GET /health`
+#### App 层
+- **扩展**：水平扩展（添加更多实例）
+- **状态**：无状态（无本地状态）
+- **负载均衡**：轮询或最少连接
+- **健康检查**：`GET /health`
 
-#### Agent Tier
-- **Scaling**: Horizontal (add more instances)
-- **State**: Stateless (all state in Redis)
-- **Load Balancing**: Round-robin or least-connections
-- **Health Check**: `GET /health`
-- **Backend Subprocesses**: Each agent spawns its own backend subprocesses
+#### Agent 层
+- **扩展**：水平扩展（添加更多实例）
+- **状态**：无状态（所有状态在 Redis 中）
+- **负载均衡**：轮询或最少连接
+- **健康检查**：`GET /health`
+- **后端子进程**：每个 agent 启动自己的后端子进程
 
-#### Storage Tier
-- **Redis**: Primary-replica replication, Redis Sentinel for failover
-- **Milvus**: Clustered deployment with multiple nodes
-- **MinIO**: Distributed mode with erasure coding
+#### 存储层
+- **Redis**：主-副本复制，Redis Sentinel 故障转移
+- **MinIO**：带纠删码的分布式模式
 
-#### Network Security
-- **TLS/SSL**: All external traffic encrypted
-- **Internal Network**: Private network for agent-storage communication
-- **Firewall**: Only necessary ports exposed
-- **Authentication**: API keys or JWT tokens for Agent API
+#### 网络安全
+- **TLS/SSL**：所有外部流量加密
+- **内部网络**：agent-存储通信的私网
+- **防火墙**：只暴露必要端口
+- **认证**：Agent API 的 API keys 或 JWT tokens
 
-### Docker Compose Deployment
+### Docker Compose 部署
 
 ```yaml
 # deployment/docker/docker-compose.yml
@@ -1106,16 +1075,6 @@ services:
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
-
-  milvus:
-    image: milvusdb/milvus:latest
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-    volumes:
-      - milvus-data:/var/lib/milvus
-    environment:
-      - ETCD_ENDPOINTS=etcd:2379
 
   minio:
     image: minio/minio:latest
@@ -1138,90 +1097,84 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - MILVUS_HOST=milvus
-      - MILVUS_PORT=19530
       - MINIO_ENDPOINT=minio:9000
     depends_on:
       - redis
-      - milvus
       - minio
 
 volumes:
   redis-data:
-  milvus-data:
   minio-data:
 ```
 
-**Usage**:
+**使用**：
 ```bash
 cd deployment/docker
 docker-compose up -d
 ```
 
-### Kubernetes Deployment (Future)
+### Kubernetes 部署（未来）
 
-For large-scale production deployments, Kubernetes manifests can be created for:
-- Agent deployment with auto-scaling
-- Redis StatefulSet with persistence
-- Milvus StatefulSet with persistence
-- MinIO StatefulSet with persistence
-- Ingress for external access
-- ConfigMaps for configuration
-- Secrets for sensitive data
+对于大规模生产部署，可以创建 Kubernetes manifests 用于：
+- 带自动扩展的 Agent Deployment
+- 带持久化的 Redis StatefulSet
+- 带持久化的 MinIO StatefulSet
+- 用于外部访问的 Ingress
+- 用于配置的 ConfigMaps
+- 用于敏感数据的 Secrets
 
 ---
 
-## Implementation Maturity Matrix
+## 实现成熟度矩阵
 
-The table below tracks each major capability's current implementation and testing maturity. This prevents documentation from implying "production-ready" when a feature is still in early integration.
+下表跟踪每个主要能力的当前实现和测试成熟度。这防止文档在功能仍处于早期集成阶段时暗示"生产就绪"。
 
-| Capability | Maturity | Notes |
+| 能力 | 成熟度 | 说明 |
 |------------|----------|-------|
-| **Backend Adapters** (Claude Code, Codex, Gemini) | ✅ Stable | Per-execution subprocess, well-tested |
-| **Backend Adapter** (Hermes) | ⚠️ Integration | Long-running ACP; requires local Hermes gateway |
-| **Session CRUD** | ✅ Stable | Redis-backed, Agent + CLI verified |
-| **Execution Pipeline** | ✅ Stable | Stream, interrupt, event persistence |
-| **Memory System** | ✅ Stable | Session memories, cross-session search (Milvus optional) |
-| **Visibility Plane** | ✅ Stable | Token/memory/chain/summary visibility |
-| **Config (global/backend/session)** | ✅ Stable | Redis-backed, scoped resolution |
-| **Config (user scope)** | ⚠️ Integration | Code complete; lacks end-to-end test coverage |
-| **Approval — CLI** | ✅ Stable | CliApprovalHook, interactive terminal prompt |
-| **Approval — App/WebSocket** | ⚠️ Integration | DeferredApprovalHook wired; App UI sends decision, needs e2e test |
-| **MCP Support** | ⚠️ Integration | StdioMcpClient + McpRouter; no dedicated REST endpoints, engine-level only |
-| **Metrics Collection** | ✅ Stable | In-process, P50/P95/P99 |
-| **Audit Logging** | ✅ Stable | JSONL file + optional sink |
-| **Workspace Snapshots** | ✅ Stable | Pruning, delta journals |
-| **WebSocket Streaming** | ✅ Stable | Single-instance event flow + subscriptions |
-| **WebSocket Multi-Instance** | ⚠️ Experimental | Redis pub/sub bridge exists; App does not yet fully consume `pubsub_event` beyond snapshot sync |
-| **Replay** | ⚠️ Integration | REST query endpoint only, not a real-time WS stream |
-| **Cross-Session Queries** | ✅ Stable | Logs, sessions, memories, backend isolation |
-| **Milvus (Vector Storage)** | 🔧 Optional | Graceful degradation when absent |
-| **MinIO (Object Storage)** | 🔧 Optional | Graceful degradation when absent |
+| **Backend Adapters** (Claude Code、Codex、Gemini) | ✅ 稳定 | 每次执行子进程，经过良好测试 |
+| **Backend Adapter** (Hermes) | ⚠️ 集成中 | 长运行 ACP；需要本地 Hermes gateway |
+| **Session CRUD** | ✅ 稳定 | Redis 支持，Agent + CLI 已验证 |
+| **Execution Pipeline** | ✅ 稳定 | 流、中断、事件持久化 |
+| **Memory System** | ✅ 稳定 | 统一四类记忆，按 session/project/user scope 检索和跨 scope 搜索 |
+| **Visibility Plane** | ✅ 稳定 | Token/memory/chain/summary 可见性 |
+| **Config (global/backend/session)** | ✅ 稳定 | Redis 支持，作用域解析 |
+| **Config (user scope)** | ⚠️ 集成中 | 代码完成；缺乏端到端测试覆盖 |
+| **Approval — CLI** | ✅ 稳定 | CliApprovalHook，交互式终端提示 |
+| **Approval — App/WebSocket** | ⚠️ 集成中 | DeferredApprovalHook 已连接；App UI 发送决策，需要 e2e 测试 |
+| **MCP Support** | ⚠️ 集成中 | StdioMcpClient + McpRouter；无专用 REST endpoints，仅 engine 层面 |
+| **Metrics Collection** | ✅ 稳定 | 进程内，P50/P95/P99 |
+| **Audit Logging** | ✅ 稳定 | JSONL 文件 + 可选 sink |
+| **Workspace Snapshots** | ✅ 稳定 | 剪枝、delta journals |
+| **WebSocket Streaming** | ✅ 稳定 | 单实例事件流 + 订阅 |
+| **WebSocket Multi-Instance** | ⚠️ 实验中 | Redis pub/sub bridge 存在；App 尚未完全消费 `pubsub_event` 除快照同步外 |
+| **Replay** | ⚠️ 集成中 | REST 查询端点仅，非实时 WS 流 |
+| **Cross-Session Queries** | ✅ 稳定 | 日志、sessions、memories、后端隔离 |
+| **MinIO (对象存储)** | 🔧 可选 | 缺失时优雅降级 |
 
-**Legend**: ✅ Stable (tested, production-ready) · ⚠️ Integration (code complete, needs more testing) · 🔧 Optional (enhancement, not required)
-
----
-
-## Summary
-
-This architecture overview provides:
-
-1. **System-level architecture**: Clear understanding of how all components interact
-2. **Engine internal architecture**: Detailed view of Engine components and their relationships
-3. **Execution flow**: Step-by-step visualization of request processing with timing
-4. **Communication protocols**: Complete protocol specifications for all inter-component communication
-5. **Data flow**: How data moves through the system and where it's stored
-6. **Deployment architecture**: Options for development and production deployments
-
-Use this document as a reference when reading the component-specific guides:
-- [CLI Guide](./01-cli-guide.md)
-- [TUI Guide](./02-tui-guide.md)
-- [Agent Guide](./03-agent-guide.md)
-- [App Guide](./04-app-guide.md)
-- [Engine Guide](./05-engine-guide.md)
+**图例**：✅ 稳定（已测试、生产就绪）· ⚠️ 集成中（代码完成、需要更多测试）· 🔧 可选（增强、非必需）
 
 ---
 
-**Version History**:
-- v1.1 (April 2026): Add Implementation Maturity Matrix; fix approval_response→approval_decision terminology; clarify storage layer required/optional status
-- v1.0 (April 2026): Initial architecture overview with complete diagrams and flow descriptions
+## 总结
+
+本架构概览提供：
+
+1. **系统级架构**：所有组件如何交互的清晰理解
+2. **Engine 内部架构**：Engine 组件及其关系的详细视图
+3. **执行流程**：带时间的请求处理逐步可视化
+4. **通信协议**：所有组件间通信的完整协议规范
+5. **数据流**：数据如何在系统中流动以及存储在哪里
+6. **部署架构**：开发和生产部署选项
+
+阅读特定组件指南时使用本文档作为参考：
+- [CLI 指南](./01-cli-guide.md)
+- [TUI 指南](./02-tui-guide.md)
+- [Agent 指南](./03-agent-guide.md)
+- [App 指南](./04-app-guide.md)
+- [Engine 指南](./05-engine-guide.md)
+
+---
+
+**版本历史**：
+- v1.1 (2026年4月)：添加实现成熟度矩阵；修正 approval_response→approval_decision 术语；澄清存储层必需/可选状态
+- v1.0 (2026年4月)：初始架构概览，包含完整图表和流程描述

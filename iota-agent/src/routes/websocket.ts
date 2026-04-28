@@ -40,19 +40,11 @@ interface InterruptExecutionMessage {
   executionId: string;
 }
 
-interface ApprovalDecisionMessage {
-  type: "approval_decision";
-  requestId: string;
-  approved: boolean;
-  reason?: string;
-}
-
 type IncomingMessage =
   | StreamRequestMessage
   | SubscribeAppSessionMessage
   | SubscribeVisibilityMessage
-  | InterruptExecutionMessage
-  | ApprovalDecisionMessage;
+  | InterruptExecutionMessage;
 
 interface StreamResponseMessage {
   type: "event" | "error" | "complete";
@@ -277,25 +269,6 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
               type: "complete",
               executionId: message.executionId,
             } satisfies StreamResponseMessage),
-          );
-          return;
-        }
-
-        if (message.type === "approval_decision") {
-          const resolved = fastify.engine.resolveApproval?.(message.requestId, {
-            decision: message.approved ? "approve" : "deny",
-            reason: message.reason,
-          });
-          ws.send(
-            JSON.stringify({
-              type: resolved ? "approval_ack" : "error",
-              requestId: message.requestId,
-              ...(resolved
-                ? {}
-                : {
-                    error: `Unknown or expired approval request: ${message.requestId}`,
-                  }),
-            }),
           );
           return;
         }

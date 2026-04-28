@@ -1,175 +1,175 @@
-# TUI Guide
+# TUI 指南（TUI Guide）
 
-**Version:** 1.0
-**Last Updated:** April 2026
+**版本：** 1.0
+**最后更新：** 2026 年 4 月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#1-introduction)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Prerequisites](#3-prerequisites)
-4. [Installation and Setup](#4-installation-and-setup)
-5. [Core Functionality](#5-core-functionality)
-6. [Distributed Features](#6-distributed-features)
-7. [Manual Verification Methods](#7-manual-verification-methods)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Cleanup](#9-cleanup)
-10. [References](#10-references)
-
----
-
-## 1. Introduction
-
-### Purpose and Scope
-
-This guide covers the Iota interactive TUI (Terminal User Interface) mode, which provides a REPL-style interface for conversational AI interactions. The TUI launches via `iota interactive` and supports session continuity, backend switching, approval workflows, and streaming output.
-
-### Target Audience
-
-- Users preferring command-line conversational interaction
-- Developers testing multi-turn conversation flows
-- Anyone verifying approval workflow behavior
+1. [简介](#1-简介)
+2. [架构概览](#2-架构概览)
+3. [前置要求](#3-前置要求)
+4. [安装与设置](#4-安装与设置)
+5. [核心功能](#5-核心功能)
+6. [分布式特性](#6-分布式特性)
+7. [手动验证方法](#7-手动验证方法)
+8. [故障排查](#8-故障排查)
+9. [清理](#9-清理)
+10. [参考资料](#10-参考资料)
 
 ---
 
-## 2. Architecture Overview
+## 1. 简介
 
-### Component Diagram
+### 目的与范围
+
+本指南介绍 Iota 交互式 TUI（Terminal User Interface，终端用户界面）模式，它提供了一个 REPL 风格的对话式 AI 交互界面。TUI 通过 `iota interactive` 启动，支持会话（Session）持续性、后端切换、审批工作流和流式输出。
+
+### 目标受众
+
+- 偏好命令行对话式交互的用户
+- 测试多轮对话流程的开发者
+- 验证审批工作流行为的任何人
+
+---
+
+## 2. 架构概览
+
+### 组件图
 
 ```mermaid
 graph LR
-    User[User] -->|stdin/stdout| TUI[TUI Process<br/>iota interactive]
-    TUI -->|TypeScript Calls| Engine[Engine Library<br/>iota-engine]
-    Engine -->|Redis Protocol| Redis[(Redis<br/>:6379)]
-    Engine -->|Spawn| Backend[Backend Subprocess]
+    User[用户] -->|stdin/stdout| TUI[TUI 进程<br/>iota interactive]
+    TUI -->|TypeScript 调用| Engine[Engine 库<br/>iota-engine]
+    Engine -->|Redis 协议| Redis[(Redis<br/>:6379)]
+    Engine -->|生成子进程| Backend[后端子进程]
     Backend -->|stdout/NDJSON| Engine
-    Engine -->|RuntimeEvents| TUI
-    TUI -->|ANSI Rendering| User
+    Engine -->|运行时事件| TUI
+    TUI -->|ANSI 渲染| User
 ```
 
-### Dependencies
+### 依赖项
 
-| Dependency | Purpose | Connection Method |
+| 依赖项 | 用途 | 连接方式 |
 |------------|---------|-------------------|
-| CLI infrastructure | TUI launched via `iota interactive` | In-process TypeScript |
-| Engine library | Execution and state management | TypeScript imports |
-| Redis | Session persistence and event streaming | Redis protocol/TCP |
-| Terminal | ANSI escape code rendering | stdin/stdout |
+| CLI 基础设施 | TUI 通过 `iota interactive` 启动 | 进程内 TypeScript |
+| Engine 库 | 执行和状态管理 | TypeScript 导入 |
+| Redis | 会话持久化和事件流 | Redis 协议/TCP |
+| 终端 | ANSI 转义码渲染 | stdin/stdout |
 
-### Communication Protocols
+### 通信协议
 
-- **TUI → Engine**: Direct TypeScript function calls via `engine.stream()` async iterator
-- **TUI → Redis**: Via Engine's storage layer for session state
-- **TUI → User**: Terminal stdio with ANSI formatting (chalk for colors)
-- **Engine → Backend**: Subprocess stdio (NDJSON or JSON-RPC 2.0)
-- **Backend → Engine**: stdout/stderr pipes emitting NDJSON events
+- **TUI → Engine**：通过 `engine.stream()` 异步迭代器直接调用 TypeScript 函数
+- **TUI → Redis**：通过 Engine 的存储层访问会话状态
+- **TUI → 用户**：终端 stdio，使用 ANSI 格式化（chalk 用于颜色）
+- **Engine → 后端**：子进程 stdio（NDJSON 或 JSON-RPC 2.0）
+- **后端 → Engine**：stdout/stderr 管道发出 NDJSON 事件
 
 ---
 
-## 3. Prerequisites
+## 3. 前置要求
 
-### Required Software
+### 必需软件
 
-| Software | Purpose |
+| 软件 | 用途 |
 |----------|---------|
-| Bun | Runtime for TypeScript execution |
-| Redis | Session and event persistence |
-| Backend CLI | AI backend (claude, codex, gemini, hermes) |
+| Bun | TypeScript 执行运行时 |
+| Redis | 会话和事件持久化 |
+| 后端 CLI | AI 后端（claude、codex、gemini、hermes） |
 
-### Terminal Requirements
+### 终端要求
 
-- **ANSI support**: Terminal must interpret ANSI escape codes
-- **UTF-8 encoding**: Required for proper character display
-- **256-color support**: Useful but not required
+- **ANSI 支持**：终端必须能解释 ANSI 转义码
+- **UTF-8 编码**：正确显示字符所必需
+- **256 色支持**：有用但非必需
 
-**Compatible terminals**:
+**兼容的终端**：
 - macOS Terminal.app
 - iTerm2
 - Windows Terminal
 - Alacritty
 - kitty
-- VS Code integrated terminal
+- VS Code 集成终端
 
-**Incompatible terminals**:
-- Basic Command Prompt (Windows)
-- Some older SSH clients
+**不兼容的终端**：
+- 基础命令提示符（Windows）
+- 某些旧版 SSH 客户端
 
-### Environment Variables
+### 环境变量
 
 ```bash
-# Optional: Redis connection
+# 可选：Redis 连接
 export REDIS_HOST="127.0.0.1"
 export REDIS_PORT="6379"
 ```
 
-Backend authentication is read from Redis distributed config, for example `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`.
+后端身份验证从 Redis 分布式配置中读取，例如 `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`。
 
 ---
 
-## 4. Installation and Setup
+## 4. 安装与设置
 
-### Step 1: Start Redis
+### 步骤 1：启动 Redis
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期输出：PONG
 ```
 
-### Step 2: Build Packages
+### 步骤 2：构建包
 
 ```bash
 cd iota-engine && bun run build
 cd ../iota-cli && bun run build
 ```
 
-### Step 3: Launch Interactive Mode
+### 步骤 3：启动交互模式
 
 ```bash
 iota interactive
 ```
 
-**Expected output**:
+**预期输出**：
 ```
 iota interactive session started. Type "exit" to quit, "switch <backend>" to change backend.
 iota>
 ```
 
-### Step 4: Verify Streaming
+### 步骤 4：验证流式传输
 
-From another terminal, verify the Engine process is handling the session:
+从另一个终端验证 Engine 进程正在处理会话：
 ```bash
 redis-cli KEYS "iota:session:*"
-# Expected: At least one session key
+# 预期输出：至少一个会话键
 ```
 
 ---
 
-## 5. Core Functionality
+## 5. 核心功能
 
-### Feature: Prompt Entry and Execution
+### 功能：提示词输入与执行
 
-**Purpose**: Enter prompts and receive streaming responses.
+**目的**：输入提示词并接收流式响应。
 
-**Usage**:
+**用法**：
 ```
 iota> What is 2+2?
 iota> run "What is 2+2?"
 ```
 
-The `run <prompt>` form is an explicit in-session command. Direct prompt entry remains supported for normal REPL use.
+`run <prompt>` 形式是显式的会话内命令。直接提示词输入仍然支持正常的 REPL 使用。
 
-**Behavior**:
-- User types prompt and presses Enter
-- Engine streams response character-by-character
-- Output appears in real-time via `process.stdout.write()`
-- Each `output` type RuntimeEvent is printed directly
+**行为**：
+- 用户输入提示词并按 Enter
+- Engine 逐字符流式传输响应
+- 输出通过 `process.stdout.write()` 实时显示
+- 每个 `output` 类型的 RuntimeEvent 直接打印
 
-**Output event types**:
+**输出事件类型**：
 ```typescript
 if (event.type === "output") {
-  process.stdout.write(event.data.content);  // Stream text
+  process.stdout.write(event.data.content);  // 流式文本
 } else if (event.type === "error") {
   console.error(chalk.red(`\n${event.data.code}: ${event.data.message}`));
 } else if (event.type === "state") {
@@ -187,337 +187,337 @@ if (event.type === "output") {
 
 ---
 
-### Feature: Session Management
+### 功能：会话管理（Session Management）
 
-**Purpose**: Each interactive session creates a persistent session in Redis.
+**目的**：每个交互式会话在 Redis 中创建一个持久会话。
 
-**Session lifecycle**:
-1. `iota interactive` → creates new `IotaEngine` instance → creates new session via `engine.createSession()`
-2. Session persists in Redis: `iota:session:{sessionId}`
-3. Session survives TUI restarts (as long as Redis is running)
+**会话生命周期**：
+1. `iota interactive` → 创建新的 `IotaEngine` 实例 → 通过 `engine.createSession()` 创建新会话
+2. 会话持久化在 Redis：`iota:session:{sessionId}`
+3. 会话在 TUI 重启后仍然存在（只要 Redis 在运行）
 
-**Verification**:
+**验证**：
 ```bash
-# In another terminal during interactive session
+# 在交互式会话期间从另一个终端执行
 redis-cli KEYS "iota:session:*"
 redis-cli HGETALL "iota:session:$(redis-cli KEYS 'iota:session:*' | head -1 | cut -d: -f3)"
 ```
 
 ---
 
-### Feature: Backend Switching
+### 功能：后端切换
 
-**Purpose**: Switch the active backend mid-session.
+**目的**：在会话中途切换活动后端。
 
-**In-session command**:
+**会话内命令**：
 ```
 iota> switch <backend>
 ```
 
-**Available backends**: `claude-code`, `codex`, `gemini`, `hermes`
+**可用后端**：`claude-code`、`codex`、`gemini`、`hermes`
 
-**Example**:
+**示例**：
 ```
 iota> switch gemini
-# System responds: "Switched to gemini"
+# 系统响应："Switched to gemini"
 
 iota> What can you do?
-# Now uses Gemini backend
+# 现在使用 Gemini 后端
 ```
 
-**Error handling**:
+**错误处理**：
 ```
 iota> switch invalid-backend
-# Error: "Unknown backend: invalid-backend. Available: claude-code, codex, gemini, hermes"
+# 错误："Unknown backend: invalid-backend. Available: claude-code, codex, gemini, hermes"
 ```
 
 ---
 
-### Feature: Status Command
+### 功能：状态命令
 
-**Purpose**: Show health status of all backends.
+**目的**：显示所有后端的健康状态。
 
-**In-session command**:
+**会话内命令**：
 ```
 iota> status
 ```
 
-**Expected output**: JSON with backend health information.
+**预期输出**：包含后端健康信息的 JSON。
 
 ---
 
-### Feature: Metrics Command
+### 功能：指标命令
 
-**Purpose**: Show engine metrics.
+**目的**：显示引擎指标。
 
-**In-session command**:
+**会话内命令**：
 ```
 iota> metrics
 ```
 
-**Expected output**: JSON with execution metrics.
+**预期输出**：包含执行指标的 JSON。
 
 ---
 
-### Feature: Approval Workflows
+### 功能：审批工作流
 
-**Purpose**: When the backend requests approval (e.g., to execute a shell command), the TUI shows a waiting state.
+**目的**：当后端请求审批时（例如执行 shell 命令），TUI 显示等待状态。
 
-**Flow**:
-1. Backend emits `state: waiting_approval` event
-2. TUI prints `⏳ Waiting for approval...`
-3. In interactive mode, approval is handled automatically by `CliApprovalHook`
+**流程**：
+1. 后端发出 `state: waiting_approval` 事件
+2. TUI 打印 `⏳ Waiting for approval...`
+3. 在交互模式下，审批由 `CliApprovalHook` 自动处理
 
-**Approval hook behavior** (`CliApprovalHook`):
-- Automatically approves or denies based on configured policy
-- `approval.shell = "auto"` → auto-approve shell commands
-- `approval.shell = "ask"` → prompt user (not supported in non-interactive mode)
+**审批钩子行为**（`CliApprovalHook`）：
+- 根据配置的策略自动批准或拒绝
+- `approval.shell = "auto"` → 自动批准 shell 命令
+- `approval.shell = "ask"` → 提示用户（非交互模式不支持）
 
-**Verification**:
+**验证**：
 ```bash
 iota config set approval.shell "ask"
 iota interactive
-iota> run "rm /tmp/test"  # May trigger approval prompt
+iota> run "rm /tmp/test"  # 可能触发审批提示
 ```
 
 ---
 
-### Feature: Keyboard Shortcuts and Navigation
+### 功能：键盘快捷键和导航
 
-**Purpose**: Standard terminal navigation within the TUI.
+**目的**：TUI 内的标准终端导航。
 
-| Key | Action |
+| 按键 | 操作 |
 |-----|--------|
-| Enter | Submit prompt |
-| Ctrl+C | Interrupt current execution (sends SIGINT to backend subprocess) |
-| Ctrl+D | Exit interactive mode |
-| ↑ / ↓ | Command history (readline) |
+| Enter | 提交提示词 |
+| Ctrl+C | 中断当前执行（向后端子进程发送 SIGINT） |
+| Ctrl+D | 退出交互模式 |
+| ↑ / ↓ | 命令历史（readline） |
 
-**Command history**:
-- Previous commands are available via readline's `history` mechanism
-- Up arrow scrolls through history
-- Down arrow scrolls forward
+**命令历史**：
+- 通过 readline 的 `history` 机制提供先前的命令
+- 上箭头滚动浏览历史
+- 下箭头向前滚动
 
 ---
 
-### Feature: Multi-Turn Conversations
+### 功能：多轮对话
 
-**Purpose**: Conversation context is maintained within the session.
+**目的**：对话上下文在会话内保持。
 
-**Example flow**:
+**示例流程**：
 ```
 iota> My favorite color is blue.
-# Response acknowledges
+# 响应确认
 
 iota> What is my favorite color?
-# Response: "Your favorite color is blue."
+# 响应："Your favorite color is blue."
 ```
 
-**Verification**:
+**验证**：
 ```bash
-# Check events contain conversation history
-redis-cli LRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" 0 -1 | jq '.[].type'
-# Expected: Contains multiple user messages and outputs
+# 检查事件包含对话历史
+redis-cli XRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" - + | jq '.[].type'
+# 预期输出：包含多个用户消息和输出
 ```
 
 ---
 
-## 6. Distributed Features
+## 6. 分布式特性
 
-### Feature: Session Continuity Across Restarts
+### 功能：跨重启的会话持续性
 
-**Purpose**: Sessions persist in Redis and survive TUI restarts.
+**目的**：会话持久化在 Redis 中，在 TUI 重启后仍然存在。
 
-**Procedure**:
+**步骤**：
 
-1. **Start interactive session**:
+1. **启动交互式会话**：
    ```bash
    iota interactive
    iota> run "First prompt"
    ```
 
-2. **Note session ID** (from another terminal):
+2. **记录会话 ID**（从另一个终端）：
    ```bash
    SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
    echo "Session: $SESSION_ID"
    ```
 
-3. **Exit and restart** (Ctrl+D):
+3. **退出并重启**（Ctrl+D）：
    ```
    iota> exit
    ```
 
-4. **Start new session** (session is different but previous data persists):
+4. **启动新会话**（会话不同但先前数据仍然存在）：
    ```bash
    iota interactive
    ```
 
-5. **Query logs from previous session**:
+5. **查询先前会话的日志**：
    ```bash
    iota logs --session $SESSION_ID --limit 10
    ```
 
 ---
 
-### Feature: Conversation History Persistence
+### 功能：对话历史持久化
 
-**Purpose**: Event history for a session is stored in Redis and queryable.
+**目的**：会话的事件历史存储在 Redis 中并可查询。
 
-**Procedure**:
+**步骤**：
 ```bash
-# During or after interactive session
+# 在交互式会话期间或之后
 SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
 
-# Query all events for the session
+# 查询会话的所有事件
 iota logs --session $SESSION_ID --limit 100
 ```
 
 ---
 
-## 7. Manual Verification Methods
+## 7. 手动验证方法
 
-### Verification Checklist: Interactive Execution
+### 验证清单：交互式执行
 
-**Objective**: Verify interactive mode launches and executes prompts with streaming output.
+**目标**：验证交互模式启动并使用流式输出执行提示词。
 
-- [ ] **Setup**: Redis running, packages built
+- [ ] **设置**：Redis 运行中，包已构建
   ```bash
   redis-cli ping
-  # Expected: PONG
-  redis-cli FLUSHALL   # Clean slate
+  # 预期输出：PONG
+  redis-cli FLUSHALL   # 清空数据
   ```
 
-- [ ] **Launch**: Start interactive mode
+- [ ] **启动**：启动交互模式
   ```bash
   iota interactive
-  # Expected: Shows prompt "iota>"
+  # 预期输出：显示提示符 "iota>"
   ```
 
-- [ ] **Execute**: Enter a prompt
+- [ ] **执行**：输入提示词
   ```
   iota> What is 2+2?
-  # Expected: Streaming output appears in real-time
+  # 预期输出：流式输出实时显示
   ```
 
-- [ ] **Observe**: Check Redis created session
+- [ ] **观察**：检查 Redis 创建的会话
   ```bash
   redis-cli KEYS "iota:session:*"
-  # Expected: 1 session key
+  # 预期输出：1 个会话键
   
   redis-cli KEYS "iota:events:*"
-  # Expected: 1+ events keys
+  # 预期输出：1+ 个事件键
   ```
 
-- [ ] **Validate**: Check execution completed
+- [ ] **验证**：检查执行完成
   ```bash
   EXEC_ID=$(redis-cli KEYS "iota:events:*" | head -1 | cut -d: -f3)
-  # Event stream should contain state events ending in "completed"
-  redis-cli LRANGE "iota:events:$EXEC_ID" 0 -1 | jq '.[-1].type'
-  # Expected: "state"
+  # 事件流应包含以 "completed" 结束的状态事件
+  redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[-1].type'
+  # 预期输出："state"
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**：
   ```
   iota> exit
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Interactive prompt appears
-- ✅ Streaming output renders character-by-character
-- ✅ Session created in Redis
-- ✅ Events stored in Redis
-- ✅ `exit` command terminates cleanly
+**成功标准**：
+- ✅ 交互提示符出现
+- ✅ 流式输出逐字符渲染
+- ✅ 在 Redis 中创建会话
+- ✅ 事件存储在 Redis 中
+- ✅ `exit` 命令干净地终止
 
-**Failure Indicators**:
-- ❌ No streaming (output appears all at once)
-- ❌ Session not created in Redis
-- ❌ TUI crashes on prompt entry
+**失败指标**：
+- ❌ 无流式传输（输出一次性全部显示）
+- ❌ 未在 Redis 中创建会话
+- ❌ TUI 在提示词输入时崩溃
 
 ---
 
-### Verification Checklist: Backend Switching
+### 验证清单：后端切换
 
-**Objective**: Verify backend can be switched mid-session.
+**目标**：验证可以在会话中途切换后端。
 
-- [ ] **Setup**: Redis running, at least 2 backends available
+- [ ] **设置**：Redis 运行中，至少 2 个后端可用
   ```bash
   iota status
-  # Expected: Shows multiple backends
+  # 预期输出：显示多个后端
   ```
 
-- [ ] **Launch**:
+- [ ] **启动**：
   ```bash
   iota interactive
   ```
 
-- [ ] **Check initial backend**:
+- [ ] **检查初始后端**：
   ```
   iota> status
-  # Note the current backend
+  # 记录当前后端
   ```
 
-- [ ] **Switch**:
+- [ ] **切换**：
   ```
   iota> switch gemini
-  # Expected: "Switched to gemini"
+  # 预期输出："Switched to gemini"
   ```
 
-- [ ] **Execute with new backend**:
+- [ ] **使用新后端执行**：
   ```
   iota> What model are you?
-  # Expected: Response from Gemini
+  # 预期输出：来自 Gemini 的响应
   ```
 
-- [ ] **Verify in Redis**:
+- [ ] **在 Redis 中验证**：
   ```bash
   SESSION_ID=$(redis-cli KEYS "iota:session:*" | head -1 | cut -d: -f3)
   redis-cli HGET "iota:session:$SESSION_ID" "activeBackend"
-  # Expected: "gemini"
+  # 预期输出："gemini"
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**：
   ```
   iota> exit
   redis-cli FLUSHALL
   ```
 
-**Success Criteria**:
-- ✅ Switch command accepted
-- ✅ Confirmation message printed
-- ✅ Subsequent executions use new backend
-- ✅ Redis session updated
+**成功标准**：
+- ✅ 切换命令被接受
+- ✅ 打印确认消息
+- ✅ 后续执行使用新后端
+- ✅ Redis 会话已更新
 
 ---
 
-### Verification Checklist: Approval Workflow
+### 验证清单：审批工作流
 
-**Objective**: Verify approval waiting state is displayed.
+**目标**：验证显示审批等待状态。
 
-- [ ] **Setup**: Configure approval policy
+- [ ] **设置**：配置审批策略
   ```bash
   iota config set approval.shell "ask"
   ```
 
-- [ ] **Launch**:
+- [ ] **启动**：
   ```bash
   iota interactive
   ```
 
-- [ ] **Trigger approval scenario**:
+- [ ] **触发审批场景**：
   ```
   iota> run "echo test"
-  # May show: ⏳ Waiting for approval...
-  # Or auto-approved if policy is "auto"
+  # 可能显示：⏳ Waiting for approval...
+  # 或者如果策略是 "auto" 则自动批准
   ```
 
-- [ ] **Validate**:
+- [ ] **验证**：
   ```bash
-  # Check for waiting_approval state in events
-  redis-cli LRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" 0 -1 | jq '.[] | select(.type=="state")'
+  # 检查事件中的 waiting_approval 状态
+  redis-cli XRANGE "iota:events:$(redis-cli KEYS 'iota:events:*' | head -1 | cut -d: -f3)" - + | jq '.[] | select(.type=="state")'
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**：
   ```
   iota> exit
   redis-cli FLUSHALL
@@ -525,137 +525,137 @@ iota logs --session $SESSION_ID --limit 100
 
 ---
 
-### Verification Checklist: Command History
+### 验证清单：命令历史
 
-**Objective**: Verify previous commands are accessible.
+**目标**：验证可以访问先前的命令。
 
-- [ ] **Setup**: Launch interactive mode
+- [ ] **设置**：启动交互模式
   ```bash
   iota interactive
   ```
 
-- [ ] **Execute multiple commands**:
+- [ ] **执行多个命令**：
   ```
   iota> command1
   iota> command2
   iota> command3
   ```
 
-- [ ] **Navigate history**:
+- [ ] **导航历史**：
   ```
-  # Press ↑ three times
-  # Should see "command3" appear
-  # Press ↑ once more
-  # Should see "command2"
+  # 按 ↑ 三次
+  # 应该看到 "command3" 出现
+  # 再按 ↑ 一次
+  # 应该看到 "command2"
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**：
   ```
   iota> exit
   ```
 
 ---
 
-## 8. Troubleshooting
+## 8. 故障排查
 
-### Issue: ANSI Rendering Broken
+### 问题：ANSI 渲染损坏
 
-**Symptoms**:
-- Escape codes printed literally (e.g., `^[[32m`)
-- Colors not showing
-- Cursor positioning incorrect
+**症状**：
+- 转义码按字面打印（例如 `^[[32m`）
+- 颜色不显示
+- 光标定位不正确
 
-**Diagnosis**:
+**诊断**：
 ```bash
-# Check terminal type
+# 检查终端类型
 echo $TERM
-# If dumb: ANSI not supported
+# 如果是 dumb：不支持 ANSI
 ```
 
-**Solution**:
+**解决方案**：
 ```bash
-# Use a compatible terminal
-# Examples: iTerm2, Windows Terminal, Alacritty
+# 使用兼容的终端
+# 示例：iTerm2、Windows Terminal、Alacritty
 export TERM=xterm-256color
 ```
 
-**Prevention**: Always use a terminal with ANSI support.
+**预防**：始终使用支持 ANSI 的终端。
 
 ---
 
-### Issue: Terminal Not Supported
+### 问题：终端不支持
 
-**Symptoms**:
-- `iota interactive` fails immediately
-- Error about terminal capabilities
+**症状**：
+- `iota interactive` 立即失败
+- 关于终端功能的错误
 
-**Solution**:
+**解决方案**：
 ```bash
-# Install and use a supported terminal
-# macOS: iTerm2 (free)
-# Windows: Windows Terminal (Microsoft Store)
-# Linux: kitty, Alacritty
+# 安装并使用支持的终端
+# macOS：iTerm2（免费）
+# Windows：Windows Terminal（Microsoft Store）
+# Linux：kitty、Alacritty
 ```
 
 ---
 
-### Issue: Stuck in Approval Wait
+### 问题：卡在审批等待
 
-**Symptoms**:
-- TUI hangs at `⏳ Waiting for approval...`
+**症状**：
+- TUI 挂在 `⏳ Waiting for approval...`
 
-**Diagnosis**:
+**诊断**：
 ```bash
-# Check approval policy
+# 检查审批策略
 iota config get approval.shell
 ```
 
-**Solution**:
+**解决方案**：
 ```bash
-# Set to auto-approve
+# 设置为自动批准
 iota config set approval.shell "auto"
 
-# Or use Ctrl+C to interrupt
+# 或使用 Ctrl+C 中断
 ```
 
 ---
 
-### Issue: Backend Not Found in TUI
+### 问题：TUI 中找不到后端
 
-**Symptoms**:
-- `switch` command fails with unknown backend
+**症状**：
+- `switch` 命令失败，提示未知后端
 
-**Diagnosis**:
+**诊断**：
 ```bash
 iota status
-# Check which backends show healthy
+# 检查哪些后端显示健康
 ```
 
-**Solution**:
+**解决方案**：
 ```bash
-# Install missing backend CLI
-# Or ensure backend is in PATH
+# 安装缺失的后端 CLI
+# 或确保后端在 PATH 中
 export PATH="/path/to/backend:$PATH"
 ```
 
 ---
 
-## 9. Cleanup
+## 9. 清理
 
-### Exit Interactive Mode
+### 退出交互模式
 
 ```
 iota> exit
-# or press Ctrl+D
+# 或按 Ctrl+D
 ```
 
-### Reset Redis Data
+### 重置 Redis 数据
 
 ```bash
 redis-cli FLUSHALL
 ```
 
-### Stop Redis
+### 停止 Redis
 
 ```bash
 cd deployment/scripts
@@ -664,24 +664,24 @@ bash stop-storage.sh
 
 ---
 
-## 10. References
+## 10. 参考资料
 
-### Related Guides
+### 相关指南
 
-- [01-cli-guide.md](./01-cli-guide.md) — CLI command reference
-- [00-architecture-overview.md](./00-architecture-overview.md) — System architecture
-- [03-agent-guide.md](./03-agent-guide.md) — Agent API verification
-- [05-engine-guide.md](./05-engine-guide.md) — Engine internals
+- [01-cli-guide.md](./01-cli-guide.md) — CLI 命令参考
+- [00-architecture-overview.md](./00-architecture-overview.md) — 系统架构
+- [03-agent-guide.md](./03-agent-guide.md) — Agent API 验证
+- [05-engine-guide.md](./05-engine-guide.md) — Engine 内部机制
 
-### External Documentation
+### 外部文档
 
 - [CLI README](../../iota-cli/README.md)
-- [chalk](https://www.npmjs.com/package/chalk) — Terminal string styling
+- [chalk](https://www.npmjs.com/package/chalk) — 终端字符串样式
 
 ---
 
-## Version History
+## 版本历史
 
-| Version | Date | Changes |
+| 版本 | 日期 | 变更 |
 |---------|------|---------|
-| 1.0 | April 2026 | Initial release |
+| 1.0 | 2026 年 4 月 | 初始版本 |

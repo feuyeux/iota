@@ -40,7 +40,7 @@ All four backends use subprocess stdio protocols handled by engine-internal adap
 
 | Backend | Executable | Process Model | Protocol |
 |---|---|---|---|
-| Claude Code | `claude --print --output-format stream-json --verbose --permission-mode auto` | per-execution | NDJSON stream-json |
+| Claude Code | `claude --print --output-format stream-json --verbose --bare --permission-mode auto` | per-execution | NDJSON stream-json |
 | Codex | `codex exec [-c model=...]` | per-execution | NDJSON |
 | Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | per-execution | NDJSON stream-json |
 | Hermes Agent | `hermes acp` | long-running | ACP JSON-RPC 2.0 |

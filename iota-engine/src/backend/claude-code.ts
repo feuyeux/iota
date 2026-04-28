@@ -52,6 +52,30 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
   }
 
   async init(config: import("./interface.js").BackendConfig): Promise<void> {
+    // Load settings file if CLAUDE_SETTINGS_PATH is provided
+    if (config.env?.CLAUDE_SETTINGS_PATH) {
+      try {
+        const fs = await import("node:fs/promises");
+        const settingsPath = config.env.CLAUDE_SETTINGS_PATH;
+        const settingsContent = await fs.readFile(settingsPath, "utf-8");
+        const settings = JSON.parse(settingsContent);
+
+        // Merge env vars from settings file into config.env
+        if (settings.env && typeof settings.env === "object") {
+          if (!config.env) {
+            config.env = {};
+          }
+          config.env = { ...settings.env, ...config.env };
+        }
+      } catch (error) {
+        const settingsPath = config.env?.CLAUDE_SETTINGS_PATH ?? "unknown";
+        console.warn(
+          `[claude-code] Failed to load settings from ${settingsPath}:`,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
     // Map ANTHROPIC_AUTH_TOKEN to ANTHROPIC_API_KEY for Claude CLI --bare mode
     if (config.env?.ANTHROPIC_AUTH_TOKEN && !config.env.ANTHROPIC_API_KEY) {
       config.env.ANTHROPIC_API_KEY = config.env.ANTHROPIC_AUTH_TOKEN;
@@ -275,6 +299,31 @@ function mapClaudeEvent(
       data: {
         name: "approval_request",
         payload: { ...value, requestId: value.id ?? null },
+      },
+    };
+  }
+
+  if (type === "memory") {
+    const nativeType =
+      typeof value.nativeType === "string"
+        ? value.nativeType
+        : "conversation_context";
+    const content = extractClaudeText(value) ?? "";
+    return {
+      type: "memory",
+      sessionId: request.sessionId,
+      executionId: request.executionId,
+      backend,
+      sequence: 0,
+      timestamp:
+        typeof value.timestamp === "number" ? value.timestamp : Date.now(),
+      data: {
+        nativeType,
+        content,
+        metadata:
+          typeof value.metadata === "object" && value.metadata !== null
+            ? (value.metadata as Record<string, unknown>)
+            : undefined,
       },
     };
   }

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { resolve, normalize } from "node:path";
 import { access, stat } from "node:fs/promises";
@@ -256,7 +255,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{
     Params: { sessionId: string };
-    Querystring: { query?: string; limit?: string };
+    Querystring: { limit?: string };
   }>(
     "/sessions/:sessionId/memories",
     {
@@ -265,7 +264,6 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
         querystring: {
           type: "object",
           properties: {
-            query: { type: "string" },
             limit: { type: "string", pattern: "^\\d+$" },
           },
         },
@@ -274,11 +272,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       try {
         const limit = Math.min(Number(request.query.limit ?? "50"), 200);
-        const memories = await fastify.engine.listSessionMemories(
-          request.params.sessionId,
-          request.query.query,
-          limit,
-        );
+        const memories = await fastify.engine.listSessionMemories(request.params.sessionId, limit);
         return { count: memories.length, memories };
       } catch (error) {
         if (error instanceof IotaError) {
@@ -295,8 +289,6 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { sessionId: string };
     Body: {
       content: string;
-      type?: "episodic" | "procedural" | "factual" | "strategic";
-      metadata?: Record<string, unknown>;
     };
   }>(
     "/sessions/:sessionId/memories",
@@ -308,29 +300,13 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           required: ["content"],
           properties: {
             content: { type: "string", minLength: 1, maxLength: 20000 },
-            type: {
-              type: "string",
-              enum: ["episodic", "procedural", "factual", "strategic"],
-            },
-            metadata: { type: "object", additionalProperties: true },
           },
         },
       },
     },
     async (request, reply) => {
       try {
-        const memory = await fastify.engine.createSessionMemory(
-          request.params.sessionId,
-          {
-            id: `manual_${crypto.randomUUID()}`,
-            content: request.body.content,
-            type: request.body.type,
-            metadata: {
-              source: "manual",
-              ...(request.body.metadata ?? {}),
-            },
-          },
-        );
+        const memory = await fastify.engine.createSessionMemory(request.params.sessionId, request.body.content);
         reply.code(201);
         return memory;
       } catch (error) {
@@ -370,7 +346,8 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           reply.code(404);
           return { error: "Memory not found" };
         }
-        return { ok: true };
+        reply.code(204);
+        return;
       } catch (error) {
         if (error instanceof IotaError) {
           reply.code(404);

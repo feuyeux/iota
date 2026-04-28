@@ -428,6 +428,36 @@ function mapHermesEvent(
     };
   }
 
+  if (method === "session/memory") {
+    const memory =
+      typeof params.memory === "object" && params.memory !== null
+        ? (params.memory as Record<string, unknown>)
+        : {};
+    return {
+      type: "memory",
+      sessionId: request.sessionId,
+      executionId: request.executionId,
+      backend,
+      sequence: 0,
+      timestamp:
+        typeof memory.timestamp === "number"
+          ? memory.timestamp
+          : Date.now(),
+      data: {
+        nativeType:
+          typeof memory.nativeType === "string"
+            ? memory.nativeType
+            : "dialogue_memory",
+        content:
+          typeof memory.content === "string" ? memory.content : "",
+        metadata:
+          typeof memory.metadata === "object" && memory.metadata !== null
+            ? (memory.metadata as Record<string, unknown>)
+            : undefined,
+      },
+    };
+  }
+
   // ACP session/complete — terminal event
   if (method === "session/complete" || method === "session_complete") {
     const text =

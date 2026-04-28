@@ -158,6 +158,19 @@ export interface ExtensionEvent extends RuntimeEventBase {
   };
 }
 
+export interface MemoryEvent extends RuntimeEventBase {
+  type: "memory";
+  data: {
+    nativeType: string;
+    content: string;
+    metadata?: {
+      confidence?: number;
+      tags?: string[];
+      [key: string]: unknown;
+    };
+  };
+}
+
 export type RuntimeEvent =
   | OutputEvent
   | StateEvent
@@ -165,7 +178,8 @@ export type RuntimeEvent =
   | ToolResultEvent
   | FileDeltaEvent
   | ErrorEvent
-  | ExtensionEvent;
+  | ExtensionEvent
+  | MemoryEvent;
 
 export type NewRuntimeEvent = Omit<RuntimeEvent, "sequence" | "timestamp"> & {
   sequence?: number;

@@ -1,74 +1,73 @@
-# Agent Guide
+# Agent 服务指南
 
-**Version:** 1.1
-**Last Updated:** April 2026
+**版本:** 1.1
+**最后更新:** 2026 年 4 月
 
-## Table of Contents
+## 目录
 
-1. [Introduction](#1-introduction)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Prerequisites](#3-prerequisites)
-4. [Installation and Setup](#4-installation-and-setup)
-5. [Core Functionality — REST API](#5-core-functionality--rest-api)
-6. [Core Functionality — WebSocket](#6-core-functionality--websocket)
-7. [Distributed Features](#7-distributed-features)
-8. [Manual Verification Methods](#8-manual-verification-methods)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Cleanup](#10-cleanup)
-11. [References](#11-references)
-
----
-
-## 1. Introduction
-
-### Purpose and Scope
-
-This guide covers the Iota Agent HTTP/WebSocket service running on port 9666. The Agent exposes distributed APIs for session management, execution control, configuration, logging, visibility inspection, and real-time event streaming via WebSocket.
-
-### Target Audience
-
-- Developers verifying Agent API functionality
-- Frontend developers integrating with the App
-- Users testing distributed features via HTTP
-
-### Implementation Status
-
-- ✅ Core REST APIs: sessions, executions, config, logs, visibility, cross-session
-- ✅ WebSocket streaming with subscriptions
-- ✅ Distributed configuration with Redis scopes (global, backend, session, user)
-- ✅ Cross-session log and memory queries
-- ✅ Backend isolation reporting
+1. [简介](#1-简介)
+2. [架构概览](#2-架构概览)
+3. [前置要求](#3-前置要求)
+4. [安装与设置](#4-安装与设置)
+5. [核心功能 — REST API](#5-核心功能--rest-api)
+6. [核心功能 — WebSocket](#6-核心功能--websocket)
+7. [分布式特性](#7-分布式特性)
+8. [手动验证方法](#8-手动验证方法)
+9. [故障排查](#9-故障排查)
+10. [清理](#10-清理)
+11. [参考资料](#11-参考资料)
 
 ---
 
-## 2. Architecture Overview
+## 1. 简介
 
-### Component Diagram
+### 目的与范围
+
+本指南涵盖运行在 9666 端口的 Iota Agent 服务（HTTP/WebSocket）。Agent 服务暴露分布式 API，用于 Session 会话管理、Execution 执行控制、配置、日志记录、Visibility 可见性检查，以及通过 WebSocket 进行实时事件流传输。
+
+### 目标受众
+
+- 验证 Agent 服务 API 功能的开发者
+- 与 App 集成的前端开发者
+- 通过 HTTP 测试分布式特性的用户
+
+### 实现状态
+
+- ✅ 核心 REST API：sessions、executions、config、logs、visibility、cross-session
+- ✅ 带订阅功能的 WebSocket 流式传输
+- ✅ 基于 Redis 作用域的分布式配置（global、backend、session、user）
+- ✅ 跨 Session 会话的日志和内存查询
+- ✅ Backend 后端隔离报告
+
+---
+
+## 2. 架构概览
+
+### 组件图
 
 ```mermaid
 graph TB
-    subgraph "Layer 1: Clients"
-        Browser[Browser]
-        CLI[CLI Process]
+    subgraph "第 1 层：客户端"
+        Browser[浏览器]
+        CLI[CLI 进程]
         App[Iota App]
     end
 
-    subgraph "Layer 2: Agent Service"
-        Agent[Fastify Server<br/>:9666]
-        WebSocket[WebSocket Handler<br/>/api/v1/stream]
+    subgraph "第 2 层：Agent 服务"
+        Agent[Fastify 服务器<br/>:9666]
+        WebSocket[WebSocket 处理器<br/>/api/v1/stream]
     end
 
-    subgraph "Layer 3: Core"
-        Engine[Engine Library<br/>iota-engine]
+    subgraph "第 3 层：核心"
+        Engine[Engine 库<br/>iota-engine]
     end
 
-    subgraph "Layer 4: Storage"
+    subgraph "第 4 层：存储"
         Redis[(Redis<br/>:6379)]
-        Milvus[(Milvus<br/>:19530)] 
         MinIO[(MinIO<br/>:9000)]
     end
 
-    subgraph "Layer 5: External"
+    subgraph "第 5 层：外部"
         Claude[Claude Code]
         Codex[Codex]
         Gemini[Gemini CLI]
@@ -80,8 +79,7 @@ graph TB
     App -->|HTTP REST| Agent
     CLI -->|TypeScript| Engine
     Agent -->|TypeScript| Engine
-    Engine -->|Redis Protocol| Redis
-    Engine -->|gRPC| Milvus
+    Engine -->|Redis 协议| Redis
     Engine -->|S3 API| MinIO
     Engine -->|stdio| Claude
     Engine -->|stdio| Codex
@@ -89,74 +87,66 @@ graph TB
     Engine -->|stdio| Hermes
 ```
 
-### Dependencies
+### 依赖项
 
-| Dependency | Version | Purpose | Connection |
+| 依赖项 | 版本 | 用途 | 连接方式 |
 |------------|---------|---------|------------|
-| `@iota/engine` | built | Core runtime | TypeScript imports |
-| Redis | running :6379 | Primary storage | Redis protocol/TCP |
-| Fastify | latest | HTTP/WebSocket server | In-process |
-| Milvus | optional :19530 | Vector storage | gRPC |
-| MinIO | optional :9000 | Object storage | S3 API |
+| `@iota/engine` | built | 核心运行时 | TypeScript 导入 |
+| Redis | running :6379 | 主存储 | Redis 协议/TCP |
+| Fastify | latest | HTTP/WebSocket 服务器 | 进程内 |
+| MinIO | optional :9000 | 对象存储 | S3 API |
 
-### Communication Protocols
+### 通信协议
 
-- **Client → Agent**: HTTP REST JSON over TCP :9666
-- **Client → Agent**: WebSocket over TCP :9666
-- **Agent → Engine**: Direct TypeScript calls (in-process)
-- **Agent → Redis**: Redis protocol over TCP :6379
-- **Agent → Milvus**: gRPC over TCP :19530 (if configured)
-- **Agent → MinIO**: S3 API over HTTP :9000 (if configured)
+- **客户端 → Agent 服务**: 通过 TCP :9666 的 HTTP REST JSON
+- **客户端 → Agent 服务**: 通过 TCP :9666 的 WebSocket
+- **Agent 服务 → Engine**: 直接 TypeScript 调用（进程内）
+- **Agent 服务 → Redis**: 通过 TCP :6379 的 Redis 协议
+- **Agent 服务 → MinIO**: 通过 HTTP :9000 的 S3 API（如果配置）
 
-**Reference**: See [00-architecture-overview.md](./00-architecture-overview.md)
+**参考**: 参见 [00-architecture-overview.md](./00-architecture-overview.md)
 
 ---
 
-## 3. Prerequisites
+## 3. 前置要求
 
-### Required Software
+### 必需软件
 
-| Software | Verification |
+| 软件 | 验证方式 |
 |----------|--------------|
 | Redis | `redis-cli ping` → `PONG` |
 | Bun | `bun --version` |
-| Backend executables | `which claude`, `which codex`, `which gemini`, `which hermes` |
+| Backend 后端可执行文件 | `which claude`, `which codex`, `which gemini`, `which hermes` |
 
-### Port Requirements
+### 端口要求
 
-| Port | Service | Verification |
+| 端口 | 服务 | 验证方式 |
 |------|---------|--------------|
-| 9666 | Agent | `lsof -i :9666` |
+| 9666 | Agent 服务 | `lsof -i :9666` |
 | 6379 | Redis | `lsof -i :6379` |
 
-### Optional Storage
+### 可选存储
 
-**Milvus** (vector storage for memory embeddings):
+**MinIO**（用于工件的对象存储）：
 ```bash
-# Health check
-curl http://localhost:9091/healthz
-```
-
-**MinIO** (object storage for artifacts):
-```bash
-# Health check
+# 健康检查
 curl http://localhost:9000/minio/health/live
 ```
 
 ---
 
-## 4. Installation and Setup
+## 4. 安装与设置
 
-### Step 1: Start Redis
+### 步骤 1：启动 Redis
 
 ```bash
 cd deployment/scripts
 bash start-storage.sh
 redis-cli ping
-# Expected: PONG
+# 预期输出: PONG
 ```
 
-### Step 2: Build Agent
+### 步骤 2：构建 Agent 服务
 
 ```bash
 cd iota-agent
@@ -164,39 +154,39 @@ bun install
 bun run build
 ```
 
-### Step 3: Start Agent
+### 步骤 3：启动 Agent 服务
 
 ```bash
 cd iota-agent
 bun run dev
-# Listens on 0.0.0.0:9666 by default
+# 默认监听 0.0.0.0:9666
 ```
 
-**Verification**:
+**验证**：
 ```bash
 curl http://localhost:9666/health
-# Expected: {"status":"ok","timestamp":"..."}
+# 预期输出: {"status":"ok","timestamp":"..."}
 
 curl http://localhost:9666/healthz
-# Expected: {"status":"healthy","timestamp":"...","backends":{...}}
+# 预期输出: {"status":"healthy","timestamp":"...","backends":{...}}
 ```
 
 ---
 
-## 5. Core Functionality — REST API
+## 5. 核心功能 — REST API
 
-### Session Routes
+### Session 会话路由
 
-#### `POST /api/v1/sessions` — Create Session
+#### `POST /api/v1/sessions` — 创建 Session 会话
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"workingDirectory":"/tmp","backend":"claude-code"}'
 ```
 
-**Response** (201):
+**响应** (201)：
 ```json
 {
   "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -206,14 +196,14 @@ curl -X POST http://localhost:9666/api/v1/sessions \
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId` — Get Session
+#### `GET /api/v1/sessions/:sessionId` — 获取 Session 会话
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -225,41 +215,41 @@ curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 ---
 
-#### `DELETE /api/v1/sessions/:sessionId` — Delete Session
+#### `DELETE /api/v1/sessions/:sessionId` — 删除 Session 会话
 
-**Request**:
+**请求**：
 ```bash
 curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-**Response** (204): Empty
+**响应** (204)：空
 
 ---
 
-#### `PUT /api/v1/sessions/:sessionId/context` — Update Session Context
+#### `PUT /api/v1/sessions/:sessionId/context` — 更新 Session 会话上下文
 
-**Request**:
+**请求**：
 ```bash
 curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/context \
   -H "Content-Type: application/json" \
   -d '{"activeFiles":[{"path":"/tmp/test.txt","pinned":true}]}'
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {"success":true}
 ```
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId/workspace/file` — Read Workspace File
+#### `GET /api/v1/sessions/:sessionId/workspace/file` — 读取工作区文件
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/workspace/file?path=src/index.ts"
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "path": "src/index.ts",
@@ -271,16 +261,16 @@ curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 ---
 
-#### `PUT /api/v1/sessions/:sessionId/workspace/file` — Write Workspace File
+#### `PUT /api/v1/sessions/:sessionId/workspace/file` — 写入工作区文件
 
-**Request**:
+**请求**：
 ```bash
 curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/workspace/file \
   -H "Content-Type: application/json" \
   -d '{"path":"src/index.ts","content":"console.log(\"hello\");"}'
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "path": "src/index.ts",
@@ -291,74 +281,74 @@ curl -X PUT http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId/memories` — List Session Memories
+#### `GET /api/v1/sessions/:sessionId/memories` — 列出 Session 会话情景记忆
 
-**Request**:
+**请求**：
 ```bash
-curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories?query=auth&limit=50"
+curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories?limit=50"
 ```
 
-**Query parameters**: `query` (optional search), `limit` (default 50)
+**查询参数**：`limit`（默认 50）
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "count": 2,
   "memories": [
-    {"id": "mem_1", "content": "...", "type": "session", "createdAt": 1714067200000}
+    {"id": "mem_1", "content": "...", "type": "episodic", "scope": "session", "scopeId": "a1b2...", "createdAt": 1714067200000}
   ]
 }
 ```
 
 ---
 
-#### `POST /api/v1/sessions/:sessionId/memories` — Create Session Memory
+#### `POST /api/v1/sessions/:sessionId/memories` — 创建 Session 会话情景记忆
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories \
   -H "Content-Type: application/json" \
-  -d '{"content":"User prefers TypeScript","type":"session"}'
+  -d '{"content":"User prefers TypeScript"}'
 ```
 
-**Response** (201): Created memory object.
+**响应** (201)：已创建的记忆对象。
 
 ---
 
-#### `DELETE /api/v1/sessions/:sessionId/memories/:memoryId` — Delete Session Memory
+#### `DELETE /api/v1/sessions/:sessionId/memories/:memoryId` — 删除 Session 会话记忆
 
-**Request**:
+**请求**：
 ```bash
 curl -X DELETE http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/memories/mem_1
 ```
 
-**Response** (204): Empty
+**响应** (204)：空
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId/app-snapshot` — Session App Snapshot
+#### `GET /api/v1/sessions/:sessionId/app-snapshot` — Session 会话 App 快照
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/app-snapshot
 ```
 
-**Response** (200): Full session-level App Read Model snapshot including conversation history, memory, tokens, and tracing.
+**响应** (200)：完整的 Session 会话级 App 读取模型快照，包括对话历史、内存、令牌和追踪。
 
 ---
 
-### Execution Routes
+### Execution 执行路由
 
-#### `POST /api/v1/execute` — Execute Prompt
+#### `POST /api/v1/execute` — 执行提示
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/execute \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","prompt":"What is 2+2?","backend":"claude-code"}'
 ```
 
-**Response** (202):
+**响应** (202)：
 ```json
 {
   "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
@@ -369,25 +359,25 @@ curl -X POST http://localhost:9666/api/v1/execute \
 
 ---
 
-#### `GET /api/v1/executions/:executionId` — Get Execution
+#### `GET /api/v1/executions/:executionId` — 获取 Execution 执行
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234
 ```
 
-**Response** (200): Execution record object with `prompt`, `output`, `status`, `backend`, `createdAt`, `completedAt`.
+**响应** (200)：Execution 执行记录对象，包含 `prompt`、`output`、`status`、`backend`、`createdAt`、`completedAt`。
 
 ---
 
-#### `GET /api/v1/executions/:executionId/events` — Get Execution Events
+#### `GET /api/v1/executions/:executionId/events` — 获取 Execution 执行事件
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/events?offset=0&limit=100"
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "executionId": "e1f2g3h4-5678-90ab-cdef-345678901234",
@@ -402,86 +392,86 @@ curl "http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-3456789012
 }
 ```
 
-**Event types**: `output`, `state`, `tool_call`, `tool_result`, `file_delta`, `error`, `extension`
+**事件类型**：`output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`
 
 ---
 
-#### `POST /api/v1/executions/:executionId/interrupt` — Interrupt Execution
+#### `POST /api/v1/executions/:executionId/interrupt` — 中断 Execution 执行
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/interrupt
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {"executionId":"e1f2g3h4-5678-90ab-cdef-345678901234","status":"interrupted"}
 ```
 
 ---
 
-### Config Routes
+### Config 配置路由
 
-#### `GET /api/v1/config` — Get Resolved Config
+#### `GET /api/v1/config` — 获取解析后的配置
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/config?backend=claude-code&sessionId=a1b2c3d4&userId=user_01"
 ```
 
-**Query parameters**: `backend` (optional), `sessionId` (optional), `userId` (optional)
+**查询参数**：`backend`（可选）、`sessionId`（可选）、`userId`（可选）
 
-**Resolution order** (highest priority first): `user > session > backend > global`
+**解析顺序**（优先级从高到低）：`user > session > backend > global`
 
-**Response** (200): Merged configuration object from all scopes.
+**响应** (200)：从所有作用域合并的配置对象。
 
 ---
 
-#### `GET /api/v1/config/:scope` — Get Scope Config or List Scope IDs
+#### `GET /api/v1/config/:scope` — 获取作用域配置或列出作用域 ID
 
-**Valid scopes**: `global`, `backend`, `session`, `user`
+**有效作用域**：`global`、`backend`、`session`、`user`
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/config/global
-# Response: {"approval.shell":"ask",...} (config object for global)
+# 响应: {"approval.shell":"ask",...} (global 的配置对象)
 
 curl http://localhost:9666/api/v1/config/backend
-# Response: {"scope":"backend","ids":[...]} (only IDs with stored backend-scoped config)
+# 响应: {"scope":"backend","ids":[...]} (仅包含存储了 backend 作用域配置的 ID)
 ```
 
 ---
 
-#### `GET /api/v1/config/:scope/:scopeId` — Get Scoped Config
+#### `GET /api/v1/config/:scope/:scopeId` — 获取作用域配置
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/config/backend/claude-code
 ```
 
-**Response** (200): Config object for that scope.
+**响应** (200)：该作用域的配置对象。
 
 ---
 
-#### `POST /api/v1/config` — Set Global Config
+#### `POST /api/v1/config` — 设置全局配置
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/config \
   -H "Content-Type: application/json" \
   -d '{"key":"approval.shell","value":"ask"}'
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {"ok":true,"scope":"global","key":"approval.shell","value":"ask"}
 ```
 
 ---
 
-#### `POST /api/v1/config/:scope/:scopeId` — Set Scoped Config
+#### `POST /api/v1/config/:scope/:scopeId` — 设置作用域配置
 
-**Request**:
+**请求**：
 ```bash
 curl -X POST http://localhost:9666/api/v1/config/backend/claude-code \
   -H "Content-Type: application/json" \
@@ -490,36 +480,36 @@ curl -X POST http://localhost:9666/api/v1/config/backend/claude-code \
 
 ---
 
-#### `DELETE /api/v1/config/:scope/:scopeId/:key` — Delete Config Key
+#### `DELETE /api/v1/config/:scope/:scopeId/:key` — 删除配置键
 
-For `global` scope, a dedicated shorter route is also available:
+对于 `global` 作用域，也提供了专用的较短路由：
 
-**Request**:
+**请求**：
 ```bash
-# Delete a global config key (dedicated route)
+# 删除全局配置键（专用路由）
 curl -X DELETE http://localhost:9666/api/v1/config/global/approval.shell
 
-# Delete a backend-scoped config key
+# 删除 backend 作用域配置键
 curl -X DELETE http://localhost:9666/api/v1/config/backend/claude-code/timeout
 
-# Delete a user-scoped config key
+# 删除 user 作用域配置键
 curl -X DELETE http://localhost:9666/api/v1/config/user/user_01/theme
 ```
 
 ---
 
-### Logs Routes
+### Logs 日志路由
 
-#### `GET /api/v1/logs` — Query Logs
+#### `GET /api/v1/logs` — 查询日志
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/logs?sessionId=a1b2c3d4&backend=claude-code&limit=10"
 ```
 
-**Query parameters**: `sessionId`, `executionId`, `backend`, `eventType`, `since`, `until`, `offset`, `limit`
+**查询参数**：`sessionId`、`executionId`、`backend`、`eventType`、`since`、`until`、`offset`、`limit`
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "offset": 0,
@@ -531,83 +521,83 @@ curl "http://localhost:9666/api/v1/logs?sessionId=a1b2c3d4&backend=claude-code&l
 
 ---
 
-#### `GET /api/v1/logs/aggregate` — Aggregate Log Counts
+#### `GET /api/v1/logs/aggregate` — 聚合日志计数
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/logs/aggregate?backend=claude-code"
 ```
 
-**Response** (200): Aggregate counts grouped by event type.
+**响应** (200)：按事件类型分组的聚合计数。
 
 ---
 
-#### `GET /api/v1/memories/search` — Search Memories
+#### `GET /api/v1/memories/search` — 搜索记忆
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/memories/search?query=binary+search&limit=10"
 ```
 
 ---
 
-#### `GET /api/v1/backend-isolation` — Backend Isolation Report
+#### `GET /api/v1/backend-isolation` — Backend 后端隔离报告
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/backend-isolation
 ```
 
 ---
 
-#### `GET /api/v1/sessions/all` — List All Sessions
+#### `GET /api/v1/sessions/all` — 列出所有 Session 会话
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/sessions/all?limit=100"
 ```
 
 ---
 
-### Visibility Routes
+### Visibility 可见性路由
 
-#### `GET /api/v1/executions/:executionId/visibility` — Full Visibility Bundle
+#### `GET /api/v1/executions/:executionId/visibility` — 完整 Visibility 可见性包
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility
 ```
 
-**Response** (200): Complete visibility bundle including tokens, memory, context, chain.
+**响应** (200)：完整的 Visibility 可见性包，包括令牌、内存、上下文、链。
 
 ---
 
-#### `GET /api/v1/executions/:executionId/visibility/tokens` — Token Visibility
+#### `GET /api/v1/executions/:executionId/visibility/tokens` — 令牌 Visibility 可见性
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/tokens
 ```
 
 ---
 
-#### `GET /api/v1/executions/:executionId/visibility/memory` — Memory Visibility
+#### `GET /api/v1/executions/:executionId/visibility/memory` — 内存 Visibility 可见性
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/memory
 ```
 
 ---
 
-#### `GET /api/v1/executions/:executionId/visibility/chain` — Trace Chain
+#### `GET /api/v1/executions/:executionId/visibility/chain` — 追踪链
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/visibility/chain
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "link": {...},
@@ -618,65 +608,65 @@ curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-34567890123
 
 ---
 
-#### `GET /api/v1/executions/:executionId/trace` — Hierarchical Trace Tree
+#### `GET /api/v1/executions/:executionId/trace` — 分层追踪树
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/trace
 ```
 
 ---
 
-#### `GET /api/v1/executions/:executionId/app-snapshot` — App Execution Snapshot
+#### `GET /api/v1/executions/:executionId/app-snapshot` — App Execution 执行快照
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/app-snapshot
 ```
 
 ---
 
-#### `GET /api/v1/executions/:executionId/replay` — Execution Replay
+#### `GET /api/v1/executions/:executionId/replay` — Execution 执行回放
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/executions/e1f2g3h4-5678-90ab-cdef-345678901234/replay
 ```
 
-**Response** (200): Execution replay data including ordered events, visibility snapshots, and timing for playback reconstruction.
+**响应** (200)：Execution 执行回放数据，包括有序事件、Visibility 可见性快照和用于回放重建的时间信息。
 
-> **Note**: Replay is a **REST query endpoint** that returns a static snapshot of execution data. It is not a real-time WebSocket stream. The App fetches replay data on-demand via `api.getExecutionReplay()` and reconstructs the playback client-side from the returned events and visibility records.
+> **注意**：回放是一个 **REST 查询端点**，返回 Execution 执行数据的静态快照。它不是实时 WebSocket 流。App 通过 `api.getExecutionReplay()` 按需获取回放数据，并从返回的事件和 Visibility 可见性记录在客户端重建回放。
 
 ---
 
-#### `GET /api/v1/traces/aggregate` — Aggregate Traces
+#### `GET /api/v1/traces/aggregate` — 聚合追踪
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/traces/aggregate?sessionId=a1b2c3d4&backend=claude-code"
 ```
 
-**Response** (200): Aggregated trace statistics across executions.
+**响应** (200)：跨 Execution 执行的聚合追踪统计。
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId/visibility` — Session Visibility
+#### `GET /api/v1/sessions/:sessionId/visibility` — Session 会话 Visibility 可见性
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/visibility?limit=50"
 ```
 
 ---
 
-#### `GET /api/v1/sessions/:sessionId/visibility/summary` — Session Visibility Summary
+#### `GET /api/v1/sessions/:sessionId/visibility/summary` — Session 会话 Visibility 可见性摘要
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/visibility/summary
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "sessionId": "a1b2c3d4-...",
@@ -700,16 +690,16 @@ curl http://localhost:9666/api/v1/sessions/a1b2c3d4-e5f6-7890-abcd-ef1234567890/
 
 ---
 
-### Status Routes
+### Status 状态路由
 
-#### `GET /api/v1/status` — Backend Status
+#### `GET /api/v1/status` — Backend 后端状态
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/status
 ```
 
-**Response** (200):
+**响应** (200)：
 ```json
 {
   "backends": [
@@ -732,93 +722,93 @@ curl http://localhost:9666/api/v1/status
 
 ---
 
-#### `GET /api/v1/metrics` — Engine Metrics
+#### `GET /api/v1/metrics` — Engine 指标
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/metrics
 ```
 
 ---
 
-### Cross-Session Routes
+### Cross-Session 跨会话路由
 
-#### `GET /api/v1/cross-session/logs` — Cross-Session Log Query
+#### `GET /api/v1/cross-session/logs` — 跨 Session 会话日志查询
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/cross-session/logs?backend=claude-code&limit=50"
 ```
 
 ---
 
-#### `GET /api/v1/cross-session/logs/aggregate` — Cross-Session Log Aggregation
+#### `GET /api/v1/cross-session/logs/aggregate` — 跨 Session 会话日志聚合
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/cross-session/logs/aggregate?backend=claude-code"
 ```
 
 ---
 
-#### `GET /api/v1/cross-session/sessions` — List All Sessions Cross-Session
+#### `GET /api/v1/cross-session/sessions` — 跨 Session 会话列出所有会话
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/cross-session/sessions?limit=100"
 ```
 
 ---
 
-#### `GET /api/v1/cross-session/memories/search` — Cross-Session Memory Search
+#### `GET /api/v1/cross-session/memories/search` — 跨 Session 会话内存搜索
 
-**Request**:
+**请求**：
 ```bash
 curl "http://localhost:9666/api/v1/cross-session/memories/search?query=binary+search&limit=10"
 ```
 
 ---
 
-#### `GET /api/v1/cross-session/backend-isolation` — Cross-Session Backend Isolation
+#### `GET /api/v1/cross-session/backend-isolation` — 跨 Session 会话 Backend 后端隔离
 
-**Request**:
+**请求**：
 ```bash
 curl http://localhost:9666/api/v1/cross-session/backend-isolation
 ```
 
 ---
 
-## 6. Core Functionality — WebSocket
+## 6. 核心功能 — WebSocket
 
-### Connection Establishment
+### 连接建立
 
-**URL**: `ws://localhost:9666/api/v1/stream`
+**URL**：`ws://localhost:9666/api/v1/stream`
 
-**Protocol**: WebSocket over TCP
+**协议**：基于 TCP 的 WebSocket
 
-**Handshake**: HTTP Upgrade request (standard WebSocket protocol)
+**握手**：HTTP 升级请求（标准 WebSocket 协议）
 
-**Verification with wscat**:
+**使用 wscat 验证**：
 ```bash
 npm install -g wscat
 wscat -c ws://localhost:9666/api/v1/stream
-# Connected (press Ctrl+C to exit)
+# 已连接（按 Ctrl+C 退出）
 ```
 
-**Verification with Browser DevTools**:
-1. Open DevTools (F12) → Network tab
-2. Filter by "WS" (WebSocket)
-3. Navigate to `http://localhost:9888` (App) or connect directly
-4. Click WebSocket connection to see frame list
-5. Switch to "Messages" tab to inspect JSON frames
+**使用浏览器开发者工具验证**：
+1. 打开开发者工具（F12）→ Network 标签
+2. 按 "WS"（WebSocket）过滤
+3. 导航到 `http://localhost:9888`（App）或直接连接
+4. 点击 WebSocket 连接查看帧列表
+5. 切换到 "Messages" 标签检查 JSON 帧
 
 ---
 
-### Inbound Message Types (Client → Agent)
+### 入站消息类型（客户端 → Agent 服务）
 
-#### `execute` — Execute Prompt via WebSocket
+#### `execute` — 通过 WebSocket 执行提示
 
-**Message**:
+**消息**：
 ```json
 {
   "type": "execute",
@@ -829,13 +819,13 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**Behavior**: Agent streams `event` messages for each RuntimeEvent, then sends `complete` or `error`.
+**行为**：Agent 服务为每个 RuntimeEvent 流式传输 `event` 消息，然后发送 `complete` 或 `error`。
 
 ---
 
-#### `subscribe_app_session` — Subscribe to Session Updates
+#### `subscribe_app_session` — 订阅 Session 会话更新
 
-**Message**:
+**消息**：
 ```json
 {
   "type": "subscribe_app_session",
@@ -844,7 +834,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**Response** (immediate):
+**响应**（立即）：
 ```json
 {
   "type": "subscribed",
@@ -853,13 +843,13 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**Then**: Agent sends `app_snapshot` followed by `app_delta` messages for any changes.
+**然后**：Agent 服务发送 `app_snapshot`，随后为任何更改发送 `app_delta` 消息。
 
 ---
 
-#### `subscribe_visibility` — Subscribe to Visibility Updates
+#### `subscribe_visibility` — 订阅 Visibility 可见性更新
 
-**Message**:
+**消息**：
 ```json
 {
   "type": "subscribe_visibility",
@@ -868,7 +858,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**Response** (immediate):
+**响应**（立即）：
 ```json
 {
   "type": "subscribed_visibility",
@@ -877,19 +867,19 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**Implementation detail**: Visibility updates are delivered through a **hybrid mechanism**, not a single continuous stream:
+**实现细节**：Visibility 可见性更新通过**混合机制**传递，而不是单一连续流：
 
-1. **Event-driven** (during execution): Runtime events from `engine.subscribeExecution()` are mapped to `app_delta` messages in real-time (conversation, trace steps, tool calls).
-2. **Store-polling** (background): A 1-second interval poller (`pollVisibilityStoreDeltas`) reads from the Visibility Store and pushes `app_delta` messages for memory, tokens, chain, and summary when the data hash changes.
-3. **Post-execution backfill**: After execution completes, remaining store-driven deltas (token totals, memory selections, summary) are pushed as a final batch.
+1. **事件驱动**（执行期间）：来自 `engine.subscribeExecution()` 的运行时事件实时映射到 `app_delta` 消息（对话、追踪步骤、工具调用）。
+2. **存储轮询**（后台）：1 秒间隔轮询器（`pollVisibilityStoreDeltas`）从 Visibility Store 读取，并在数据哈希更改时推送 `app_delta` 消息，用于内存、令牌、链和摘要。
+3. **执行后回填**：执行完成后，剩余的存储驱动增量（令牌总数、内存选择、摘要）作为最终批次推送。
 
-This means visibility updates may arrive slightly after the execution events they relate to. The system is **eventually consistent**, not a pure event bus.
+这意味着 Visibility 可见性更新可能会在与之相关的执行事件之后稍微到达。系统是**最终一致的**，而不是纯事件总线。
 
 ---
 
-#### `interrupt` — Interrupt a Running Execution
+#### `interrupt` — 中断正在运行的 Execution 执行
 
-**Message**:
+**消息**：
 ```json
 {
   "type": "interrupt",
@@ -897,13 +887,13 @@ This means visibility updates may arrive slightly after the execution events the
 }
 ```
 
-**Behavior**: Agent calls `engine.interrupt(executionId)` and sends `complete` after the interrupt request is processed. Session subscribers also receive the persisted `interrupted` state event.
+**行为**：Agent 服务调用 `engine.interrupt(executionId)` 并在处理中断请求后发送 `complete`。Session 会话订阅者也会收到持久化的 `interrupted` 状态事件。
 
 ---
 
-#### `approval_decision` — Respond to Approval Request
+#### `approval_decision` — 响应审批请求
 
-**Message**:
+**消息**：
 ```json
 {
   "type": "approval_decision",
@@ -913,9 +903,9 @@ This means visibility updates may arrive slightly after the execution events the
 }
 ```
 
-**Behavior**: Agent forwards the decision to the Engine's `DeferredApprovalHook`, which unblocks the waiting execution. Responds with `approval_ack` on success or `error` if the request has expired or is unknown.
+**行为**：Agent 服务将决策转发到 Engine 的 `DeferredApprovalHook`，该钩子解除等待执行的阻塞。成功时响应 `approval_ack`，如果请求已过期或未知则响应 `error`。
 
-**Response** (success):
+**响应**（成功）：
 ```json
 {
   "type": "approval_ack",
@@ -923,13 +913,13 @@ This means visibility updates may arrive slightly after the execution events the
 }
 ```
 
-> **Prerequisite**: The Agent must be started with a `DeferredApprovalHook` (the default when running via `iota-agent`).
+> **前提条件**：Agent 服务必须使用 `DeferredApprovalHook` 启动（通过 `iota-agent` 运行时的默认设置）。
 
 ---
 
-### Outbound Message Types (Agent → Client)
+### 出站消息类型（Agent 服务 → 客户端）
 
-#### `event` — RuntimeEvent from Execution
+#### `event` — 来自 Execution 执行的 RuntimeEvent
 
 ```json
 {
@@ -942,11 +932,11 @@ This means visibility updates may arrive slightly after the execution events the
 }
 ```
 
-**Event types**: Same as REST API — `output`, `state`, `tool_call`, `tool_result`, `file_delta`, `error`, `extension`
+**事件类型**：与 REST API 相同 — `output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`
 
 ---
 
-#### `complete` — Execution Finished
+#### `complete` — Execution 执行完成
 
 ```json
 {
@@ -957,7 +947,7 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `error` — Error Occurred
+#### `error` — 发生错误
 
 ```json
 {
@@ -969,7 +959,7 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `subscribed` — Subscription Confirmed
+#### `subscribed` — 订阅已确认
 
 ```json
 {
@@ -981,7 +971,7 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `subscribed_visibility` — Visibility Subscription Confirmed
+#### `subscribed_visibility` — Visibility 可见性订阅已确认
 
 ```json
 {
@@ -993,7 +983,7 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `app_delta` — App Read Model Update
+#### `app_delta` — App 读取模型更新
 
 ```json
 {
@@ -1008,16 +998,16 @@ This means visibility updates may arrive slightly after the execution events the
 }
 ```
 
-**Delta types**:
-- `conversation_delta`: New conversation item
-- `memory_delta`: Memory selection changed
-- `token_delta`: Token counts updated
-- `trace_step_delta`: New trace step
-- `summary_delta`: Summary updated
+**增量类型**：
+- `conversation_delta`：新对话项
+- `memory_delta`：内存选择已更改
+- `token_delta`：令牌计数已更新
+- `trace_step_delta`：新追踪步骤
+- `summary_delta`：摘要已更新
 
 ---
 
-#### `app_snapshot` — Full App State Snapshot
+#### `app_snapshot` — 完整 App 状态快照
 
 ```json
 {
@@ -1029,7 +1019,7 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `visibility_snapshot` — Visibility Snapshot
+#### `visibility_snapshot` — Visibility 可见性快照
 
 ```json
 {
@@ -1042,15 +1032,15 @@ This means visibility updates may arrive slightly after the execution events the
 
 ---
 
-#### `pubsub_event` — Redis Pub/Sub Bridged Event
+#### `pubsub_event` — Redis Pub/Sub 桥接事件
 
-When Redis pub/sub is available (multi-instance deployments), the Agent bridges cross-instance events to WebSocket clients. These events are forwarded from three Redis channels:
+当 Redis pub/sub 可用时（多实例部署），Agent 服务将跨实例事件桥接到 WebSocket 客户端。这些事件从三个 Redis 频道转发：
 
-- `iota:execution:events` — Execution events from other Agent instances
-- `iota:session:updates` — Session state changes from other instances
-- `iota:config:changes` — Configuration changes from other instances
+- `iota:execution:events` — 来自其他 Agent 服务实例的 Execution 执行事件
+- `iota:session:updates` — 来自其他实例的 Session 会话状态更改
+- `iota:config:changes` — 来自其他实例的配置更改
 
-**Message format**:
+**消息格式**：
 ```json
 {
   "type": "pubsub_event",
@@ -1063,73 +1053,73 @@ When Redis pub/sub is available (multi-instance deployments), the Agent bridges 
 }
 ```
 
-**Behavior**: `pubsub_event` messages are only sent when:
-- The WebSocket client has an active `subscribe_app_session` subscription (for execution/session channels)
-- Always forwarded for `iota:config:changes`
+**行为**：`pubsub_event` 消息仅在以下情况下发送：
+- WebSocket 客户端具有活动的 `subscribe_app_session` 订阅（用于 execution/session 频道）
+- 始终转发 `iota:config:changes`
 
 ---
 
-### Subscription Lifecycle
+### 订阅生命周期
 
-1. **Connect**: WebSocket connection established to `/api/v1/stream`
-2. **Subscribe**: Send `subscribe_app_session` or `subscribe_visibility`
-3. **Receive Confirmation**: Immediate `subscribed` or `subscribed_visibility` response
-4. **Receive Snapshot**: Full state via `app_snapshot` or `visibility_snapshot`
-5. **Receive Deltas**: Ongoing updates via `app_delta` or event messages
-6. **Unsubscribe**: Close WebSocket connection
+1. **连接**：建立到 `/api/v1/stream` 的 WebSocket 连接
+2. **订阅**：发送 `subscribe_app_session` 或 `subscribe_visibility`
+3. **接收确认**：立即收到 `subscribed` 或 `subscribed_visibility` 响应
+4. **接收快照**：通过 `app_snapshot` 或 `visibility_snapshot` 获取完整状态
+5. **接收增量**：通过 `app_delta` 或事件消息持续更新
+6. **取消订阅**：关闭 WebSocket 连接
 
-### Subscription Type Comparison
+### 订阅类型比较
 
-The two subscription types serve distinct purposes and should not be confused:
+两种订阅类型服务于不同的目的，不应混淆：
 
-| Aspect | `subscribe_app_session` | `subscribe_visibility` |
+| 方面 | `subscribe_app_session` | `subscribe_visibility` |
 |--------|------------------------|----------------------|
-| **Scope** | Session-level | Execution-level |
-| **Keyed by** | `sessionId` | `executionId` |
-| **Initial payload** | `app_snapshot` (full session state) | `visibility_snapshot` (execution visibility) |
-| **Delta kinds** | `conversation`, `tracing`, `memory`, `tokens`, `summary` | `memory`, `tokens`, `chain`, `summary` |
-| **Primary consumer** | App UI (ChatTimeline, Sidebar) | App UI (InspectorPanel) |
-| **Data source** | Engine event stream (`engine.stream()`) | Hybrid: event stream + 1s store polling |
-| **Typical usage** | One per session, lasts connection lifetime | One per active execution, may change as user navigates |
+| **范围** | Session 会话级 | Execution 执行级 |
+| **键控依据** | `sessionId` | `executionId` |
+| **初始负载** | `app_snapshot`（完整 Session 会话状态） | `visibility_snapshot`（Execution 执行 Visibility 可见性） |
+| **增量类型** | `conversation`、`tracing`、`memory`、`tokens`、`summary` | `memory`、`tokens`、`chain`、`summary` |
+| **主要消费者** | App UI（ChatTimeline、Sidebar） | App UI（InspectorPanel） |
+| **数据源** | Engine 事件流（`engine.stream()`） | 混合：事件流 + 1 秒存储轮询 |
+| **典型用法** | 每个 Session 会话一个，持续连接生命周期 | 每个活动 Execution 执行一个，可能随用户导航而更改 |
 
 ---
 
-## 7. Distributed Features
+## 7. 分布式特性
 
-### Distributed Feature: Distributed Configuration
+### 分布式特性：分布式配置
 
-**Purpose**: Config stored in Redis with scope-based isolation.
+**目的**：配置存储在 Redis 中，具有基于作用域的隔离。
 
-**Procedure**:
+**步骤**：
 
-1. **Set backend-specific config**:
+1. **设置 backend 后端特定配置**：
    ```bash
    curl -X POST http://localhost:9666/api/v1/config/backend/claude-code \
      -H "Content-Type: application/json" \
      -d '{"key":"timeout","value":"60000"}'
    ```
 
-2. **Verify in Redis**:
+2. **在 Redis 中验证**：
    ```bash
    redis-cli HGET "iota:config:backend:claude-code" "timeout"
-   # Expected: "60000"
+   # 预期输出: "60000"
    ```
 
-3. **Verify resolution**:
+3. **验证解析**：
    ```bash
    curl "http://localhost:9666/api/v1/config?backend=claude-code" | jq '.timeout'
-   # Expected: "60000"
+   # 预期输出: "60000"
    ```
 
 ---
 
-### Distributed Feature: Cross-Session Log Queries
+### 分布式特性：跨 Session 会话日志查询
 
-**Purpose**: Query logs across all sessions.
+**目的**：跨所有 Session 会话查询日志。
 
-**Procedure**:
+**步骤**：
 
-1. **Create multiple sessions**:
+1. **创建多个 Session 会话**：
    ```bash
    SESSION1=$(curl -s -X POST http://localhost:9666/api/v1/sessions \
      -H "Content-Type: application/json" \
@@ -1140,7 +1130,7 @@ The two subscription types serve distinct purposes and should not be confused:
      -d '{"workingDirectory":"/tmp"}' | jq -r '.sessionId')
    ```
 
-2. **Execute in each session** (different backends):
+2. **在每个 Session 会话中执行**（不同 Backend 后端）：
    ```bash
    curl -X POST http://localhost:9666/api/v1/execute \
      -H "Content-Type: application/json" \
@@ -1151,203 +1141,203 @@ The two subscription types serve distinct purposes and should not be confused:
      -d '{"sessionId":"'$SESSION2'","prompt":"test","backend":"gemini"}'
    ```
 
-3. **Query cross-session logs**:
+3. **查询跨 Session 会话日志**：
    ```bash
    curl "http://localhost:9666/api/v1/cross-session/logs?backend=claude-code&limit=10"
    ```
 
 ---
 
-### Distributed Feature: Cross-Session Memory Search
+### 分布式特性：统一内存搜索
 
-**Purpose**: Search memories across all sessions.
+**目的**：跨 Session 会话、项目和用户作用域搜索统一内存。
 
-**Procedure**:
+**步骤**：
 ```bash
 curl "http://localhost:9666/api/v1/cross-session/memories/search?query=binary+search&limit=10"
 ```
 
 ---
 
-### Distributed Feature: Backend Isolation Verification
+### 分布式特性：Backend 后端隔离验证
 
-**Purpose**: Verify data is properly partitioned by backend.
+**目的**：验证数据按 Backend 后端正确分区。
 
-**Procedure**:
+**步骤**：
 
-1. **Execute with different backends** (see above)
+1. **使用不同 Backend 后端执行**（见上文）
 
-2. **Get isolation report**:
+2. **获取隔离报告**：
    ```bash
    curl http://localhost:9666/api/v1/backend-isolation
    ```
 
-3. **Expected**: Shows session and execution counts per backend with proper isolation.
+3. **预期**：显示每个 Backend 后端的 Session 会话和 Execution 执行计数，具有适当的隔离。
 
 ---
 
-## 8. Manual Verification Methods
+## 8. 手动验证方法
 
-### Verification Checklist: Session CRUD
+### 验证清单：Session 会话 CRUD
 
-**Objective**: Verify session creation, reading, and deletion.
+**目标**：验证 Session 会话的创建、读取和删除。
 
-- [ ] **Setup**: Agent running
+- [ ] **设置**：Agent 服务运行中
   ```bash
   curl http://localhost:9666/health
-  # Expected: {"status":"ok",...}
+  # 预期输出: {"status":"ok",...}
   ```
 
-- [ ] **Create session**:
+- [ ] **创建 Session 会话**：
   ```bash
   SESSION_ID=$(curl -s -X POST http://localhost:9666/api/v1/sessions \
     -H "Content-Type: application/json" \
     -d '{"workingDirectory":"/tmp"}' | jq -r '.sessionId')
   echo "Session: $SESSION_ID"
-  # Expected: Valid UUID
+  # 预期输出: 有效的 UUID
   ```
 
-- [ ] **Get session**:
+- [ ] **获取 Session 会话**：
   ```bash
   curl http://localhost:9666/api/v1/sessions/$SESSION_ID | jq '.sessionId'
-  # Expected: Same UUID
+  # 预期输出: 相同的 UUID
   ```
 
-- [ ] **Verify in Redis**:
+- [ ] **在 Redis 中验证**：
   ```bash
   redis-cli HGET "iota:session:$SESSION_ID" "workingDirectory"
-  # Expected: "/tmp"
+  # 预期输出: "/tmp"
   ```
 
-- [ ] **Delete session**:
+- [ ] **删除 Session 会话**：
   ```bash
   curl -X DELETE http://localhost:9666/api/v1/sessions/$SESSION_ID
-  # Expected: 204 No Content
+  # 预期输出: 204 No Content
   ```
 
-- [ ] **Verify deleted**:
+- [ ] **验证已删除**：
   ```bash
   curl http://localhost:9666/api/v1/sessions/$SESSION_ID
-  # Expected: 404 Not Found
+  # 预期输出: 404 Not Found
   ```
 
-**Success Criteria**:
-- ✅ Session created with correct ID
-- ✅ Session persisted in Redis
-- ✅ Session retrieved correctly
-- ✅ Session deleted cleanly
-- ✅ Redis keys cleaned up
+**成功标准**：
+- ✅ Session 会话以正确的 ID 创建
+- ✅ Session 会话持久化到 Redis
+- ✅ Session 会话正确检索
+- ✅ Session 会话干净删除
+- ✅ Redis 键已清理
 
 ---
 
-### Verification Checklist: WebSocket Streaming
+### 验证清单：WebSocket 流式传输
 
-**Objective**: Verify WebSocket connection, subscription, and event streaming.
+**目标**：验证 WebSocket 连接、订阅和事件流式传输。
 
-- [ ] **Setup**: Agent running
+- [ ] **设置**：Agent 服务运行中
   ```bash
   curl http://localhost:9666/health
   ```
 
-- [ ] **Create session**:
+- [ ] **创建 Session 会话**：
   ```bash
   SESSION_ID=$(curl -s -X POST http://localhost:9666/api/v1/sessions \
     -H "Content-Type: application/json" \
     -d '{"workingDirectory":"/tmp"}' | jq -r '.sessionId')
   ```
 
-- [ ] **Connect via wscat** (in another terminal):
+- [ ] **通过 wscat 连接**（在另一个终端）：
   ```bash
   wscat -c ws://localhost:9666/api/v1/stream
-  # Connected
+  # 已连接
   ```
 
-- [ ] **Send subscription**:
+- [ ] **发送订阅**：
   ```json
   {"type":"subscribe_app_session","sessionId":"<SESSION_ID>","include":["conversation","tracing"]}
   ```
 
-- [ ] **Verify response** (in wscat):
+- [ ] **验证响应**（在 wscat 中）：
   ```json
   {"type":"subscribed","sessionId":"<SESSION_ID>","include":["conversation","tracing"]}
   ```
 
-- [ ] **Send execute**:
+- [ ] **发送执行**：
   ```json
   {"type":"execute","sessionId":"<SESSION_ID>","prompt":"What is 2+2?","backend":"claude-code"}
   ```
 
-- [ ] **Verify event stream** (in wscat):
+- [ ] **验证事件流**（在 wscat 中）：
   ```json
   {"type":"event","executionId":"...","event":{"type":"output",...}}
   {"type":"complete","executionId":"..."}
   ```
 
-- [ ] **Close connection**: Ctrl+C in wscat terminal
+- [ ] **关闭连接**：在 wscat 终端中按 Ctrl+C
 
-**Success Criteria**:
-- ✅ Connection established
-- ✅ Subscription confirmed
-- ✅ Events stream in real-time
-- ✅ `complete` message received at end
-- ✅ Connection closes cleanly
+**成功标准**：
+- ✅ 连接已建立
+- ✅ 订阅已确认
+- ✅ 事件实时流式传输
+- ✅ 结束时收到 `complete` 消息
+- ✅ 连接干净关闭
 
 ---
 
-### Verification Checklist: Distributed Config
+### 验证清单：分布式配置
 
-**Objective**: Verify config is stored in Redis and resolved correctly.
+**目标**：验证配置存储在 Redis 中并正确解析。
 
-- [ ] **Setup**: Agent running, Redis available
+- [ ] **设置**：Agent 服务运行中，Redis 可用
   ```bash
   redis-cli FLUSHALL
   ```
 
-- [ ] **Set global config**:
+- [ ] **设置全局配置**：
   ```bash
   curl -X POST http://localhost:9666/api/v1/config \
     -H "Content-Type: application/json" \
     -d '{"key":"approval.shell","value":"ask"}'
   ```
 
-- [ ] **Verify in Redis**:
+- [ ] **在 Redis 中验证**：
   ```bash
   redis-cli HGET "iota:config:global" "approval.shell"
-  # Expected: ask
+  # 预期输出: ask
   ```
 
-- [ ] **Set backend-specific config**:
+- [ ] **设置 backend 后端特定配置**：
   ```bash
   curl -X POST http://localhost:9666/api/v1/config/backend/claude-code \
     -H "Content-Type: application/json" \
     -d '{"key":"timeout","value":"60000"}'
   ```
 
-- [ ] **Get resolved config**:
+- [ ] **获取解析后的配置**：
   ```bash
   curl "http://localhost:9666/api/v1/config?backend=claude-code" | jq '."approval.shell"'
-  # Expected: ask (from global)
+  # 预期输出: ask（来自 global）
   ```
 
-- [ ] **Cleanup**:
+- [ ] **清理**：
   ```bash
   redis-cli FLUSHALL
   ```
 
 ---
 
-## 9. Troubleshooting
+## 9. 故障排查
 
-### Issue: Port 9666 Already in Use
+### 问题：端口 9666 已被占用
 
-**Symptoms**: `EADDRINUSE: address already in use :::9666`
+**症状**：`EADDRINUSE: address already in use :::9666`
 
-**Diagnosis**:
+**诊断**：
 ```bash
 lsof -i :9666
 ```
 
-**Solution**:
+**解决方案**：
 ```bash
 lsof -i :9666 -t | xargs kill -9
 cd iota-agent && bun run dev
@@ -1355,20 +1345,20 @@ cd iota-agent && bun run dev
 
 ---
 
-### Issue: WebSocket Connection Failed
+### 问题：WebSocket 连接失败
 
-**Symptoms**: Browser or wscat cannot connect to WebSocket
+**症状**：浏览器或 wscat 无法连接到 WebSocket
 
-**Diagnosis**:
+**诊断**：
 ```bash
-# Check Agent is running
+# 检查 Agent 服务是否运行
 curl http://localhost:9666/health
 
-# Check WebSocket endpoint
+# 检查 WebSocket 端点
 curl -I http://localhost:9666/api/v1/stream
 ```
 
-**Solution**:
+**解决方案**：
 ```bash
 cd iota-agent
 lsof -i :9666 -t | xargs kill -9
@@ -1377,83 +1367,83 @@ bun run dev
 
 ---
 
-### Issue: API Returns 404
+### 问题：API 返回 404
 
-**Symptoms**: `{"statusCode":404,"error":"Not Found"}`
+**症状**：`{"statusCode":404,"error":"Not Found"}`
 
-**Diagnosis**:
+**诊断**：
 ```bash
-# Check route is correct
+# 检查路由是否正确
 curl http://localhost:9666/api/v1/status
 ```
 
-**Solution**:
-- Verify session ID or execution ID is correct
-- Check API endpoint path matches documentation
+**解决方案**：
+- 验证 Session 会话 ID 或 Execution 执行 ID 是否正确
+- 检查 API 端点路径是否与文档匹配
 
 ---
 
-### Issue: API Returns 400
+### 问题：API 返回 400
 
-**Symptoms**: `{"statusCode":400,"error":"Bad Request"}`
+**症状**：`{"statusCode":400,"error":"Bad Request"}`
 
-**Diagnosis**: Usually validation error (missing required field, invalid enum value)
+**诊断**：通常是验证错误（缺少必需字段、无效枚举值）
 
-**Solution**:
-- Check request body is valid JSON
-- Verify required fields are present
-- Verify enum values match allowed values (e.g., backend names)
+**解决方案**：
+- 检查请求体是否为有效 JSON
+- 验证必需字段是否存在
+- 验证枚举值是否与允许的值匹配（例如，Backend 后端名称）
 
 ---
 
-### Issue: Config Returns 503
+### 问题：配置返回 503
 
-**Symptoms**: `{"statusCode":503,"error":"Service Unavailable"}`
+**症状**：`{"statusCode":503,"error":"Service Unavailable"}`
 
-**Diagnosis**: Redis config store not available
+**诊断**：Redis 配置存储不可用
 
-**Solution**:
+**解决方案**：
 ```bash
 redis-cli ping
-# If fails: Start Redis
+# 如果失败：启动 Redis
 cd deployment/scripts && bash start-storage.sh
 ```
 
 ---
 
-## 10. Cleanup
+## 10. 清理
 
-### Stop Agent
+### 停止 Agent 服务
 
 ```bash
-# Find Agent process
+# 查找 Agent 服务进程
 lsof -i :9666
 
-# Kill
+# 终止
 lsof -i :9666 -t | xargs kill -9
 ```
 
-### Reset Redis Data
+### 重置 Redis 数据
 
 ```bash
 redis-cli FLUSHALL
 ```
 
-### Full Environment Teardown
+### 完整环境拆除
 
 ```bash
-# Stop Agent
+# 停止 Agent 服务
 lsof -i :9666 -t | xargs kill -9
 
-# Stop Redis
+# 停止 Redis
 cd deployment/scripts && bash stop-storage.sh
 ```
 
 ---
 
-## 11. References
+## 11. 参考资料
 
-### Related Guides
+### 相关指南
 
 - [00-architecture-overview.md](./00-architecture-overview.md)
 - [01-cli-guide.md](./01-cli-guide.md)
@@ -1461,18 +1451,18 @@ cd deployment/scripts && bash stop-storage.sh
 - [04-app-guide.md](./04-app-guide.md)
 - [05-engine-guide.md](./05-engine-guide.md)
 
-### External Documentation
+### 外部文档
 
-- [Fastify](https://www.fastify.dev/) — HTTP framework
-- [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket) — Protocol spec
-- [wscat](https://github.com/websockets/wscat) — WebSocket client CLI
+- [Fastify](https://www.fastify.dev/) — HTTP 框架
+- [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket) — 协议规范
+- [wscat](https://github.com/websockets/wscat) — WebSocket 客户端 CLI
 
 ---
 
-## Version History
+## 版本历史
 
-| Version | Date | Changes |
+| 版本 | 日期 | 变更 |
 |---------|------|---------|
-| 1.2 | April 2026 | Document approval_decision WS message; clarify visibility subscription hybrid mechanism; add subscription type comparison table; clarify replay as REST query; update version |
-| 1.1 | April 2026 | Register cross-session plugin; document 8 missing routes (workspace, memories, replay, traces/aggregate, session app-snapshot); add user config scope; document pubsub_event WebSocket type |
-| 1.0 | April 2026 | Initial release |
+| 1.2 | 2026 年 4 月 | 记录 approval_decision WS 消息；阐明 Visibility 可见性订阅混合机制；添加订阅类型比较表；阐明回放为 REST 查询；更新版本 |
+| 1.1 | 2026 年 4 月 | 注册跨 Session 会话插件；记录 8 个缺失的路由（workspace、memories、replay、traces/aggregate、session app-snapshot）；添加 user 配置作用域；记录 pubsub_event WebSocket 类型 |
+| 1.0 | 2026 年 4 月 | 初始版本 |

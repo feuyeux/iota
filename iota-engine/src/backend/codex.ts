@@ -169,6 +169,30 @@ function mapCodexEvent(
     };
   }
 
+  if (type === "memory") {
+    const metadata =
+      typeof value.metadata === "object" && value.metadata !== null
+        ? (value.metadata as Record<string, unknown>)
+        : undefined;
+    return {
+      type: "memory",
+      sessionId: request.sessionId,
+      executionId: request.executionId,
+      backend,
+      sequence: 0,
+      timestamp:
+        typeof value.timestamp === "number" ? value.timestamp : Date.now(),
+      data: {
+        nativeType:
+          typeof value.nativeType === "string"
+            ? value.nativeType
+            : "session_history",
+        content: extractCodexText(value) ?? "",
+        metadata,
+      },
+    };
+  }
+
   if (type === "error" || value.error) {
     const message =
       stringProp(value, "message") ??

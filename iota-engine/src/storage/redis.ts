@@ -2,6 +2,11 @@ import IoRedis from "ioredis";
 import type { AuditEntry } from "../audit/logger.js";
 import type { MemoryKind, RuntimeEvent } from "../event/types.js";
 import type {
+  MemoryQuery,
+  MemoryScope,
+  StoredMemory,
+} from "../memory/types.js";
+import type {
   ExecutionRecord,
   LogAggregation,
   LogQueryOptions,
@@ -244,96 +249,167 @@ export class RedisStorage implements StorageBackend {
     );
   }
 
-  async saveMemory(memory: {
-    id: string;
-    sessionId: string;
-    content: string;
-    type?: MemoryKind;
-    metadata?: Record<string, unknown>;
-    embedding?: number[];
-  }): Promise<void> {
-    const now = Date.now();
-    const key = `iota:memory:${memory.id}`;
+  async saveUnifiedMemory(memory: StoredMemory): Promise<void> {
+    const key = `iota:memory:${memory.type}:${memory.id}`;
+    const score = getMemoryIndexScore(memory);
+    const tags = Array.isArray(memory.metadata.tags)
+      ? memory.metadata.tags.filter((tag): tag is string => typeof tag === "string")
+      : [];
     await this.client
       .multi()
       .hset(key, {
         id: memory.id,
-        sessionId: memory.sessionId,
+        scope: memory.scope,
+        scopeId: memory.scopeId,
         content: memory.content,
-        type: memory.type ?? "episodic",
+        type: memory.type,
+        confidence: String(memory.confidence),
+        sourceBackend: memory.source.backend,
+        sourceNativeType: memory.source.nativeType,
+        sourceExecutionId: memory.source.executionId,
         metadataJson: memory.metadata ? JSON.stringify(memory.metadata) : "",
-        embeddingJson: memory.embedding ? JSON.stringify(memory.embedding) : "",
-        createdAt: String(now),
-        updatedAt: String(now),
+        tagsJson: JSON.stringify(tags),
+        timestamp: String(memory.timestamp),
+        ttlDays: String(memory.ttlDays),
+        createdAt: String(memory.createdAt),
+        lastAccessedAt: String(memory.lastAccessedAt),
+        accessCount: String(memory.accessCount),
+        expiresAt: String(memory.expiresAt),
       })
-      .zadd(`iota:memories:${memory.sessionId}`, now, memory.id)
+      .pexpire(key, Math.max(memory.expiresAt - Date.now(), 1))
+      .zadd(
+        `iota:memories:${memory.type}:${memory.scopeId}`,
+        score,
+        memory.id,
+      )
+      .sadd(`iota:memory:by-backend:${memory.source.backend}`, memory.id)
       .exec();
-  }
 
-  async searchMemories(
-    sessionId: string,
-    query: string,
-    limit = 5,
-  ): Promise<
-    Array<{
-      id: string;
-      content: string;
-      type?: MemoryKind;
-      metadata?: Record<string, unknown>;
-    }>
-  > {
-    const rows = await this.loadMemories(sessionId, 200);
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    if (terms.length === 0) {
-      return rows.slice(0, limit);
+    for (const tag of tags) {
+      await this.client.sadd(`iota:memory:by-tag:${tag}`, memory.id);
     }
-    return rows
-      .map((row) => ({
-        ...row,
-        score: terms.filter((term) => row.content.toLowerCase().includes(term))
-          .length,
-      }))
-      .filter((row) => row.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(({ score: _score, ...row }) => row);
   }
 
-  async loadMemories(
-    sessionId: string,
-    limit = 100,
-  ): Promise<
-    Array<{
-      id: string;
-      content: string;
-      type?: MemoryKind;
-      metadata?: Record<string, unknown>;
-    }>
-  > {
+  async loadUnifiedMemories(query: MemoryQuery): Promise<StoredMemory[]> {
+    const scanLimit = Math.max((query.limit ?? 100) * 5, query.limit ?? 100);
     const ids = await this.client.zrevrange(
-      `iota:memories:${sessionId}`,
+      `iota:memories:${query.type}:${query.scopeId}`,
       0,
-      Math.max(0, limit - 1),
+      Math.max(0, scanLimit - 1),
     );
-    const memories: Array<{
-      id: string;
-      content: string;
-      type?: MemoryKind;
-      metadata?: Record<string, unknown>;
-    }> = [];
+    const memories: StoredMemory[] = [];
     for (const id of ids) {
-      const data = await this.client.hgetall(`iota:memory:${id}`);
-      if (!data.id) continue;
-      memories.push({
-        id: data.id,
-        content: data.content,
-        type: toMemoryKind(data.type),
-        metadata: data.metadataJson
-          ? (JSON.parse(data.metadataJson) as Record<string, unknown>)
-          : undefined,
-      });
+      const data = await this.client.hgetall(`iota:memory:${query.type}:${id}`);
+      if (!data.id) {
+        await this.client.zrem(`iota:memories:${query.type}:${query.scopeId}`, id);
+        continue;
+      }
+      const memory = deserializeStoredMemory(data);
+      if (memory.scope !== query.scope || memory.scopeId !== query.scopeId) {
+        continue;
+      }
+      if (
+        query.minConfidence !== undefined &&
+        memory.confidence < query.minConfidence
+      ) {
+        continue;
+      }
+      if (
+        query.tags?.length &&
+        !query.tags.some((tag) => {
+          const tags = Array.isArray(memory.metadata.tags)
+            ? memory.metadata.tags
+            : [];
+          return tags.includes(tag);
+        })
+      ) {
+        continue;
+      }
+      memories.push(memory);
+      if (memories.length >= (query.limit ?? 100)) {
+        break;
+      }
     }
     return memories;
+  }
+
+  async deleteUnifiedMemory(
+    type: MemoryKind,
+    memoryId: string,
+  ): Promise<boolean> {
+    const key = `iota:memory:${type}:${memoryId}`;
+    const data = await this.client.hgetall(key);
+    if (!data.id) {
+      return false;
+    }
+
+    const tags = data.tagsJson ? (JSON.parse(data.tagsJson) as string[]) : [];
+    const pipeline = this.client.multi();
+    pipeline.del(key);
+    pipeline.zrem(`iota:memories:${type}:${data.scopeId}`, memoryId);
+    pipeline.srem(`iota:memory:by-backend:${data.sourceBackend}`, memoryId);
+    for (const tag of tags) {
+      pipeline.srem(`iota:memory:by-tag:${tag}`, memoryId);
+    }
+    await pipeline.exec();
+    return true;
+  }
+
+  async touchUnifiedMemories(
+    memoryIds: string[],
+    accessedAt: number,
+  ): Promise<void> {
+    if (memoryIds.length === 0) {
+      return;
+    }
+
+    for (const memoryId of memoryIds) {
+      const keys = await this.scanKeys(`iota:memory:*:${memoryId}`, 10);
+      for (const key of keys) {
+        await this.client
+          .multi()
+          .hset(key, "lastAccessedAt", String(accessedAt))
+          .hincrby(key, "accessCount", 1)
+          .exec();
+      }
+    }
+  }
+
+  async searchUnifiedMemories(
+    query: string,
+    limit = 10,
+    scope?: { scope: MemoryScope; scopeId: string },
+  ): Promise<Array<StoredMemory & { score?: number }>> {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const keys = scope
+      ? await this.scanKeys(
+          `iota:memories:*:${escapeScanPattern(scope.scopeId)}`,
+          200,
+        )
+      : await this.scanKeys("iota:memories:*", 1000);
+    const results: Array<StoredMemory & { score?: number }> = [];
+
+    for (const indexKey of keys) {
+      const parts = indexKey.split(":");
+      const type = parts[2];
+      const scopeId = parts.slice(3).join(":");
+      const memories = await this.loadUnifiedMemories({
+        type: type as MemoryKind,
+        scope: scope?.scope ?? inferScopeFromType(type as MemoryKind),
+        scopeId,
+        limit: 100,
+      });
+      for (const memory of memories) {
+        const score = terms.filter((term) =>
+          memory.content.toLowerCase().includes(term),
+        ).length;
+        if (terms.length === 0 || score > 0) {
+          results.push({ ...memory, score });
+        }
+      }
+    }
+
+    return results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, limit);
   }
 
   async gc(
@@ -370,49 +446,6 @@ export class RedisStorage implements StorageBackend {
       if (session) sessions.push(session);
     }
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-  }
-
-  async searchMemoriesAcrossSessions(
-    query: string,
-    limit = 10,
-  ): Promise<
-    Array<{
-      id: string;
-      sessionId: string;
-      content: string;
-      type?: MemoryKind;
-      metadata?: Record<string, unknown>;
-    }>
-  > {
-    const sessionKeys = await this.scanKeys("iota:memories:*");
-    const allMemories: Array<{
-      id: string;
-      sessionId: string;
-      content: string;
-      type?: MemoryKind;
-      metadata?: Record<string, unknown>;
-      score: number;
-    }> = [];
-
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-
-    for (const key of sessionKeys) {
-      const sessionId = key.replace("iota:memories:", "");
-      const memories = await this.loadMemories(sessionId, 50);
-      for (const memory of memories) {
-        const score = terms.filter((term) =>
-          memory.content.toLowerCase().includes(term),
-        ).length;
-        if (score > 0) {
-          allMemories.push({ ...memory, sessionId, score });
-        }
-      }
-    }
-
-    return allMemories
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(({ score: _score, ...mem }) => mem);
   }
 
   async getBackendIsolationReport(): Promise<{
@@ -669,12 +702,13 @@ export class RedisStorage implements StorageBackend {
       );
       cursor = nextCursor;
       for (const key of keys) {
+        const type = getMemoryTypeFromIndexKey(key);
         const ids = await this.client.zrangebyscore(key, "-inf", cutoff);
         if (ids.length === 0) continue;
         const pipeline = this.client.multi();
         pipeline.zrem(key, ...ids);
         for (const id of ids) {
-          pipeline.del(`iota:memory:${id}`);
+          pipeline.del(`iota:memory:${type}:${id}`);
         }
         await pipeline.exec();
         removed += ids.length;
@@ -688,16 +722,71 @@ function cryptoId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function toMemoryKind(value: string | undefined): MemoryKind | undefined {
-  if (
-    value === "episodic" ||
-    value === "procedural" ||
-    value === "factual" ||
-    value === "strategic"
-  ) {
-    return value;
+function deserializeStoredMemory(data: Record<string, string>): StoredMemory {
+  return {
+    id: data.id,
+    type: data.type as MemoryKind,
+    scope: data.scope as StoredMemory["scope"],
+    scopeId: data.scopeId,
+    content: data.content,
+    source: {
+      backend: data.sourceBackend as StoredMemory["source"]["backend"],
+      nativeType: data.sourceNativeType,
+      executionId: data.sourceExecutionId,
+    },
+    metadata: data.metadataJson
+      ? (JSON.parse(data.metadataJson) as Record<string, unknown>)
+      : {},
+    confidence: Number(data.confidence),
+    timestamp: Number(data.timestamp),
+    ttlDays: Number(data.ttlDays),
+    createdAt: Number(data.createdAt),
+    lastAccessedAt: Number(data.lastAccessedAt),
+    accessCount: Number(data.accessCount),
+    expiresAt: Number(data.expiresAt),
+  };
+}
+
+function inferScopeFromType(type: MemoryKind): MemoryScope {
+  switch (type) {
+    case "episodic":
+      return "session";
+    case "factual":
+      return "user";
+    case "procedural":
+    case "strategic":
+    default:
+      return "project";
   }
-  return undefined;
+}
+
+function getTypeWeight(type: MemoryKind): number {
+  switch (type) {
+    case "episodic":
+      return 0;
+    case "procedural":
+      return 1_000_000_000;
+    case "factual":
+      return 2_000_000_000;
+    case "strategic":
+      return 3_000_000_000;
+  }
+}
+
+function getMemoryIndexScore(memory: StoredMemory): number {
+  if (memory.type === "episodic") {
+    return memory.timestamp;
+  }
+  return getTypeWeight(memory.type) + memory.confidence * 1000 + memory.timestamp / 1_000_000;
+}
+
+function getMemoryTypeFromIndexKey(key: string): MemoryKind {
+  const parts = key.split(":");
+  return parts[2] as MemoryKind;
+}
+
+function escapeScanPattern(value: string): string {
+  return value.replace(/([*?\[\]\\])/g, "\\$1");
 }
 
 function serializeExecution(r: ExecutionRecord): Record<string, string> {

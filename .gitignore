@@ -13,3 +13,4 @@ gemini.env
 hermes.env
 .kiro/
 .vscode/
+__pycache__/

@@ -1,4 +1,6 @@
 export { IotaEngine } from "./engine.js";
+export { IotaFunEngine } from "./fun-engine.js";
+export { detectFunIntent } from "./fun-intent.js";
 export type {
   CreateSessionOptions,
   IotaEngineOptions,
@@ -6,13 +8,19 @@ export type {
   StreamInput,
 } from "./engine.js";
 export type {
+  FunExecutionRequest,
+  FunExecutionResult,
+  FunLanguage,
+} from "./fun-engine.js";
+export type { FunIntent } from "./fun-intent.js";
+export type {
   ApprovalPolicy,
   BackendName,
   ErrorEvent,
   ExtensionEvent,
   FileDeltaEvent,
+  MemoryEvent,
   McpServerDescriptor,
-  MemoryBlock,
   MemoryKind,
   Message,
   OutputEvent,
@@ -79,8 +87,6 @@ export type {
 } from "./storage/interface.js";
 export { RedisStorage } from "./storage/redis.js";
 export type { RedisStorageConfig } from "./storage/redis.js";
-export { MilvusMemoryStore } from "./storage/milvus.js";
-export type { MilvusMemoryConfig } from "./storage/milvus.js";
 export { MinioSnapshotStore } from "./storage/minio.js";
 export type { MinioSnapshotConfig } from "./storage/minio.js";
 export {
@@ -92,17 +98,26 @@ export {
   cosineSimilarity,
 } from "./memory/embedding.js";
 export type { EmbeddingProvider } from "./memory/embedding.js";
-export { extractMemory } from "./memory/extractor.js";
-export type { ExtractedMetadata } from "./memory/extractor.js";
-export { injectMemory } from "./memory/injector.js";
+export { memoryMapper, MemoryMapper } from "./memory/mapper.js";
+export { MemoryStorage } from "./memory/storage.js";
+export type { MemoryStorageBackend } from "./memory/storage.js";
+export { MemoryInjector, injectMemory, injectMemoryWithVisibility } from "./memory/injector.js";
 export type { InjectOptions } from "./memory/injector.js";
-export { injectMemoryWithVisibility } from "./memory/injector.js";
 export type {
   InjectWithVisibilityOptions,
   InjectWithVisibilityResult,
 } from "./memory/injector.js";
-export { MemoryRetriever } from "./memory/retriever.js";
-export type { StoredMemory, RetrievalResult } from "./memory/retriever.js";
+export type {
+  BackendMemoryEvent,
+  MemoryContext,
+  MemoryQuery,
+  MemoryScope,
+  MemoryScopeContext,
+  MemorySearchResult,
+  MemorySource,
+  StoredMemory,
+  UnifiedMemory,
+} from "./memory/types.js";
 
 // Visibility Plane
 export type {
