@@ -44,15 +44,15 @@ COPY --from=builder /app/iota-cli/dist ./iota-cli/dist
 # Install 3 confirmed backend CLIs (bun)
 RUN bun add -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 
-# Hermes ACP
-RUN pip install --break-system-packages hermes-agent || \
-    pip install --break-system-packages hermes-acp || \
-    { echo "ERROR: Hermes ACP package not found." && exit 1; }
+# Hermes Agent (NousResearch/hermes-agent) — not on PyPI; install from upstream.
+# The upstream installer uses uv internally and supports Linux / macOS / WSL2.
+RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash \
+    || { echo "ERROR: Hermes Agent install failed." && exit 1; }
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Verify all backend CLIs
 RUN claude --version && codex --version && gemini --version
-RUN hermes-acp --version 2>/dev/null || hermes --version 2>/dev/null || \
-    { echo "ERROR: Hermes ACP CLI not found" && exit 1; }
+RUN hermes --version || { echo "ERROR: Hermes CLI not found on PATH" && exit 1; }
 
 # Create iota user
 RUN addgroup -g 1000 iota && \

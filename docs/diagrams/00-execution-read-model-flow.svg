@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="920" viewBox="0 0 1400 920" role="img" aria-labelledby="title desc">
+  <title id="title">Iota execution and app read model flow</title>
+  <desc id="desc">Sequence-style flow from App or CLI through Agent, Engine, backend adapter, Redis, visibility store, and App snapshot delta read model.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#344054"/></marker>
+    <style>
+      .bg{fill:#f8fafc}.title{font:700 24px Arial,sans-serif;fill:#101828}.small{font:13px Arial,sans-serif;fill:#475467}.label{font:700 15px Arial,sans-serif;fill:#101828}.head{rx:10;fill:#fff;stroke:#98a2b3;stroke-width:1.4}.line{stroke:#98a2b3;stroke-width:1.2;stroke-dasharray:5 5}.msg{stroke:#344054;stroke-width:2;fill:none;marker-end:url(#arrow)}.store{stroke:#16a34a}.warn{fill:#fffbeb;stroke:#f59e0b}.phase{fill:#fff;stroke:#d0d5dd}.mono{font:12px Consolas,monospace;fill:#344054}.num{font:700 13px Arial,sans-serif;fill:#fff}.badge{fill:#2563eb}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="920"/>
+  <text class="title" x="46" y="48">执行流与 App 读取模型</text>
+  <text class="small" x="46" y="74">Engine 的真实输出是 RuntimeEvent；Agent 负责把事件与 Visibility Store 重建为 App snapshot/delta，App 不直接消费 backend 原生协议。</text>
+
+  <g transform="translate(50,112)">
+    <rect class="head" x="0" y="0" width="130" height="44"/><text class="label" x="34" y="27">Client</text>
+    <rect class="head" x="200" y="0" width="130" height="44"/><text class="label" x="244" y="27">Agent</text>
+    <rect class="head" x="400" y="0" width="130" height="44"/><text class="label" x="442" y="27">Engine</text>
+    <rect class="head" x="600" y="0" width="150" height="44"/><text class="label" x="624" y="27">Adapter</text>
+    <rect class="head" x="840" y="0" width="130" height="44"/><text class="label" x="875" y="27">Redis</text>
+    <rect class="head" x="1060" y="0" width="170" height="44"/><text class="label" x="1091" y="27">App Read Model</text>
+
+    <line class="line" x1="65" y1="44" x2="65" y2="740"/>
+    <line class="line" x1="265" y1="44" x2="265" y2="740"/>
+    <line class="line" x1="465" y1="44" x2="465" y2="740"/>
+    <line class="line" x1="675" y1="44" x2="675" y2="740"/>
+    <line class="line" x1="905" y1="44" x2="905" y2="740"/>
+    <line class="line" x1="1145" y1="44" x2="1145" y2="740"/>
+
+    <g><circle class="badge" cx="65" cy="88" r="12"/><text class="num" x="61" y="93">1</text><path class="msg" d="M78 88 L252 88"/><text class="small" x="92" y="78">WS execute or REST POST /execute</text></g>
+    <g><circle class="badge" cx="265" cy="146" r="12"/><text class="num" x="261" y="151">2</text><path class="msg" d="M278 146 L452 146"/><text class="small" x="292" y="136">engine.stream(RuntimeRequest)</text></g>
+    <g><circle class="badge" cx="465" cy="204" r="12"/><text class="num" x="461" y="209">3</text><path class="msg store" d="M478 204 L892 204"/><text class="small" x="492" y="194">create execution, acquire iota:lock, snapshot workspace</text></g>
+    <g><circle class="badge" cx="465" cy="262" r="12"/><text class="num" x="461" y="267">4</text><path class="msg store" d="M478 262 L892 262"/><text class="small" x="492" y="252">append state queued -> starting -> running</text></g>
+    <g><circle class="badge" cx="465" cy="320" r="12"/><text class="num" x="461" y="325">5</text><path class="msg" d="M478 320 L662 320"/><text class="small" x="492" y="310">BackendPool selects adapter</text></g>
+    <g><circle class="badge" cx="675" cy="378" r="12"/><text class="num" x="671" y="383">6</text><path class="msg" d="M675 378 C760 390 790 420 675 448"/><text class="small" x="696" y="374">spawn backend / stream stdio / parse protocol</text><text class="mono" x="696" y="394">NDJSON or ACP JSON-RPC 2.0</text></g>
+    <g><circle class="badge" cx="675" cy="500" r="12"/><text class="num" x="671" y="505">7</text><path class="msg" d="M662 500 L478 500"/><text class="small" x="496" y="490">normalized RuntimeEvent</text></g>
+    <g><circle class="badge" cx="465" cy="558" r="12"/><text class="num" x="461" y="563">8</text><path class="msg store" d="M478 558 L892 558"/><text class="small" x="492" y="548">persist events, visibility, memory, audit</text></g>
+    <g><circle class="badge" cx="465" cy="616" r="12"/><text class="num" x="461" y="621">9</text><path class="msg" d="M452 616 L278 616"/><text class="small" x="292" y="606">yield RuntimeEvent stream</text></g>
+    <g><circle class="badge" cx="265" cy="674" r="12"/><text class="num" x="257" y="679">10</text><path class="msg" d="M278 674 L1132 674"/><text class="small" x="292" y="664">eventToAppDeltas + buildAppExecutionSnapshot/buildAppSessionSnapshot</text></g>
+    <g><circle class="badge" cx="1145" cy="732" r="12"/><text class="num" x="1137" y="737">11</text><path class="msg" d="M1132 732 L78 732"/><text class="small" x="90" y="722">app_snapshot, app_delta, event, complete</text></g>
+
+    <rect class="warn" x="796" y="322" width="408" height="94" rx="10"/>
+    <text class="label" x="816" y="348">Visibility 推送是混合机制</text>
+    <text class="small" x="816" y="372">执行期间：RuntimeEvent 映射为 conversation/trace delta。</text>
+    <text class="small" x="816" y="394">执行后与订阅期间：轮询 Redis visibility store 后回填 token/memory/summary。</text>
+  </g>
+</svg>

@@ -62,6 +62,8 @@ bun run lint
 bun run format
 ```
 
+Convention: use `bun` for install, build, typecheck, test, lint, format, and dev workflows; use `node` to run built JavaScript artifacts under `dist/`.
+
 ## Configuration
 
 Backend credentials, model settings, and endpoints are stored in Redis distributed config, not backend-local env files:

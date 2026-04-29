@@ -151,10 +151,10 @@ ls iota-cli/dist/index.js        # CLI 包存在
 
 > **注意**: 构建后 `iota` 命令可能不会自动添加到 PATH。继续之前使用以下方法之一:
 
-**选项 A — 使用 `bun` 运行构建包**（推荐用于开发）:
+**选项 A — 使用 `node` 运行已构建包**（推荐用于产物验证）:
 ```bash
-bun iota-cli/dist/index.js <command...>
-# 示例: bun iota-cli/dist/index.js status
+node iota-cli/dist/index.js <command...>
+# 示例: node iota-cli/dist/index.js status
 ```
 
 **选项 B — 使用 npm link 全局安装**:
@@ -169,7 +169,7 @@ iota status
 export PATH="/path/to/iota/iota-cli/dist:$PATH"
 ```
 
-> 下面所有示例为简洁起见使用 `iota`。如果选择选项 A，请替换为 `bun iota-cli/dist/index.js`。
+> 下面所有示例为简洁起见使用 `iota`。如果选择选项 A，请替换为 `node iota-cli/dist/index.js`。
 
 ### 步骤 4: 在 Redis 中配置 Backend 后端
 

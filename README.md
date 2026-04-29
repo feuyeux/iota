@@ -147,6 +147,7 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 ```
 
 **运行时流程**：
+
 - Engine 从 Redis 读取配置路径（如 `env.CLAUDE_SETTINGS_PATH`、`env.CODEX_HOME`）
 - 启动后端时，Engine 传递配置文件路径或设置环境变量
 - 后端进程从各自的配置文件中读取实际的认证信息和模型配置
@@ -184,11 +185,12 @@ bash deployment/scripts/ensure-backends.sh codex gemini
 - `claude-code` -> `npm install -g @anthropic-ai/claude-code`
 - `codex` -> `npm install -g @openai/codex`
 - `gemini` -> `npm install -g @google/gemini-cli`
-- `hermes` -> `uv tool install hermes-agent`
+- `hermes` -> `curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`
 
 说明：
 
-- `hermes` 依赖本机已安装 `uv`。
+- `hermes` 来源是 GitHub 上的 `NousResearch/hermes-agent`，**没有发布到 PyPI**；不要再用 `uv tool install hermes-agent` 或 `pip install hermes-agent`，那会失败。
+- Hermes 上游官方明确**不支持 Windows 原生 PowerShell / cmd**；在 Windows 上必须改用 WSL2 / Git Bash 来运行安装脚本与 `hermes` 命令。
 - 脚本会优先使用 `command -v` 检测当前 shell 的 `PATH`，在 Windows / WSL / Git Bash 场景下还会回退到 `where.exe` 检测 Windows 侧可执行文件，避免把已安装的 `hermes.exe` 误判为未安装。
 - 脚本只负责可执行文件发现与缺失安装，不会写入 backend 密钥或 Redis 配置。
 - 即使脚本显示四个命令都存在，也不能替代真实运行验证。
@@ -227,12 +229,14 @@ node dist/index.js run --backend codex --trace "ping"
 ```
 
 **预期结果**：
+
 - Claude Code: 应返回简短响应，使用 settings 文件中配置的模型
 - Hermes: 应返回 "pong" 或类似响应
 - Gemini: 可能会探索代码库，但最终应成功响应
 - Codex: 应返回响应（可能提示某些命令被策略阻止，但后端本身正常工作）
 
 **常见问题**：
+
 - Claude Code 提示 "Not logged in": 运行 `claude login` 进行认证
 - Hermes 显示 `model.provider: custom` 或本地 `model.base_url`: 检查 `hermes config show`，确保配置正确
 - Codex 连接失败: 确保 9Router 或配置的 base_url 服务正在运行

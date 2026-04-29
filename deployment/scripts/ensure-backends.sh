@@ -24,7 +24,7 @@ declare -A INSTALL_HINTS=(
   [claude-code]="npm install -g @anthropic-ai/claude-code"
   [codex]="npm install -g @openai/codex"
   [gemini]="npm install -g @google/gemini-cli"
-  [hermes]="uv tool install hermes-agent"
+  [hermes]="curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash  # Linux/macOS/WSL2 only; native Windows not supported"
 )
 
 usage() {
@@ -106,6 +106,29 @@ install_with_uv() {
   uv tool install "$package_name"
 }
 
+# Hermes Agent is published only as a GitHub repo (NousResearch/hermes-agent),
+# not on PyPI. The upstream install script uses uv internally and only supports
+# Linux/macOS/WSL2.
+install_hermes_from_upstream() {
+  if ! have_cmd curl; then
+    log "  curl not found; cannot install hermes"
+    return 1
+  fi
+  if ! have_cmd bash; then
+    log "  bash not found; cannot install hermes"
+    return 1
+  fi
+  case "$(uname -s 2>/dev/null)" in
+    Linux*|Darwin*|MINGW*|MSYS*|CYGWIN*) ;;
+    *)
+      log "  Hermes upstream supports Linux/macOS/WSL2 only; native Windows is not supported."
+      log "  See https://github.com/NousResearch/hermes-agent#quick-install"
+      return 1
+      ;;
+  esac
+  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+}
+
 install_backend() {
   local backend="$1"
 
@@ -120,7 +143,7 @@ install_backend() {
       install_with_npm "@google/gemini-cli"
       ;;
     hermes)
-      install_with_uv "hermes-agent"
+      install_hermes_from_upstream
       ;;
     *)
       log "Unknown backend: $backend"

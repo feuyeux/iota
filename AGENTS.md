@@ -61,6 +61,7 @@ Each backend adapter lives in `iota-engine/src/backend/`:
 - WebSocket currently supports `execute`, `interrupt`, `subscribe_app_session`, and `subscribe_visibility`
 - Do not document or diagram a first-class App approval decision WebSocket API unless you also implement it in code
 - Approval in the current implementation is enforced in Engine through approval policy and approval hook; CLI has a concrete `CliApprovalHook`
+- Project toolchain convention: use `bun` for install, build, typecheck, test, lint, and dev execution; use `node` to run built JavaScript artifacts under `dist/`
 
 ## Development Workflow
 

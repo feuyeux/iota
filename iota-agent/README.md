@@ -114,6 +114,8 @@ bun run lint
 bun run format
 ```
 
+约定：开发态命令使用 `bun`；如果运行已构建的 `dist/` 产物，使用 `node` 执行对应入口文件。
+
 如果 `@iota/engine` 的类型或导出有变化，先构建 `../iota-engine`。
 
 ## 示例

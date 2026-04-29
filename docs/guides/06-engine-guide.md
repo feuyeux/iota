@@ -139,6 +139,8 @@ export MINIO_SECRET_KEY="..."
 
 Backend 认证凭证从 Redis 分布式配置读取，例如 `iota config set env.ANTHROPIC_AUTH_TOKEN "sk-ant-..." --scope backend --scope-id claude-code`。
 
+同样地，MCP server 与 skill 根目录也来自解析后的配置。像 `pet-generator` 这类结构化 skill，若要通过 engine 直接编排 `iota-fun`，必须先把 `mcp.servers` 写入配置；`skill.roots` 若未显式设置，engine 只会回退到仓库相邻的默认 `iota-skill` 目录。
+
 ---
 
 ## 4. 安装与设置
@@ -172,7 +174,7 @@ ls iota-engine/dist/index.js   # Engine 包存在
 ls iota-cli/dist/index.js       # CLI 包存在
 ```
 
-> **CLI PATH 设置**：`iota` 命令可能尚未加入 PATH。见 [01-cli-guide.md](./01-cli-guide.md) 第 4 节步骤 3 的设置方法（选项 A：`bun iota-cli/dist/index.js`，选项 B：`npm link`，选项 C：export PATH）。下面所有示例为简洁起见均使用裸 `iota`。
+> **CLI PATH 设置**：`iota` 命令可能尚未加入 PATH。见 [01-cli-guide.md](./01-cli-guide.md) 第 4 节步骤 3 的设置方法（选项 A：`node iota-cli/dist/index.js`，选项 B：`npm link`，选项 C：export PATH）。下面所有示例为简洁起见均使用裸 `iota`。
 
 ### 步骤 3：配置 Backend
 
@@ -1791,11 +1793,11 @@ redis-cli XRANGE "iota:events:$EXEC_ID" - + | jq '.[].type'
 ### 15.3 通过 CLI 完整 Trace
 
 ```bash
-bun iota-cli/dist/index.js run --backend claude-code --trace "Hello"
+node iota-cli/dist/index.js run --backend claude-code --trace "Hello"
 # 预期 span 链：engine.request → workspace.scan → backend.spawn
 #   → backend.stdin.write → backend.stdout.read → adapter.parse → event.persist
 
-bun iota-cli/dist/index.js run --backend claude-code --trace-json "Hello"
+node iota-cli/dist/index.js run --backend claude-code --trace-json "Hello"
 ```
 
 ### 15.4 Agent HTTP API Visibility

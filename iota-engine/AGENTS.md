@@ -74,6 +74,8 @@ bun run lint
 bun run format
 ```
 
+Use `bun` for development workflows and `node` when running built `dist/` artifacts for verification or production-style execution.
+
 ## Verification Rule
 
 Backend readiness must be proven with a real traced execution, not just `probe()` or executable discovery:

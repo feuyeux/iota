@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
+  <title id="title">Iota current implementation architecture</title>
+  <desc id="desc">Layered architecture diagram for Iota CLI, TUI, App, Agent, Engine, Redis, optional MinIO, and backend adapters.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#344054"/></marker>
+    <style>
+      .bg{fill:#f8fafc}.lane{fill:#fff;stroke:#d0d5dd;stroke-width:1.5}.title{font:700 24px Arial,sans-serif;fill:#101828}.laneTitle{font:700 17px Arial,sans-serif;fill:#344054}.box{rx:12;fill:#fff;stroke:#98a2b3;stroke-width:1.5}.client{fill:#e0f2fe}.service{fill:#fff7ed}.core{fill:#fee2e2}.store{fill:#dcfce7}.external{fill:#f2f4f7}.label{font:700 16px Arial,sans-serif;fill:#101828}.small{font:13px Arial,sans-serif;fill:#475467}.edge{stroke:#344054;stroke-width:2;fill:none;marker-end:url(#arrow)}.soft{stroke:#667085;stroke-width:2;stroke-dasharray:6 5;fill:none;marker-end:url(#arrow)}.note{fill:#fffbeb;stroke:#f59e0b;stroke-width:1}.mono{font:12px Consolas,monospace;fill:#344054}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="820"/>
+  <text class="title" x="44" y="46">Iota 架构总览（当前实现）</text>
+  <text class="small" x="44" y="72">App 消费 Agent 生成的 snapshot/delta 读模型；CLI/TUI 与 Agent 都在进程内调用 Engine；Engine 将所有 backend 输出规范化为 RuntimeEvent。</text>
+
+  <rect class="lane" x="36" y="102" width="1328" height="116" rx="16"/>
+  <text class="laneTitle" x="58" y="132">入口层</text>
+  <rect class="box client" x="96" y="150" width="170" height="46"/><text class="label" x="150" y="178">CLI</text><text class="small" x="110" y="195">iota-cli run/status/config</text>
+  <rect class="box client" x="318" y="150" width="170" height="46"/><text class="label" x="372" y="178">TUI</text><text class="small" x="337" y="195">iota-cli interactive</text>
+  <rect class="box client" x="545" y="150" width="220" height="46"/><text class="label" x="614" y="178">Browser</text><text class="small" x="570" y="195">React UI in browser</text>
+  <rect class="box service" x="820" y="150" width="220" height="46"/><text class="label" x="881" y="178">iota-app</text><text class="small" x="846" y="195">Vite dev server :9888</text>
+
+  <rect class="lane" x="36" y="250" width="1328" height="120" rx="16"/>
+  <text class="laneTitle" x="58" y="280">服务层</text>
+  <rect class="box service" x="448" y="298" width="260" height="54"/><text class="label" x="530" y="322">iota-agent</text><text class="small" x="471" y="342">Fastify REST + WebSocket :9666</text>
+  <rect class="note" x="746" y="292" width="392" height="68" rx="10"/><text class="small" x="764" y="318">WS 入站当前支持 execute / interrupt /</text><text class="small" x="764" y="337">subscribe_app_session / subscribe_visibility。</text><text class="small" x="764" y="356">approval_decision UI 已发送，但路由未接入。</text>
+
+  <rect class="lane" x="36" y="402" width="1328" height="148" rx="16"/>
+  <text class="laneTitle" x="58" y="432">核心运行时</text>
+  <rect class="box core" x="188" y="458" width="260" height="58"/><text class="label" x="273" y="482">IotaEngine</text><text class="small" x="213" y="502">session, execution, locks, audit</text>
+  <rect class="box core" x="490" y="458" width="220" height="58"/><text class="label" x="543" y="482">BackendPool</text><text class="small" x="520" y="502">resolver + adapters</text>
+  <rect class="box core" x="752" y="458" width="222" height="58"/><text class="label" x="805" y="482">Visibility</text><text class="small" x="777" y="502">context, tokens, spans</text>
+  <rect class="box core" x="1014" y="458" width="220" height="58"/><text class="label" x="1068" y="482">Memory</text><text class="small" x="1035" y="502">dialogue + unified Redis</text>
+
+  <rect class="lane" x="36" y="584" width="668" height="154" rx="16"/>
+  <text class="laneTitle" x="58" y="614">存储层</text>
+  <rect class="box store" x="98" y="650" width="230" height="58"/><text class="label" x="174" y="674">Redis</text><text class="small" x="124" y="694">required main store :6379</text>
+  <rect class="box store" x="390" y="650" width="230" height="58"/><text class="label" x="468" y="674">MinIO</text><text class="small" x="421" y="694">optional snapshots/artifacts</text>
+
+  <rect class="lane" x="736" y="584" width="628" height="154" rx="16"/>
+  <text class="laneTitle" x="758" y="614">Backend 层</text>
+  <rect class="box external" x="778" y="648" width="136" height="58"/><text class="label" x="797" y="672">Claude</text><text class="mono" x="792" y="692">stream-json</text>
+  <rect class="box external" x="938" y="648" width="126" height="58"/><text class="label" x="978" y="672">Codex</text><text class="mono" x="956" y="692">NDJSON</text>
+  <rect class="box external" x="1088" y="648" width="126" height="58"/><text class="label" x="1123" y="672">Gemini</text><text class="mono" x="1106" y="692">stream-json</text>
+  <rect class="box external" x="1238" y="648" width="96" height="58"/><text class="label" x="1254" y="672">Hermes</text><text class="mono" x="1248" y="692">ACP RPC</text>
+
+  <path class="edge" d="M181 196 C181 310 220 372 281 458"/><text class="small" x="190" y="332">TS import</text>
+  <path class="edge" d="M403 196 C403 314 363 390 318 458"/><text class="small" x="363" y="332">TS import</text>
+  <path class="edge" d="M655 196 C655 232 623 256 586 298"/><text class="small" x="640" y="240">HTTP/WS via app</text>
+  <path class="edge" d="M820 174 C754 206 661 250 596 298"/><text class="small" x="724" y="238">REST + WS</text>
+  <path class="edge" d="M578 352 C540 389 461 431 367 458"/><text class="small" x="456" y="401">TS import</text>
+  <path class="edge" d="M448 486 L490 486"/>
+  <path class="edge" d="M710 486 L752 486"/>
+  <path class="edge" d="M974 486 L1014 486"/>
+  <path class="edge" d="M318 516 C305 565 254 608 214 650"/><text class="small" x="236" y="594">sessions/events/config</text>
+  <path class="soft" d="M390 516 C426 568 472 606 505 650"/><text class="small" x="446" y="594">production optional</text>
+  <path class="edge" d="M600 516 C662 580 746 618 846 648"/><text class="small" x="704" y="598">spawn stdio</text>
+  <path class="edge" d="M600 516 C730 578 865 616 1001 648"/>
+  <path class="edge" d="M600 516 C787 575 959 612 1151 648"/>
+  <path class="edge" d="M600 516 C872 572 1095 610 1286 648"/>
+</svg>

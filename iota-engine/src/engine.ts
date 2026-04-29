@@ -1875,7 +1875,10 @@ export class IotaEngine {
       sessionId: input.sessionId,
       executionId: input.executionId ?? crypto.randomUUID(),
       prompt: input.prompt,
-      systemPrompt: buildSkillSystemPrompt(this.skills, input.systemPrompt),
+      systemPrompt: buildSkillSystemPrompt(
+        filterSkillsForPrompt(this.skills, input.prompt),
+        input.systemPrompt,
+      ),
       backend,
       workingDirectory: path.resolve(
         input.workingDirectory ??
@@ -2487,7 +2490,10 @@ export class IotaEngine {
       return null;
     }
 
-    const nativeType = this.resolveNativeMemoryType(input.backend, content);
+    // Classify based on the user prompt alone, not the combined prompt+response.
+    // The assistant's reply often paraphrases earlier facts (e.g. "你叫张明")
+    // which would otherwise pull every classification toward the factual bucket.
+    const nativeType = this.resolveNativeMemoryType(input.backend, input.prompt);
     const unified = memoryMapper.map(
       {
         backend: input.backend,
@@ -2529,11 +2535,75 @@ export class IotaEngine {
     content: string,
   ): BackendMemoryEvent["nativeType"] {
     const lower = content.toLowerCase();
-    if (
-      lower.includes("decided") ||
-      lower.includes("plan") ||
-      lower.includes("architecture")
-    ) {
+
+    // Order matters. Episodic recap cues win first ("回顾/复盘/recap"), so a
+    // prompt like "请回顾我们之前的对话...战略目标..." classifies as episodic
+    // even though it mentions strategic terms. Then identity → strategic →
+    // procedural → default.
+    const EPISODIC_HINTS = [
+      "回顾",
+      "复盘",
+      "回看",
+      "recap",
+      "summarize our",
+      "summarize the conversation",
+      "之前的对话",
+      "前面的对话",
+    ];
+    if (EPISODIC_HINTS.some((hint) => lower.includes(hint))) {
+      return backend === "claude-code"
+        ? "conversation_context"
+        : backend === "codex"
+          ? "session_history"
+          : backend === "gemini"
+            ? "interaction_log"
+            : "context_memory";
+    }
+
+    // factual: stable identity / preferences / named entities about the user.
+    // Keep this list narrow — generic meta-cues like "记住" or "事实" leak into
+    // strategic / procedural prompts and pollute the classification.
+    const FACTUAL_HINTS = [
+      "my name is",
+      "i am ",
+      "i'm ",
+      "prefer",
+      "我叫",
+      "我的名字",
+      "我是",
+      "身份信息",
+      "姓名",
+      "兼任",
+      "职位",
+      "产品经理",
+      "架构师",
+      "工程师",
+    ];
+    if (FACTUAL_HINTS.some((hint) => lower.includes(hint))) {
+      return backend === "claude-code"
+        ? "user_preferences"
+        : backend === "codex"
+          ? "codebase_facts"
+          : backend === "gemini"
+            ? "entity_knowledge"
+            : "profile_memory";
+    }
+
+    // strategic: long-term goals, plans, architecture decisions.
+    const STRATEGIC_HINTS = [
+      "decided",
+      "plan",
+      "architecture",
+      "goal",
+      "strategy",
+      "目标",
+      "战略",
+      "规划",
+      "架构",
+      "方向",
+      "决定",
+    ];
+    if (STRATEGIC_HINTS.some((hint) => lower.includes(hint))) {
       return backend === "claude-code"
         ? "project_context"
         : backend === "codex"
@@ -2542,11 +2612,23 @@ export class IotaEngine {
             ? "goal_tracking"
             : "intention_memory";
     }
-    if (
-      lower.includes("use ") ||
-      lower.includes("run ") ||
-      lower.includes("command")
-    ) {
+
+    // procedural: how-to, steps, tool/command usage.
+    const PROCEDURAL_HINTS = [
+      "use ",
+      "run ",
+      "command",
+      "step",
+      "how to",
+      "步骤",
+      "流程",
+      "如何",
+      "怎样",
+      "怎么",
+      "方法",
+      "总结",
+    ];
+    if (PROCEDURAL_HINTS.some((hint) => lower.includes(hint))) {
       return backend === "claude-code"
         ? "code_context"
         : backend === "codex"
@@ -2555,6 +2637,7 @@ export class IotaEngine {
             ? "execution_patterns"
             : "skill_memory";
     }
+
     return backend === "claude-code"
       ? "conversation_context"
       : backend === "codex"
@@ -2804,4 +2887,27 @@ function buildSkillSystemPrompt(
   if (base) parts.push(base);
   if (skillSection) parts.push(skillSection);
   return parts.join("\n\n");
+}
+
+/**
+ * Only inject a skill's instructions into the system prompt when its triggers
+ * match the user prompt (case-insensitive substring). Skills with no triggers
+ * are treated as always-on (e.g. background guidance skills).
+ *
+ * Without this filtering every skill bleeds into every request and weakly
+ * aligned models can misfire (e.g. running pet-generator on "请记住我是张明").
+ */
+function filterSkillsForPrompt(
+  skills: SkillManifest[],
+  prompt: string,
+): SkillManifest[] {
+  const normalized = prompt.trim().toLowerCase();
+  return skills.filter((skill) => {
+    const triggers = skill.triggers ?? [];
+    if (triggers.length === 0) return true;
+    return triggers.some((trigger) => {
+      const value = trigger.trim().toLowerCase();
+      return value.length > 0 && normalized.includes(value);
+    });
+  });
 }
