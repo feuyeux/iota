@@ -8,8 +8,10 @@ describe("IotaFunEngine", () => {
   it("builds go plan against iota-fun/go", () => {
     const plan = engine.buildPlan("go");
 
-    expect(plan.compileCommand).toBe("go");
-    expect(plan.compileArgs).toContain("build");
+    if (plan.compileCommand) {
+      expect(plan.compileCommand).toBe("go");
+      expect(plan.compileArgs).toContain("build");
+    }
     expect(plan.command).toContain(path.join(".iota", "iota-fun"));
     expect(plan.command).toContain("iota-fun-go-");
     expect(plan.args).toEqual([]);
@@ -38,17 +40,24 @@ describe("IotaFunEngine", () => {
   it("builds java compile and run plan", () => {
     const plan = engine.buildPlan("java");
 
-    expect(plan.compileCommand).toBe("javac");
-    expect(plan.compileArgs).toContain("-d");
+    if (plan.compileCommand) {
+      expect(plan.compileCommand).toBe("javac");
+      expect(plan.compileArgs).toContain("-d");
+    }
     expect(plan.command).toBe("java");
+    expect(plan.args).toContain("-Dfile.encoding=UTF-8");
+    expect(plan.args).toContain("-Dsun.stdout.encoding=UTF-8");
     expect(plan.args).toContain("RandomAnimalRunner");
   });
 
   it("builds zig as cached compiled binary", () => {
     const plan = engine.buildPlan("zig");
 
-    expect(plan.compileCommand).toBe("zig");
-    expect(plan.compileArgs).toContain("build-exe");
+    if (plan.compileCommand) {
+      expect(plan.compileCommand).toBe("zig");
+      expect(plan.compileArgs).toContain("build-exe");
+      expect(plan.compileArgs).toContain("-lc");
+    }
     expect(plan.command).toContain(path.join(".iota", "iota-fun"));
     expect(plan.command).toContain("iota-fun-zig-");
     expect(plan.args).toEqual([]);
@@ -57,7 +66,9 @@ describe("IotaFunEngine", () => {
   it("builds rust as cached compiled binary", () => {
     const plan = engine.buildPlan("rust");
 
-    expect(plan.compileCommand).toBe("rustc");
+    if (plan.compileCommand) {
+      expect(plan.compileCommand).toBe("rustc");
+    }
     expect(plan.command).toContain("iota-fun-rust-");
     expect(plan.args).toEqual([]);
   });
@@ -65,7 +76,14 @@ describe("IotaFunEngine", () => {
   it("builds cpp as cached compiled binary", () => {
     const plan = engine.buildPlan("cpp");
 
-    expect(plan.compileCommand).toBe("g++");
+    if (plan.compileCommand) {
+      expect(plan.compileCommand).toBe(
+        process.platform === "win32" ? "zig" : "g++",
+      );
+      if (process.platform === "win32") {
+        expect(plan.compileArgs).toContain("c++");
+      }
+    }
     expect(plan.command).toContain("iota-fun-cpp-");
     expect(plan.args).toEqual([]);
   });

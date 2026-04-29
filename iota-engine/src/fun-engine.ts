@@ -300,6 +300,8 @@ export class IotaFunEngine {
         "runner.zig",
         "-O",
         "ReleaseFast",
+        // Zig 0.16 requires explicit libc linkage for the extern write call in runner.zig.
+        "-lc",
         `-femit-bin=${binary}`,
       ],
       compileCwd: cwd,
@@ -321,7 +323,13 @@ export class IotaFunEngine {
     if (fs.existsSync(runnerClass)) {
       return {
         command: "java",
-        args: ["-cp", classDir, "RandomAnimalRunner"],
+        args: [
+          "-Dfile.encoding=UTF-8",
+          "-Dsun.stdout.encoding=UTF-8",
+          "-cp",
+          classDir,
+          "RandomAnimalRunner",
+        ],
         cwd,
       };
     }
@@ -338,7 +346,13 @@ export class IotaFunEngine {
       ],
       compileCwd: cwd,
       command: "java",
-      args: ["-cp", classDir, "RandomAnimalRunner"],
+      args: [
+        "-Dfile.encoding=UTF-8",
+        "-Dsun.stdout.encoding=UTF-8",
+        "-cp",
+        classDir,
+        "RandomAnimalRunner",
+      ],
       cwd,
     };
   }
@@ -361,8 +375,8 @@ export class IotaFunEngine {
       };
     }
     return {
-      compileCommand: "g++",
-      compileArgs: ["random_action_runner.cpp", "-o", binary],
+      compileCommand: this.cppCompilerCommand(),
+      compileArgs: this.cppCompileArgs(binary),
       compileCwd: cwd,
       compileEnv: env,
       command: binary,
@@ -370,6 +384,17 @@ export class IotaFunEngine {
       cwd,
       env,
     };
+  }
+
+  private cppCompilerCommand(): string {
+    return process.platform === "win32" ? "zig" : "g++";
+  }
+
+  private cppCompileArgs(binary: string): string[] {
+    if (process.platform === "win32") {
+      return ["c++", "random_action_runner.cpp", "-std=c++17", "-o", binary];
+    }
+    return ["random_action_runner.cpp", "-std=c++17", "-o", binary];
   }
 
   private ensureFile(filePath: string): void {
@@ -435,6 +460,7 @@ function cachedPath(
   suffix: string,
 ): string {
   const hash = crypto.createHash("sha256");
+  hash.update("v3");
   hash.update(process.platform);
   hash.update(process.arch);
   for (const source of sources) {
