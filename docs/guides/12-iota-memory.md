@@ -58,7 +58,7 @@
 下面这张图是本次实验也是 Memory 模块运行时的核心原理图。它展示了一次请求从进入 Engine 到完成记忆闭环的完整链路，以及后端为何可以被任意替换。
 
 ```mermaid
-flowchart LR
+flowchart TD
   User([User Prompt])
 
   subgraph Engine["Iota Engine (记忆中枢)"]
