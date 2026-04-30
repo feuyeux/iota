@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" role="img" aria-labelledby="title desc">
+  <title id="title">Claude Code Native vs Iota ACP Claude 延迟对比</title>
+  <desc id="desc">基于 2026-04-30 实验报告的 wall clock p50 和 p95 横向柱状图，Iota ACP 在冷启动和热启动中均低于 native。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f8fb; }
+      .panel { fill: #ffffff; stroke: #d9dee8; stroke-width: 1; }
+      .title { font: 700 32px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #172033; }
+      .subtitle { font: 400 16px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #536078; }
+      .section { font: 700 22px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #172033; }
+      .axis { stroke: #b7c0d2; stroke-width: 1; }
+      .grid { stroke: #e5e9f2; stroke-width: 1; }
+      .label { font: 600 15px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #263248; }
+      .small { font: 400 13px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #67738a; }
+      .value { font: 700 15px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #172033; }
+      .native { fill: #52677a; }
+      .iota { fill: #0f9f8f; }
+      .native-soft { fill: #e9edf2; }
+      .iota-soft { fill: #def5f1; }
+      .delta-good { fill: #0f7f72; font: 700 20px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; }
+      .card-title { font: 600 14px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #536078; }
+      .card-value { font: 700 28px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #172033; }
+      .footnote { font: 400 12px "Segoe UI", "Microsoft YaHei", Arial, sans-serif; fill: #6d7890; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="820"/>
+
+  <text class="title" x="64" y="68">Claude Code Native vs Iota ACP Claude 延迟对比</text>
+  <text class="subtitle" x="64" y="98">Wall clock，单位 ms；越短越快。数据来自 docs/performance/reports/2026-04-30T15-19-17-639Z-claude-iota-latency-report.md</text>
+
+  <rect class="panel" x="64" y="126" width="1152" height="502" rx="8"/>
+  <text class="section" x="96" y="170">p50 / p95 端到端耗时</text>
+  <text class="small" x="96" y="196">冷启动样本各 5 次；热启动样本各 30 次。Iota ACP 路径为 CLI 实验路径。</text>
+
+  <!-- Legend -->
+  <rect class="native" x="930" y="154" width="18" height="18" rx="3"/>
+  <text class="small" x="956" y="168">Claude Code native</text>
+  <rect class="iota" x="930" y="184" width="18" height="18" rx="3"/>
+  <text class="small" x="956" y="198">Iota + ACP + Claude</text>
+
+  <!-- Plot constants: x0=278, w=760, scale max=10005 -->
+  <line class="axis" x1="278" y1="548" x2="1038" y2="548"/>
+  <line class="grid" x1="278" y1="220" x2="278" y2="548"/>
+  <line class="grid" x1="430" y1="220" x2="430" y2="548"/>
+  <line class="grid" x1="582" y1="220" x2="582" y2="548"/>
+  <line class="grid" x1="734" y1="220" x2="734" y2="548"/>
+  <line class="grid" x1="886" y1="220" x2="886" y2="548"/>
+  <line class="grid" x1="1038" y1="220" x2="1038" y2="548"/>
+  <text class="small" x="270" y="574">0</text>
+  <text class="small" x="414" y="574">2k</text>
+  <text class="small" x="566" y="574">4k</text>
+  <text class="small" x="718" y="574">6k</text>
+  <text class="small" x="870" y="574">8k</text>
+  <text class="small" x="1012" y="574">10k ms</text>
+
+  <!-- Cold p50 -->
+  <text class="label" x="96" y="252">冷启动 p50</text>
+  <rect class="native-soft" x="278" y="228" width="760" height="20" rx="4"/>
+  <rect class="native" x="278" y="228" width="521" height="20" rx="4"/>
+  <text class="value" x="811" y="244">6856</text>
+  <rect class="iota-soft" x="278" y="256" width="760" height="20" rx="4"/>
+  <rect class="iota" x="278" y="256" width="392" height="20" rx="4"/>
+  <text class="value" x="682" y="272">5165</text>
+  <text class="delta-good" x="1070" y="266">-1691</text>
+
+  <!-- Cold p95 -->
+  <text class="label" x="96" y="328">冷启动 p95</text>
+  <rect class="native-soft" x="278" y="304" width="760" height="20" rx="4"/>
+  <rect class="native" x="278" y="304" width="587" height="20" rx="4"/>
+  <text class="value" x="877" y="320">7732</text>
+  <rect class="iota-soft" x="278" y="332" width="760" height="20" rx="4"/>
+  <rect class="iota" x="278" y="332" width="437" height="20" rx="4"/>
+  <text class="value" x="727" y="348">5750</text>
+  <text class="delta-good" x="1070" y="342">-1982</text>
+
+  <!-- Warm p50 -->
+  <text class="label" x="96" y="404">热启动 p50</text>
+  <rect class="native-soft" x="278" y="380" width="760" height="20" rx="4"/>
+  <rect class="native" x="278" y="380" width="460" height="20" rx="4"/>
+  <text class="value" x="750" y="396">6054</text>
+  <rect class="iota-soft" x="278" y="408" width="760" height="20" rx="4"/>
+  <rect class="iota" x="278" y="408" width="382" height="20" rx="4"/>
+  <text class="value" x="672" y="424">5035</text>
+  <text class="delta-good" x="1070" y="418">-1019</text>
+
+  <!-- Warm p95 -->
+  <text class="label" x="96" y="480">热启动 p95</text>
+  <rect class="native-soft" x="278" y="456" width="760" height="20" rx="4"/>
+  <rect class="native" x="278" y="456" width="760" height="20" rx="4"/>
+  <text class="value" x="1050" y="472">10005</text>
+  <rect class="iota-soft" x="278" y="484" width="760" height="20" rx="4"/>
+  <rect class="iota" x="278" y="484" width="541" height="20" rx="4"/>
+  <text class="value" x="831" y="500">7123</text>
+  <text class="delta-good" x="1070" y="494">-2882</text>
+
+  <text class="small" x="1070" y="220">Iota 相对 native</text>
+  <text class="small" x="1070" y="238">差值 ms</text>
+
+  <!-- Summary cards -->
+  <rect class="panel" x="64" y="654" width="270" height="112" rx="8"/>
+  <text class="card-title" x="88" y="688">热启动 p50</text>
+  <text class="card-value" x="88" y="727">Iota 快 1019 ms</text>
+  <text class="small" x="88" y="750">5035 vs 6054 ms，ratio 0.83</text>
+
+  <rect class="panel" x="360" y="654" width="270" height="112" rx="8"/>
+  <text class="card-title" x="384" y="688">热启动 p95</text>
+  <text class="card-value" x="384" y="727">Iota 快 2882 ms</text>
+  <text class="small" x="384" y="750">7123 vs 10005 ms，ratio 0.71</text>
+
+  <rect class="panel" x="656" y="654" width="270" height="112" rx="8"/>
+  <text class="card-title" x="680" y="688">冷启动 p50</text>
+  <text class="card-value" x="680" y="727">Iota 快 1691 ms</text>
+  <text class="small" x="680" y="750">5165 vs 6856 ms，ratio 0.75</text>
+
+  <rect class="panel" x="952" y="654" width="264" height="112" rx="8"/>
+  <text class="card-title" x="976" y="688">结论边界</text>
+  <text class="small" x="976" y="718">仅代表 CLI 串行实验。</text>
+  <text class="small" x="976" y="742">不代表 Agent 常驻服务路径。</text>
+
+  <text class="footnote" x="64" y="800">说明：Iota CLI 的 first output 包含初始化日志，因此图中只使用 wall clock p50/p95。JSONL 样本未保存 stdout/stderr 原文。</text>
+</svg>

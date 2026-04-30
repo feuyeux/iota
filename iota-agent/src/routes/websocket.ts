@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Worker } from "node:worker_threads";
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import type {
   RuntimeRequest,
@@ -9,6 +10,55 @@ import type {
   ApprovalDecision,
 } from "@iota/engine";
 import { buildAppExecutionSnapshot } from "@iota/engine";
+
+// Worker code for off-thread JSON serialization
+const SERIALIZER_WORKER_CODE = `
+const { parentPort } = require('node:worker_threads');
+parentPort.on('message', (msg) => {
+  try {
+    const result = JSON.stringify(msg.data);
+    parentPort.postMessage({ id: msg.id, result });
+  } catch (err) {
+    parentPort.postMessage({ id: msg.id, error: err.message });
+  }
+});
+`;
+
+let serializerWorker: Worker | undefined;
+const pendingSerializations = new Map<number, (result: string) => void>();
+let nextSerializationId = 0;
+
+function getSerializerWorker(): Worker {
+  if (!serializerWorker) {
+    serializerWorker = new Worker(SERIALIZER_WORKER_CODE, { eval: true });
+    serializerWorker.on("message", (msg) => {
+      const resolve = pendingSerializations.get(msg.id);
+      if (resolve) {
+        pendingSerializations.delete(msg.id);
+        resolve(msg.result || "");
+      }
+    });
+    serializerWorker.on("error", (err) => {
+      console.error("JSON Serializer Worker error:", err);
+      serializerWorker = undefined;
+    });
+  }
+  return serializerWorker;
+}
+
+/** Serialize large objects off-thread to avoid blocking the event loop. */
+async function serializeAsync(data: any): Promise<string> {
+  // Only offload if the object is likely to be large (rough heuristic)
+  if (typeof data !== "object" || data === null) {
+    return JSON.stringify(data);
+  }
+
+  return new Promise((resolve) => {
+    const id = ++nextSerializationId;
+    pendingSerializations.set(id, resolve);
+    getSerializerWorker().postMessage({ id, data });
+  });
+}
 
 interface JsonWebSocket {
   send(data: string): void;
@@ -522,13 +572,13 @@ async function pushSessionSnapshot(
       url: `/api/v1/sessions/${encodeURIComponent(sessionId)}/app-snapshot`,
     });
     if (res.statusCode >= 400) return;
-    safeSend(ws, 
-      JSON.stringify({
-        type: "app_snapshot",
-        sessionId,
-        snapshot: JSON.parse(res.body),
-      }),
-    );
+    const snapshot = JSON.parse(res.body);
+    const data = await serializeAsync({
+      type: "app_snapshot",
+      sessionId,
+      snapshot,
+    });
+    safeSend(ws, data);
   } catch {
     // Snapshot push is best-effort.
   }
@@ -543,14 +593,13 @@ async function pushExecutionVisibilitySnapshot(
     const visibility = await fastify.engine.getExecutionVisibility(executionId);
     if (!visibility) return;
     const record = await fastify.engine.getExecution(executionId);
-    safeSend(ws, 
-      JSON.stringify({
-        type: "visibility_snapshot",
-        executionId,
-        sessionId: record?.sessionId,
-        visibility,
-      }),
-    );
+    const data = await serializeAsync({
+      type: "visibility_snapshot",
+      executionId,
+      sessionId: record?.sessionId,
+      visibility,
+    });
+    safeSend(ws, data);
   } catch {
     // Snapshot push is best-effort.
   }
@@ -620,13 +669,19 @@ async function pushVisibilityDeltas(
 
     // Push trace step deltas from visibility spans
     if (snapshot.tracing?.steps) {
-      for (const step of snapshot.tracing.steps) {
+      const steps = snapshot.tracing.steps;
+      for (let i = 0; i < steps.length; i++) {
         const traceDelta: AppVisibilityDelta = {
           type: "trace_step_delta",
           executionId,
-          step,
+          step: steps[i],
         };
         sendDelta(ws, sessionId, traceDelta, nextRevision, kinds);
+
+        // Yield every 50 steps to keep the event loop responsive
+        if (i > 0 && i % 50 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
       }
     }
   } catch {
@@ -649,20 +704,7 @@ async function pollVisibilityStoreDeltas(
     if (kinds.size === 0) return;
     const visibility = await fastify.engine.getExecutionVisibility(executionId);
     if (visibility) {
-      const hash = JSON.stringify({
-        memory: kinds.has("memory") ? visibility.memory : undefined,
-        tokens: kinds.has("tokens") ? visibility.tokens : undefined,
-        chain: kinds.has("chain")
-          ? {
-              link: visibility.link,
-              mappings: visibility.mappings,
-              spans: visibility.spans,
-            }
-          : undefined,
-        summary: kinds.has("summary")
-          ? visibility.context?.createdAt
-          : undefined,
-      });
+      const hash = computeVisibilityHash(visibility, kinds);
       if (visibilityHashes.get(executionId) !== hash) {
         visibilityHashes.set(executionId, hash);
         const record = await fastify.engine.getExecution(executionId);
@@ -681,6 +723,50 @@ async function pollVisibilityStoreDeltas(
     }
     await sleep(1000, signal);
   }
+}
+
+/**
+ * Computes a lightweight hash of the visibility state to detect changes
+ * without serializing large objects like spans or memory blocks.
+ */
+function computeVisibilityHash(
+  visibility: any,
+  kinds: Set<VisibilitySubscriptionKind>,
+): string {
+  const parts: string[] = [];
+
+  if (kinds.has("memory")) {
+    const selected = visibility.memory?.selected ?? [];
+    parts.push(`m:${selected.length}`);
+    // Hash based on the last memory item's ID or similar if available
+    if (selected.length > 0) {
+      parts.push(`ml:${selected[selected.length - 1].id}`);
+    }
+  }
+
+  if (kinds.has("tokens")) {
+    const tokens = visibility.tokens;
+    const input = tokens?.input?.totalTokens ?? tokens?.input?.estimatedTokens ?? 0;
+    const output = tokens?.output?.totalTokens ?? tokens?.output?.estimatedTokens ?? 0;
+    parts.push(`t:${input},${output}`);
+  }
+
+  if (kinds.has("chain")) {
+    const spans = visibility.spans ?? visibility.link?.spans ?? [];
+    parts.push(`c:${spans.length}`);
+    if (spans.length > 0) {
+      const last = spans[spans.length - 1];
+      parts.push(`cl:${last.id}-${last.status}`);
+    }
+    const mappings = visibility.mappings ?? [];
+    parts.push(`ma:${mappings.length}`);
+  }
+
+  if (kinds.has("summary")) {
+    parts.push(`s:${visibility.context?.createdAt ?? 0}`);
+  }
+
+  return parts.join("|");
 }
 
 function sendDelta(

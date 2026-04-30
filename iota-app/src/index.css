@@ -43,3 +43,13 @@ h1, h2, h3, h4, h5, h6 {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-iota-border rounded-full hover:bg-iota-text/20 transition-colors;
 }
+
+.markdown-content details {
+  @apply bg-black/5 border border-iota-border/50 rounded-lg p-3 my-2 shadow-sm transition-all;
+}
+.markdown-content summary {
+  @apply font-bold text-iota-heading cursor-pointer hover:text-iota-accent transition-colors marker:text-iota-accent;
+}
+.markdown-content details[open] summary {
+  @apply mb-2 border-b border-iota-border/50 pb-2;
+}

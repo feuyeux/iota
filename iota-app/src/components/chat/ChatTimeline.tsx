@@ -2,10 +2,11 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSessionStore } from '../../store/useSessionStore';
 import { 
   Terminal, User, Bot, Wrench, Send, ShieldCheck, 
-  XCircle, CheckCircle, AlertCircle, StopCircle
+  XCircle, CheckCircle, AlertCircle, StopCircle, Settings2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { api } from '../../lib/api';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -16,7 +17,6 @@ export const ChatTimeline: React.FC = () => {
   const { 
     activeExecution, 
     activeBackend, 
-    setActiveBackend,
     sessionId, 
     sendMessage, 
     workingDirectory,
@@ -298,6 +298,7 @@ const MessageItem: React.FC<{ item: ConversationTimelineItem; onApprove: (id: st
             <div className="markdown-content text-sm leading-relaxed overflow-hidden">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
                 components={{
                   code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
                     const match = /language-(\w+)/.exec(className || '');

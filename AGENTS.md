@@ -16,12 +16,14 @@ Iota is a pluggable AI coding assistant runtime. The root repository currently c
 
 ```text
 iota/
-├── docs/                      # Shared design docs, guides, diagrams, verification notes
+├── docs/                      # Shared design docs, guides, performance reports
+│   ├── iota-guides/           # Consolidated architecture & usage documentation
+│   └── performance/           # Latency benchmarks, comparison reports
 ├── deployment/                # Redis / Docker / storage deployment files and helper scripts
-├── iota-engine/               # @iota/engine runtime
-├── iota-cli/                  # @iota/cli command interface
-├── iota-agent/                # @iota/agent HTTP/WebSocket service
-├── iota-app/                  # Vite + React frontend
+├── iota-engine/               # @iota/engine runtime (v0.1.0)
+├── iota-cli/                  # @iota/cli command interface (v0.1.0)
+├── iota-agent/                # @iota/agent HTTP/WebSocket service (v0.1.0)
+├── iota-app/                  # Vite + React 19 frontend (Zustand + TanStack Query)
 └── iota-skill/                # Structured skills and iota-fun examples
 ```
 
@@ -59,17 +61,30 @@ Backend protocol logic lives in `iota-engine/src/backend/`; do not add vendor in
 
 ACP backends expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini preserve backend-native MCP events and do not support Engine mid-execution MCP result writes.
 
+Additional backend support files in `src/backend/`:
+
+- `acp-backend-adapter.ts` / `acp-event-mapper.ts`: shared ACP JSON-RPC 2.0 protocol adapter and event normalization
+- `acp-fallback.test.ts`: tests for native fallback behavior
+- `pool.ts`: backend pool with circuit breaker and health tracking
+- `subprocess.ts`: shared subprocess lifecycle management
+- `prompt-composer.ts`: prompt assembly for native backends
+- `text-utils.ts`: output text normalization utilities
+- `error-hints.ts`: user-friendly error message mapping
+- `mcp-config.ts`: MCP server configuration generation per backend
+- `hermes-config.ts`: Hermes-specific config validation
+
 ## Current Architecture Constraints
 
 - App-facing UI must consume Agent snapshot / delta models, not raw backend protocol payloads.
 - Visibility, audit, snapshot, replay, logs, and docs must redact secrets.
 - Backend credentials, models, and endpoints are resolved through layered config plus Redis distributed config overlays. Do not rely on deleted backend-local env files such as `iota-engine/claude.env` or `codex.env`.
 - Config loading supports defaults, user config, project `iota.config.yaml`, selected environment overrides, and Redis scopes (`global`, `backend`, `session`, `user`).
-- WebSocket `/api/v1/stream` currently accepts `execute`, `interrupt`, `subscribe_app_session`, `subscribe_visibility`, and `approval_decision` inbound messages. It emits app snapshots/deltas, runtime events, completion/errors, approval results, subscription acknowledgements, visibility snapshots, and Redis pub/sub bridge messages.
+- WebSocket `/api/v1/stream` inbound: `execute`, `interrupt`, `subscribe_app_session`, `subscribe_visibility`, `approval_decision`. Outbound: `event`, `error`, `complete`, `app_delta`, `app_snapshot`, `subscribed`, `subscribed_visibility`, `visibility_snapshot`, `pubsub_event`, `approval_result`.
 - App approval UI sends `approval_decision`; Agent routes it into `engine.resolveApproval()`. Engine deferred approval requests are pushed to subscribed App sessions as `app_delta` approval cards. Keep this loop covered by tests when changing approval behavior.
 - Approval is enforced in Engine through approval policy and approval hooks. CLI uses `CliApprovalHook`; Agent constructs Engine with `DeferredApprovalHook`.
 - Engine loads structured skills from configured `skill.roots`, falling back to the repository-adjacent `iota-skill` directory. Executable skills run through `SkillRunner -> McpRouter -> configured MCP server`.
-- The `iota-fun` MCP server is implemented in Engine and uses source files under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`.
+- The `iota-fun` MCP server is implemented in Engine (`src/fun-engine.ts`, `src/fun-intent.ts`) and uses source files under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`. Supports 7 languages: python, typescript, go, rust, zig, java, cpp.
+- Memory system components: `DialogueMemory` (last 50 turns), `WorkingMemory` (active files), `MemoryExtractor`, `MemoryInjector`, `MemoryStorage` (Redis + optional Milvus vectors). Embedding chain: `HashEmbeddingProvider` → `OllamaEmbeddingProvider` → `OpenAIEmbeddingProvider`.
 - Project toolchain convention: use `bun` for install, build, typecheck, test, lint, format, and dev execution; use `node` to run built JavaScript artifacts under `dist/`.
 
 ## Codex Tooling Notes

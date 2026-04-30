@@ -11,7 +11,7 @@ The root directory is the single Git repository for Iota. There is no root packa
 - `iota-agent/`: `@iota/agent`, Fastify HTTP / WebSocket service around Engine
 - `iota-app/`: Vite + React frontend that consumes Agent snapshots and deltas
 - `iota-skill/`: structured skills, currently including `pet-generator` and iota-fun examples
-- `docs/`: guides, diagrams, and requirement documents
+- `docs/`: guides, performance benchmarks, and consolidated design documents
 
 `mem0/` may appear as an untracked local reference checkout. Treat it as external reference material unless a task explicitly targets it.
 
@@ -35,7 +35,8 @@ The root directory is the single Git repository for Iota. There is no root packa
 - Approval is enforced in Engine through policy and approval hooks. CLI uses `CliApprovalHook`; Agent constructs Engine with `DeferredApprovalHook`.
 - Engine loads structured skills from configured `skill.roots`, falling back to repository-adjacent `iota-skill` when empty.
 - Executable skills run through `SkillRunner -> McpRouter -> configured MCP server`; do not bypass MCP to call iota-fun internals directly.
-- The `iota-fun` MCP server is implemented in Engine; function sources live under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`.
+- The `iota-fun` MCP server is implemented in Engine (`src/fun-engine.ts`, `src/fun-intent.ts`); function sources live under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`. Supports 7 languages: python, typescript, go, rust, zig, java, cpp.
+- Memory system: `DialogueMemory` (last 50 turns), `WorkingMemory` (active files), `MemoryExtractor`, `MemoryInjector`, `MemoryStorage` (Redis + optional Milvus vectors). Embedding chain: `HashEmbeddingProvider` → `OllamaEmbeddingProvider` → `OpenAIEmbeddingProvider`.
 - Architecture and sequence diagrams must state exact arrow source and target boxes for every line.
 - Docker storage defaults to Redis only. Use `deployment/scripts/start-storage.sh --full` for Redis + MinIO + Milvus and `--ha` for Redis Sentinel.
 
@@ -83,6 +84,7 @@ For Gemini CLI adapter internals, see:
 Primary docs are consolidated under `docs/iota-guides/`:
 
 - `docs/iota-guides/README.md`
+- `docs/iota-guides/00-setup.md`
 - `docs/iota-guides/01-architecture.md`
 - `docs/iota-guides/02-engine.md`
 - `docs/iota-guides/03-backend-adapters.md`

@@ -7,13 +7,14 @@ Iota 是一个可插拔的 AI Coding Agent 运行时工程。它通过统一的 
 ```text
 iota/
 ├── docs/              # 指南与设计文档
-│   ├── guides/        # 架构、CLI、TUI、Agent、App、Engine 指南
-│   └── requirement/   # 设计需求与约束文档
+│   ├── iota-guides/   # 架构、Engine、Backend、CLI、Agent、App、Visibility、Memory、Skill、部署
+│   └── performance/   # 延迟基准测试、对比报告
 ├── deployment/        # Redis / Docker / MinIO / Milvus 相关部署文件
-├── iota-engine/       # 核心运行时库 (@iota/engine)
-├── iota-cli/          # 命令行工具 (@iota/cli)
-├── iota-agent/        # HTTP / WebSocket 服务 (@iota/agent)
-└── iota-app/          # 前端应用 (Vite + React)
+├── iota-engine/       # 核心运行时库 (@iota/engine v0.1.0)
+├── iota-cli/          # 命令行工具 (@iota/cli v0.1.0)
+├── iota-agent/        # HTTP / WebSocket 服务 (@iota/agent v0.1.0)
+├── iota-app/          # 前端应用 (Vite + React 19 + Zustand + TanStack Query)
+└── iota-skill/        # 结构化技能与 iota-fun 多语言执行器
 ```
 
 ## 当前实现边界
@@ -25,17 +26,19 @@ iota/
 
 ## 已实现的主路径
 
-- CLI 通过 `iota-engine` 直接执行 prompt，支持 `run`、`interactive`、`status`、`switch`、`config`、`logs`、`trace`、`visibility`。
-- Agent 提供 session、execution、logs、config、visibility、app snapshot 与 WebSocket `/api/v1/stream`。
-- App 通过 HTTP + WebSocket 读取会话快照、执行快照和增量更新。
-- Engine 已实现 memory injection、workspace snapshot / delta、visibility store、trace spans、approval policy、audit、Redis config。
+- CLI 通过 `iota-engine` 直接执行 prompt，支持 `run`、`interactive`、`status`、`switch`、`config`、`logs`、`trace`、`visibility`、`gc`。
+- Agent 提供 session、execution、logs、config、visibility、cross-session、app snapshot 与 WebSocket `/api/v1/stream`。
+- App 通过 HTTP + WebSocket 读取会话快照、执行快照和增量更新，展示对话时间线、Inspector 面板（tracing、memory、tokens、summary）、审批卡片。
+- Engine 已实现 memory injection、workspace snapshot / delta、visibility store、trace spans、approval policy、audit、Redis config、MCP skill execution。
+- 审批闭环已完整实现：App 发送 `approval_decision` → Agent WebSocket → `engine.resolveApproval()` → 执行继续。
+- iota-fun 支持 7 种语言：python, typescript, go, rust, zig, java, cpp。
 
-## 当前已知不完备点
+## 当前已知待改进点
 
-- App 侧虽然展示 approval 卡片，但当前 Agent / WebSocket 协议没有独立的“前端提交审批决定”闭环接口；当前审批主路径仍以 CLI `CliApprovalHook` 或 Engine 内部 hook 为主。
-- WebSocket 已支持 `subscribe_app_session`、`subscribe_visibility`、`execute`、`interrupt`，但右上角架构图里不应把 approval request / decision 画成 App 与 Agent 间独立的确定性双向 WS API，除非后续代码真正补齐该协议。
-- `visibility`、`trace`、`app snapshot`、`replay` 已部分实现，但文档和部分 README 仍存在端口、接口、覆盖范围不一致的问题。
 - `iota-app/README.md` 仍是 Vite 模板，未反映真实产品结构。
+- `visibility`、`trace`、`replay` 已实现，但缺少端到端集成测试。
+- Memory GC 和 Embedding 向量检索仍依赖外部服务（Milvus / Ollama）可用性，缺少降级路径测试。
+- iota-skill 当前只有 `pet-generator` 一个示例，尚未有真实生产 skill 参考实现。
 
 ## 快速开始
 
@@ -204,7 +207,7 @@ bash deployment/scripts/ensure-backends.sh codex gemini
 - 脚本只负责可执行文件发现与缺失安装，不会写入 backend 密钥或 Redis 配置。
 - 即使脚本显示五个命令都存在，也不能替代真实运行验证。
 
-`docs/guides/README.md` 已将这个脚本定义为 guides 体系内统一的 backend 检测入口；各 component guide 应引用该入口，而不是重复维护 shell 级的检测命令说明。
+`docs/iota-guides/README.md` 已将这个脚本定义为 guides 体系内统一的 backend 检测入口；各 component guide 应引用该入口，而不是重复维护 shell 级的检测命令说明。
 
 ### 5. 验证后端健康状态
 
@@ -221,7 +224,7 @@ node dist/index.js status
 
 **重要**: 后端验证不能停在 `iota status`。每个后端都必须至少执行一次真实的 traced request。
 
-**详细的 trace 和 visibility 文档请参见 [docs/guides/06-visibility-trace-guide.md](docs/guides/06-visibility-trace-guide.md)。**
+**详细的 trace 和 visibility 文档请参见 [docs/iota-guides/07-visibility-trace.md](docs/iota-guides/07-visibility-trace.md)。**
 
 ```bash
 # 验证 Claude Code
@@ -286,14 +289,15 @@ bun run dev
 
 ## 文档入口
 
-- [文档总览](docs/guides/README.md)
-- [架构总览](docs/guides/00-architecture-overview.md)
-- [CLI 指南](docs/guides/01-cli-guide.md)
-- [TUI 指南](docs/guides/02-tui-guide.md)
-- [Agent 指南](docs/guides/03-agent-guide.md)
-- [App 指南](docs/guides/04-app-guide.md)
-- [Engine 指南](docs/guides/05-engine-guide.md)
-- [Visibility & Trace 指南](docs/guides/06-visibility-trace-guide.md)
-- [Engine 设计](docs/requirement/4.iota_engine_design_0425.md)
-- [App 设计](docs/requirement/5.iota_app_design.md)
-- [部署说明](deployment/README.md)
+- [文档总览](docs/iota-guides/README.md)
+- [环境配置](docs/iota-guides/00-setup.md)
+- [架构概览](docs/iota-guides/01-architecture.md)
+- [Engine 核心](docs/iota-guides/02-engine.md)
+- [Backend 适配器](docs/iota-guides/03-backend-adapters.md)
+- [CLI / TUI 指南](docs/iota-guides/04-cli-tui.md)
+- [Agent 服务](docs/iota-guides/05-agent.md)
+- [App 前端](docs/iota-guides/06-app.md)
+- [Visibility & Trace](docs/iota-guides/07-visibility-trace.md)
+- [Memory 记忆](docs/iota-guides/08-memory.md)
+- [Skill & iota-fun](docs/iota-guides/09-skill-fun.md)
+- [部署说明](docs/iota-guides/10-deployment.md)

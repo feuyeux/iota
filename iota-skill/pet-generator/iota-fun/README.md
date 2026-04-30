@@ -258,7 +258,7 @@ To add support for a new language:
 4. **Update IotaFunEngine**: Add language mapping in `iota-engine/src/fun-engine.ts`
 5. **Update intent detection**: Add prompt patterns in `iota-engine/src/fun-intent.ts`
 6. **Add tests**: Create test cases in `iota-engine/src/fun-engine.test.ts`
-7. **Update documentation**: Add to this README and `docs/guides/07-fun-call-guide.md`
+7. **Update documentation**: Add to this README and `docs/iota-guides/09-skill-fun.md`
 
 ### Example: Adding Ruby Support
 
@@ -381,11 +381,11 @@ node dist/index.js run --backend claude-code "请用 go 随机生成一种形状
 
 ## Related Documentation
 
-- [07-fun-call-guide.md](../docs/guides/07-fun-call-guide.md) - Detailed fun-call guide
-- [05-engine-guide.md](../docs/guides/05-engine-guide.md) - Engine architecture
-- [iota-engine/src/fun-engine.ts](../iota-engine/src/fun-engine.ts) - Implementation
-- [iota-engine/src/fun-intent.ts](../iota-engine/src/fun-intent.ts) - Intent detection
-- [../iota-skill/pet-generator/SKILL.md](../iota-skill/pet-generator/SKILL.md) - Skill spec for multi-language pet generation
+- [09-skill-fun.md](../../../docs/iota-guides/09-skill-fun.md) - Skill & iota-fun guide
+- [02-engine.md](../../../docs/iota-guides/02-engine.md) - Engine architecture
+- [iota-engine/src/fun-engine.ts](../../../iota-engine/src/fun-engine.ts) - Implementation
+- [iota-engine/src/fun-intent.ts](../../../iota-engine/src/fun-intent.ts) - Intent detection
+- [../iota-skill/pet-generator/SKILL.md](../SKILL.md) - Skill spec for multi-language pet generation
 
 ## Contributing
 

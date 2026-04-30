@@ -84,7 +84,6 @@ For Hermes, inspect `hermes config show` and reject dead local-gateway configs.
 
 ## Documentation
 
-- [`../docs/guides/05-engine-guide.md`](../docs/guides/05-engine-guide.md)
-- [`../docs/guides/03-agent-guide.md`](../docs/guides/03-agent-guide.md)
-- [`../docs/requirement/4.iota_engine_design_0425.md`](../docs/requirement/4.iota_engine_design_0425.md)
-- [`../docs/requirement/5.iota_app_design.md`](../docs/requirement/5.iota_app_design.md)
+- [`../docs/iota-guides/02-engine.md`](../docs/iota-guides/02-engine.md)
+- [`../docs/iota-guides/03-backend-adapters.md`](../docs/iota-guides/03-backend-adapters.md)
+- [`../docs/iota-guides/05-agent.md`](../docs/iota-guides/05-agent.md)
