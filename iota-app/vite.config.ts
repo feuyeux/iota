@@ -13,6 +13,24 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'vendor'
+          }
+          if (id.includes('@tanstack/react-query')) {
+            return 'query'
+          }
+          if (id.includes('zustand')) {
+            return 'state'
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 9888,
     proxy: {

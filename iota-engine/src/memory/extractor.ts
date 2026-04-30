@@ -13,6 +13,21 @@ export interface MemoryExtractionResult {
   semanticFacet?: StoredMemory["facet"];
 }
 
+/**
+ * Check if text matches any of the given regex patterns or includes any of
+ * the given literal substrings (used for Chinese terms where \b is unusable).
+ */
+function matchesAny(
+  text: string,
+  regexPatterns: RegExp[],
+  includePatterns: string[] = [],
+): boolean {
+  return (
+    regexPatterns.some((re) => re.test(text)) ||
+    includePatterns.some((p) => text.includes(p))
+  );
+}
+
 export class MemoryExtractor {
   extract(input: MemoryExtractionInput): MemoryExtractionResult | null {
     const content = this.extractMemoryContent(input.prompt, input.output);
@@ -55,17 +70,19 @@ export class MemoryExtractor {
   ): BackendMemoryEvent["nativeType"] {
     const lower = content.toLowerCase();
 
-    const episodicHints = [
+    const episodicRegex = [
+      /\brecap\b/,
+      /\bsummarize our\b/,
+      /\bsummarize the conversation\b/,
+    ];
+    const episodicIncludes = [
       "回顾",
       "复盘",
       "回看",
-      "recap",
-      "summarize our",
-      "summarize the conversation",
       "之前的对话",
       "前面的对话",
     ];
-    if (episodicHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, episodicRegex, episodicIncludes)) {
       return backend === "claude-code"
         ? "conversation_context"
         : backend === "codex"
@@ -75,12 +92,14 @@ export class MemoryExtractor {
             : "dialogue_memory";
     }
 
-    const semanticProfileHints = [
-      "my name is",
-      "i am ",
-      "i'm ",
-      "prefer",
-      "preference",
+    const semanticProfileRegex = [
+      /\bmy name is\b/,
+      /\bi am\s/,
+      /\bi'm\s/,
+      /\bprefer\b/,
+      /\bpreference\b/,
+    ];
+    const semanticProfileIncludes = [
       "喜欢",
       "偏好",
       "习惯",
@@ -96,7 +115,7 @@ export class MemoryExtractor {
       "架构师",
       "工程师",
     ];
-    if (semanticProfileHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, semanticProfileRegex, semanticProfileIncludes)) {
       return backend === "claude-code"
         ? "user_preferences"
         : backend === "codex"
@@ -106,12 +125,14 @@ export class MemoryExtractor {
             : "profile_memory";
     }
 
-    const strategicHints = [
-      "decided",
-      "plan",
-      "architecture",
-      "goal",
-      "strategy",
+    const strategicRegex = [
+      /\bdecided\b/,
+      /\bplan\b/,
+      /\barchitecture\b/,
+      /\bgoal\b/,
+      /\bstrategy\b/,
+    ];
+    const strategicIncludes = [
       "目标",
       "战略",
       "规划",
@@ -119,7 +140,7 @@ export class MemoryExtractor {
       "方向",
       "决定",
     ];
-    if (strategicHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, strategicRegex, strategicIncludes)) {
       return backend === "claude-code"
         ? "project_context"
         : backend === "codex"
@@ -129,12 +150,14 @@ export class MemoryExtractor {
             : "intention_memory";
     }
 
-    const proceduralHints = [
-      "use ",
-      "run ",
-      "command",
-      "step",
-      "how to",
+    const proceduralRegex = [
+      /\buse\s/,
+      /\brun\s/,
+      /\bcommand\b/,
+      /\bstep\b/,
+      /\bhow to\b/,
+    ];
+    const proceduralIncludes = [
       "步骤",
       "流程",
       "如何",
@@ -143,7 +166,7 @@ export class MemoryExtractor {
       "方法",
       "总结",
     ];
-    if (proceduralHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, proceduralRegex, proceduralIncludes)) {
       return backend === "claude-code"
         ? "code_context"
         : backend === "codex"
@@ -167,9 +190,8 @@ export class MemoryExtractor {
     fallback: StoredMemory["facet"] = "domain",
   ): StoredMemory["facet"] {
     const lower = content.toLowerCase();
-    const preferenceHints = [
-      "prefer",
-      "preference",
+    const preferenceRegex = [/\bprefer\b/, /\bpreference\b/];
+    const preferenceIncludes = [
       "喜欢",
       "偏好",
       "习惯",
@@ -177,14 +199,12 @@ export class MemoryExtractor {
       "用中文",
       "少废话",
     ];
-    if (preferenceHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, preferenceRegex, preferenceIncludes)) {
       return "preference";
     }
 
-    const identityHints = [
-      "my name is",
-      "i am ",
-      "i'm ",
+    const identityRegex = [/\bmy name is\b/, /\bi am\s/, /\bi'm\s/];
+    const identityIncludes = [
       "我叫",
       "我的名字",
       "我是",
@@ -196,7 +216,7 @@ export class MemoryExtractor {
       "架构师",
       "工程师",
     ];
-    if (identityHints.some((hint) => lower.includes(hint))) {
+    if (matchesAny(lower, identityRegex, identityIncludes)) {
       return "identity";
     }
 

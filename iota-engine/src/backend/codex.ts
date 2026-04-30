@@ -9,6 +9,59 @@ import type {
   RuntimeRequest,
 } from "../event/types.js";
 
+// ─── Narrow interface types for native Codex NDJSON events ───────────────────
+
+/** A message object nested inside Codex events. */
+interface CodexMessage {
+  content?: string;
+  [key: string]: unknown;
+}
+
+/** An item object within item.started / item.completed events. */
+interface CodexItem {
+  type?: string;
+  id?: string;
+  tool?: string;
+  server?: string;
+  arguments?: Record<string, unknown>;
+  error?: string;
+  result?: CodexMcpResult;
+  [key: string]: unknown;
+}
+
+/** MCP result payload returned inside a completed mcp_tool_call item. */
+interface CodexMcpResult {
+  content?: CodexMcpContentPart[];
+  [key: string]: unknown;
+}
+
+/** A single content part inside MCP result content array. */
+interface CodexMcpContentPart {
+  text?: string;
+  [key: string]: unknown;
+}
+
+/** OpenAI-compatible usage statistics. */
+interface CodexUsage {
+  prompt_tokens?: number;
+  input_tokens?: number;
+  completion_tokens?: number;
+  output_tokens?: number;
+  outputTokens?: number;
+  total_tokens?: number;
+  reasoning_tokens?: number;
+  reasoning_output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+/** Metadata payload attached to memory events. */
+interface CodexMetadataPayload {
+  [key: string]: unknown;
+}
+
 /**
  * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * CodexAdapter — Section 7.3
@@ -97,9 +150,9 @@ function extractCodexText(value: Record<string, unknown>): string | undefined {
   if (
     typeof value.message === "object" &&
     value.message !== null &&
-    typeof (value.message as Record<string, unknown>).content === "string"
+    typeof (value.message as CodexMessage).content === "string"
   ) {
-    return (value.message as Record<string, unknown>).content as string;
+    return (value.message as CodexMessage).content as string;
   }
   return undefined;
 }
@@ -116,7 +169,7 @@ function mapCodexEvent(
   const type = stringProp(value, "type") ?? stringProp(value, "event");
 
   // Extract usage from any event that carries it (typically "result" or final output)
-  const usage = value.usage as Record<string, unknown> | undefined;
+  const usage = value.usage as CodexUsage | undefined;
 
   if (type === "thread.started" || type === "turn.started") {
     return {
@@ -133,13 +186,13 @@ function mapCodexEvent(
   if (type === "item.completed") {
     const item =
       typeof value.item === "object" && value.item !== null
-        ? (value.item as Record<string, unknown>)
-        : {};
+        ? (value.item as CodexItem)
+        : ({} as CodexItem);
     if (item.type === "mcp_tool_call") {
       return mapCodexMcpToolCall(backend, request, item);
     }
     if (item.type === "agent_message") {
-      const text = extractCodexText(item);
+      const text = extractCodexText(item as Record<string, unknown>);
       if (text) {
         return {
           type: "output",
@@ -170,8 +223,8 @@ function mapCodexEvent(
   if (type === "item.started") {
     const item =
       typeof value.item === "object" && value.item !== null
-        ? (value.item as Record<string, unknown>)
-        : {};
+        ? (value.item as CodexItem)
+        : ({} as CodexItem);
     if (item.type === "mcp_tool_call") {
       return {
         type: "tool_call",
@@ -181,9 +234,9 @@ function mapCodexEvent(
         sequence: 0,
         timestamp: Date.now(),
         data: {
-          toolCallId: stringProp(item, "id") ?? `${request.executionId}:mcp`,
-          toolName: stringProp(item, "tool") ?? "unknown",
-          rawToolName: `${stringProp(item, "server") ?? "unknown"}/${stringProp(item, "tool") ?? "unknown"}`,
+          toolCallId: stringProp(item as Record<string, unknown>, "id") ?? `${request.executionId}:mcp`,
+          toolName: stringProp(item as Record<string, unknown>, "tool") ?? "unknown",
+          rawToolName: `${stringProp(item as Record<string, unknown>, "server") ?? "unknown"}/${stringProp(item as Record<string, unknown>, "tool") ?? "unknown"}`,
           arguments:
             typeof item.arguments === "object" && item.arguments !== null
               ? (item.arguments as Record<string, unknown>)
@@ -215,7 +268,7 @@ function mapCodexEvent(
   if (type === "memory") {
     const metadata =
       typeof value.metadata === "object" && value.metadata !== null
-        ? (value.metadata as Record<string, unknown>)
+        ? (value.metadata as CodexMetadataPayload)
         : undefined;
     return {
       type: "memory",
@@ -304,9 +357,9 @@ function mapCodexEvent(
 function mapCodexMcpToolCall(
   backend: BackendName,
   request: RuntimeRequest,
-  item: Record<string, unknown>,
+  item: CodexItem,
 ): RuntimeEvent {
-  const error = stringProp(item, "error");
+  const error = item.error;
   return {
     type: "tool_result",
     sessionId: request.sessionId,
@@ -315,7 +368,7 @@ function mapCodexMcpToolCall(
     sequence: 0,
     timestamp: Date.now(),
     data: {
-      toolCallId: stringProp(item, "id") ?? `${request.executionId}:mcp`,
+      toolCallId: stringProp(item as Record<string, unknown>, "id") ?? `${request.executionId}:mcp`,
       status: error ? "error" : "success",
       output: extractCodexMcpResultText(item.result),
       error: error ?? undefined,
@@ -323,23 +376,19 @@ function mapCodexMcpToolCall(
   };
 }
 
-function extractCodexMcpResultText(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const content = (result as Record<string, unknown>).content;
+function extractCodexMcpResultText(result: CodexMcpResult | undefined): string | undefined {
+  if (!result) return undefined;
+  const content = result.content;
   if (!Array.isArray(content)) return undefined;
   return content
-    .map((part) =>
-      typeof part === "object" &&
-      part !== null &&
-      typeof (part as Record<string, unknown>).text === "string"
-        ? ((part as Record<string, unknown>).text as string)
-        : "",
+    .map((part: CodexMcpContentPart) =>
+      typeof part.text === "string" ? part.text : "",
     )
     .filter(Boolean)
     .join("\n");
 }
 
-function extractUsage(usage: Record<string, unknown>): {
+function extractUsage(usage: CodexUsage): {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -381,10 +430,8 @@ function extractUsage(usage: Record<string, unknown>): {
         ? usage.cache_read_input_tokens
         : typeof usage.prompt_tokens_details === "object" &&
             usage.prompt_tokens_details !== null &&
-            typeof (usage.prompt_tokens_details as Record<string, unknown>)
-              .cached_tokens === "number"
-          ? ((usage.prompt_tokens_details as Record<string, unknown>)
-              .cached_tokens as number)
+            typeof usage.prompt_tokens_details?.cached_tokens === "number"
+          ? usage.prompt_tokens_details.cached_tokens
           : undefined,
     cacheWriteTokens:
       typeof usage.cache_creation_input_tokens === "number"

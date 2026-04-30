@@ -147,6 +147,23 @@ export class IotaEngine {
   private readonly memoryExtractor = new MemoryExtractor();
   private readonly metrics = new MetricsCollector();
   private readonly approvalHook: ApprovalHook;
+
+  /** Derive the storage backend name(s) for visibility `persistedTo` fields. */
+  private get storageNames(): Array<"memory_map" | "redis" | "milvus"> {
+    if (this.storage instanceof RedisStorage) {
+      return ["redis"];
+    }
+    // Fallback: inspect config to determine storage type
+    if (this.config) {
+      const mode = this.config.engine.mode;
+      const names: Array<"memory_map" | "redis" | "milvus"> = ["redis"];
+      if (mode === "production" && this.config.storage.production.milvus?.address) {
+        names.push("milvus");
+      }
+      return names;
+    }
+    return ["redis"];
+  }
   private mcpRouter?: McpRouter;
   private minioStore?: MinioSnapshotStore;
   private audit?: AuditLogger;
@@ -1263,7 +1280,7 @@ export class IotaEngine {
                   type: stored.type,
                   contentHash: contentHash(stored.content),
                   estimatedTokens: Math.ceil(stored.content.length / 4),
-                  persistedTo: ["redis"],
+                  persistedTo: engine.storageNames,
                 });
               }
               continue;
@@ -1654,7 +1671,7 @@ export class IotaEngine {
             type: memory.type,
             contentHash: contentHash(memory.content),
             estimatedTokens: Math.ceil(memory.content.length / 4),
-            persistedTo: ["redis"],
+            persistedTo: engine.storageNames,
           });
         }
       } else if (!memory && visibilityCollector && !hasNativeMemoryExtraction) {

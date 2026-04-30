@@ -415,9 +415,13 @@ export class AcpFallbackBackend implements RuntimeBackend {
         yield event;
       }
     } catch (error) {
+      // If ACP already emitted events, the caller has partial results — re-throw
+      // so it can handle the mid-stream failure. Otherwise, silently degrade to
+      // the legacy native subprocess adapter so the request still succeeds.
       if (emitted) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
       console.warn(
-        `[iota-engine] ACP adapter for ${this.backendName} failed before emitting events; falling back to legacy native adapter`,
+        `[iota-engine] ACP adapter for backend "${this.backendName}" failed before emitting events (${msg}); falling back to legacy native adapter`,
       );
       yield* this.fallback.stream(request);
     }

@@ -6,6 +6,7 @@ import type {
   RuntimeEvent,
   AppVisibilityDelta,
   TraceStepView,
+  ApprovalDecision,
 } from "@iota/engine";
 import { buildAppExecutionSnapshot } from "@iota/engine";
 
@@ -49,11 +50,19 @@ interface InterruptExecutionMessage {
   executionId: string;
 }
 
+interface ApprovalDecisionMessage {
+  type: "approval_decision";
+  requestId: string;
+  decision: "approve" | "deny";
+  reason?: string;
+}
+
 type IncomingMessage =
   | StreamRequestMessage
   | SubscribeAppSessionMessage
   | SubscribeVisibilityMessage
-  | InterruptExecutionMessage;
+  | InterruptExecutionMessage
+  | ApprovalDecisionMessage;
 
 interface StreamResponseMessage {
   type: "event" | "error" | "complete";
@@ -273,11 +282,30 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
 
         if (message.type === "interrupt") {
           await fastify.engine.interrupt(message.executionId);
-          safeSend(ws, 
+          safeSend(ws,
             JSON.stringify({
               type: "complete",
               executionId: message.executionId,
             } satisfies StreamResponseMessage),
+          );
+          return;
+        }
+
+        if (message.type === "approval_decision") {
+          const decision: ApprovalDecision = {
+            decision: message.decision,
+            reason: message.reason,
+          };
+          const resolved = fastify.engine.resolveApproval(
+            message.requestId,
+            decision,
+          );
+          safeSend(ws,
+            JSON.stringify({
+              type: "approval_result",
+              requestId: message.requestId,
+              resolved,
+            }),
           );
           return;
         }

@@ -20,12 +20,14 @@ interface SessionState {
   sessionSnapshot: AppSessionSnapshot | null;
   activeExecution: AppExecutionSnapshot | null;
   wsConnected: boolean;
-  
+  error: string | null;
+
   // Revision Tracking
   sessionRevision: number;
-  
+
   // Actions
   setSessionId: (id: string) => void;
+  setError: (error: string | null) => void;
   setActiveBackend: (backend: BackendName) => void;
   setWsConnected: (connected: boolean) => void;
   updateSnapshot: (snapshot: AppSessionSnapshot) => void;
@@ -92,10 +94,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionSnapshot: null,
   activeExecution: null,
   wsConnected: false,
+  error: null,
   
   sessionRevision: 0,
 
   setSessionId: (id) => set({ sessionId: id, sessionRevision: 0 }),
+  setError: (error) => set({ error }),
   setActiveBackend: (backend) => set({ activeBackend: backend }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
   

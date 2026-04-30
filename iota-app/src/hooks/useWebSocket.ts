@@ -55,7 +55,7 @@ export function useWebSocket() {
         // Sync snapshot
         api.getSessionSnapshot(sid).then(snap => {
           useSessionStore.getState().updateSnapshot(snap);
-        }).catch(e => console.error('Failed to sync snapshot', e));
+        }).catch(e => { console.error('Failed to sync snapshot', e); useSessionStore.getState().setError('Failed to sync snapshot'); });
 
         const execId = latestState.activeExecution?.executionId;
         if (execId) {
@@ -79,7 +79,7 @@ export function useWebSocket() {
             if (needsSync && store.sessionId) {
               api.getSessionSnapshot(store.sessionId).then(snap => {
                 useSessionStore.getState().updateSnapshot(snap);
-              }).catch(e => console.error('Failed to sync snapshot', e));
+              }).catch(e => { console.error('Failed to sync snapshot', e); useSessionStore.getState().setError('Failed to sync snapshot'); });
             }
             break;
           }
@@ -115,12 +115,13 @@ export function useWebSocket() {
               if (s.sessionId) {
                 api.getSessionSnapshot(s.sessionId).then(snap => {
                   useSessionStore.getState().updateSnapshot(snap);
-                }).catch(e => console.error('Failed to sync snapshot', e));
+                }).catch(e => { console.error('Failed to sync snapshot', e); useSessionStore.getState().setError('Failed to sync snapshot'); });
               }
             }, 300);
             break;
           case 'error':
             console.error('WS Application Error:', data.error);
+            useSessionStore.getState().setError(data.error || 'WebSocket error');
             break;
           case 'pubsub_event':
             if (data.message?.type === 'execution_event' || data.message?.type === 'session_update') {
@@ -128,7 +129,7 @@ export function useWebSocket() {
               if (s.sessionId) {
                 api.getSessionSnapshot(s.sessionId).then(snap => {
                   useSessionStore.getState().updateSnapshot(snap);
-                }).catch(e => console.error('Failed to sync snapshot', e));
+                }).catch(e => { console.error('Failed to sync snapshot', e); useSessionStore.getState().setError('Failed to sync snapshot'); });
               }
             }
             break;
@@ -140,6 +141,7 @@ export function useWebSocket() {
 
     socket.onerror = (error) => {
       console.error('WS Error:', error);
+      useSessionStore.getState().setError('WebSocket connection error');
     };
 
     socket.onclose = (event) => {

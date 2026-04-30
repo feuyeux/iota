@@ -32,6 +32,17 @@ import type {
   EventMappingVisibility,
 } from "../visibility/types.js";
 
+/** Normalized usage data extracted from output events for visibility forwarding. */
+interface NativeUsageData {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  [key: string]: unknown;
+}
+
 /** stderr handling config per Section 7.6 */
 const STDERR_MAX_BYTES = 64 * 1024;
 
@@ -977,7 +988,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     if (vc) {
       for (const event of events) {
         if (event.type !== "output" || !event.data.usage) continue;
-        const u = event.data.usage as Record<string, unknown>;
+        const u = event.data.usage as NativeUsageData;
         vc.setNativeUsage({
           backend: this.name,
           inputTokens:

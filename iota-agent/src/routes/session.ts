@@ -280,7 +280,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{
     Params: { sessionId: string };
-    Querystring: { limit?: string };
+    Querystring: { limit?: string; query?: string };
   }>(
     "/sessions/:sessionId/memories",
     {
@@ -290,6 +290,7 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
           type: "object",
           properties: {
             limit: { type: "string", pattern: "^\\d+$" },
+            query: { type: "string", maxLength: 500 },
           },
         },
       },
@@ -297,6 +298,14 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       try {
         const limit = Math.min(Number(request.query.limit ?? "50"), 200);
+        const query = request.query.query?.trim();
+
+        if (query) {
+          // Use vector search when query is provided
+          const results = await fastify.engine.searchMemories(query, limit);
+          return { count: results.length, memories: results };
+        }
+
         const memories = await fastify.engine.listSessionMemories(request.params.sessionId, limit);
         return { count: memories.length, memories };
       } catch (error) {

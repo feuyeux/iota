@@ -12,6 +12,34 @@ import type {
   RuntimeRequest,
 } from "../event/types.js";
 
+// ─── Narrow interface types for native Gemini stream-json events ─────────────
+
+/** Usage metadata from Gemini result events. */
+interface GeminiUsageMetadata {
+  promptTokenCount?: number;
+  input_tokens?: number;
+  input?: number;
+  candidatesTokenCount?: number;
+  output_tokens?: number;
+  totalTokenCount?: number;
+  total_tokens?: number;
+  [key: string]: unknown;
+}
+
+/** A content part in a Gemini content array. */
+interface GeminiPart {
+  text?: string;
+  [key: string]: unknown;
+}
+
+/** Metadata payload attached to memory events. */
+interface GeminiMetadataPayload {
+  [key: string]: unknown;
+}
+
+/** Tool input / function call arguments. */
+type GeminiToolInput = Record<string, unknown>;
+
 /**
  * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * GeminiAdapter — Section 7.4
@@ -163,7 +191,7 @@ function mapGeminiEvent(
           ? value.input
           : typeof value.args === "object" && value.args !== null
             ? value.args
-            : {}) as Record<string, unknown>,
+            : {}) as GeminiToolInput,
         approvalRequired: false,
       },
     };
@@ -206,7 +234,7 @@ function mapGeminiEvent(
         content: extractGeminiText(value) ?? "",
         metadata:
           typeof value.metadata === "object" && value.metadata !== null
-            ? (value.metadata as Record<string, unknown>)
+            ? (value.metadata as GeminiMetadataPayload)
             : undefined,
       },
     };
@@ -216,7 +244,7 @@ function mapGeminiEvent(
     const text = extractGeminiText(value);
     // Extract native usage from usageMetadata (Section 5.3) or stats (current CLI)
     const usageMeta = (value.usageMetadata || value.stats) as
-      | Record<string, unknown>
+      | GeminiUsageMetadata
       | undefined;
 
     const inputTokens = usageMeta
@@ -305,9 +333,9 @@ function extractGeminiText(value: Record<string, unknown>): string | undefined {
         if (
           typeof part === "object" &&
           part !== null &&
-          typeof (part as Record<string, unknown>).text === "string"
+          typeof (part as GeminiPart).text === "string"
         ) {
-          return (part as Record<string, unknown>).text as string;
+          return (part as GeminiPart).text as string;
         }
         return "";
       })

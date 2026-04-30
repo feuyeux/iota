@@ -12,6 +12,37 @@ import type {
   RuntimeRequest,
 } from "../event/types.js";
 
+// ─── Narrow interface types for native Claude stream-json events ─────────────
+
+/** Delta object in content_block_delta events (thinking or text). */
+interface ThinkingDelta {
+  type?: string;
+  thinking?: string;
+  text?: string;
+}
+
+/** The `input` field on a tool_use event. */
+type ToolInput = Record<string, unknown>;
+
+/** Usage statistics included in result events. */
+interface UsageData {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/** Metadata payload attached to memory events. */
+interface MetadataPayload {
+  [key: string]: unknown;
+}
+
+/** A content block that may appear in an array content field. */
+interface ContentBlock {
+  text?: string;
+  [key: string]: unknown;
+}
+
 /**
  * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * ClaudeCodeAdapter — Section 7.2
@@ -88,10 +119,12 @@ export class ClaudeCodeAdapter extends SubprocessBackendAdapter {
           config.env = { ...settings.env, ...config.env };
         }
       } catch (error) {
+        // Settings file is optional — failure here is intentionally non-fatal.
+        // The engine continues with default/explicit config when settings are
+        // missing, unreadable, or malformed.
         const settingsPath = config.env?.CLAUDE_SETTINGS_PATH ?? "unknown";
         console.warn(
-          `[claude-code] Failed to load settings from ${settingsPath}:`,
-          error instanceof Error ? error.message : String(error),
+          `[claude-code] Failed to load settings file "${settingsPath}": ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -143,12 +176,12 @@ function mapClaudeEvent(
     (type === "content_block_delta" &&
       typeof value.delta === "object" &&
       value.delta !== null &&
-      (value.delta as Record<string, unknown>).type === "thinking_delta")
+      (value.delta as ThinkingDelta).type === "thinking_delta")
   ) {
     const delta =
       typeof value.delta === "object" && value.delta !== null
-        ? (value.delta as Record<string, unknown>)
-        : {};
+        ? (value.delta as ThinkingDelta)
+        : ({} as ThinkingDelta);
     const thinkingText =
       typeof delta.thinking === "string"
         ? delta.thinking
@@ -207,7 +240,7 @@ function mapClaudeEvent(
         rawToolName: toolName,
         arguments: (typeof value.input === "object" && value.input !== null
           ? value.input
-          : {}) as Record<string, unknown>,
+          : {}) as ToolInput,
         approvalRequired: false,
       },
     };
@@ -240,7 +273,7 @@ function mapClaudeEvent(
 
   if (type === "result") {
     const text = extractClaudeText(value);
-    const usage = value.usage as Record<string, unknown> | undefined;
+    const usage = value.usage as UsageData | undefined;
 
     return {
       type: "output",
@@ -315,7 +348,7 @@ function mapClaudeEvent(
         content,
         metadata:
           typeof value.metadata === "object" && value.metadata !== null
-            ? (value.metadata as Record<string, unknown>)
+            ? (value.metadata as MetadataPayload)
             : undefined,
       },
     };
@@ -359,7 +392,7 @@ function extractClaudeText(value: Record<string, unknown>): string | undefined {
   if (typeof value.content === "string") return value.content;
   if (typeof value.text === "string") return value.text;
   if (typeof value.delta === "object" && value.delta !== null) {
-    const delta = value.delta as Record<string, unknown>;
+    const delta = value.delta as ThinkingDelta;
     if (typeof delta.text === "string") return delta.text;
   }
   if (Array.isArray(value.content)) {
@@ -369,9 +402,9 @@ function extractClaudeText(value: Record<string, unknown>): string | undefined {
         if (
           typeof block === "object" &&
           block !== null &&
-          typeof (block as Record<string, unknown>).text === "string"
+          typeof (block as ContentBlock).text === "string"
         ) {
-          return (block as Record<string, unknown>).text as string;
+          return (block as ContentBlock).text as string;
         }
         return "";
       })
