@@ -45,13 +45,13 @@ Each adapter lives in `src/backend/`:
 
 | Adapter | Process Mode | Protocol |
 |---|---|---|
-| ClaudeCodeAdapter | per-execution subprocess | stream-json NDJSON |
-| CodexAdapter | per-execution subprocess | NDJSON |
-| GeminiAdapter | per-execution subprocess | stream-json NDJSON |
+| ClaudeCodeAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
+| CodexAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
+| GeminiAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 | HermesAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 | OpenCodeAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 
-ACP adapters expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini expose `mcpResponseChannel: false`. Keep `BackendStatusView.capabilities.mcpResponseChannel` and Agent status mapping in sync with backend capabilities.
+ACP adapters expose `mcpResponseChannel: true`; all first-party backends are ACP-only. Keep `BackendStatusView.capabilities.mcpResponseChannel` and Agent status mapping in sync with backend capabilities.
 
 ## Hard Constraints
 
@@ -59,7 +59,7 @@ ACP adapters expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemin
 - Do not add vendor internal SDK dependencies.
 - Do not add protocol-conversion executables.
 - All sensitive values must be redacted in visibility, audit, snapshots, replay, docs, and logs.
-- All native backend events must map into normalized `RuntimeEvent`.
+- All backend protocol events must map into normalized `RuntimeEvent`.
 - Backend adapters must keep secrets out of argv; pass secrets through environment or backend-native config files.
 - App read models are built from Engine visibility/event models, never from raw backend payloads.
 

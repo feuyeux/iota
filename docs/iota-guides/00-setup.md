@@ -242,17 +242,17 @@ iota config set env.OPENCODE_MODEL "MiniMax-M2.7" --scope backend --scope-id ope
 
 ---
 
-## 5. ACP 协议切换
+## 5. ACP 协议说明
 
-Claude Code、Codex、Gemini 默认使用 legacy native 协议。如需切换到 ACP 模式：
+全部 5 个 backend 都是 ACP-only。默认配置已经写入 `protocol: acp`，无需手动切换。
+
+如历史 Redis 或 YAML 配置里残留 `protocol native`，请删除或改回 `acp`：
 
 ```bash
 iota config set protocol acp --scope backend --scope-id claude-code
 iota config set protocol acp --scope backend --scope-id codex
 iota config set protocol acp --scope backend --scope-id gemini
 ```
-
-Hermes 和 OpenCode 是 ACP-only backend，无需手动切换。
 
 ---
 

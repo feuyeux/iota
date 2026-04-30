@@ -49,25 +49,25 @@ If code and docs diverge, prefer the current code path and update docs to match 
 
 ## Backend Adapters
 
-Backend protocol logic lives in `iota-engine/src/backend/`; do not add vendor internal SDK dependencies or protocol-conversion executables. All native backend events must normalize to `RuntimeEvent`.
+Backend protocol logic lives in `iota-engine/src/backend/`; do not add vendor internal SDK dependencies or protocol-conversion executables. All backend protocol events must normalize to `RuntimeEvent`.
 
-| Backend | Native Adapter | ACP Adapter | Process Model | Notes |
-|---|---|---|---|---|
-| Claude Code | `claude-code.ts` | `claude-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
-| Codex | `codex.ts` | `codex-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
-| Gemini CLI | `gemini.ts` | `gemini-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
-| Hermes Agent | n/a | `hermes.ts` | ACP long-running | ACP-only; validate `hermes config show` |
-| OpenCode | n/a | `opencode-acp.ts` | ACP long-running | ACP-only; uses OpenCode provider config |
+| Backend | ACP Adapter | Process Model | Notes |
+|---|---|---|---|
+| Claude Code | `claude-acp.ts` | ACP long-running | adapter-backed ACP |
+| Codex | `codex-acp.ts` | ACP long-running | adapter-backed ACP |
+| Gemini CLI | `gemini-acp.ts` | ACP long-running | native `--acp` mode |
+| Hermes Agent | `hermes.ts` | ACP long-running | validate `hermes config show` |
+| OpenCode | `opencode-acp.ts` | ACP long-running | uses OpenCode provider config |
 
-ACP backends expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini preserve backend-native MCP events and do not support Engine mid-execution MCP result writes.
+ACP backends expose `mcpResponseChannel: true`; all first-party backend integrations are ACP-only.
 
 Additional backend support files in `src/backend/`:
 
 - `acp-backend-adapter.ts` / `acp-event-mapper.ts`: shared ACP JSON-RPC 2.0 protocol adapter and event normalization
-- `acp-fallback.test.ts`: tests for native fallback behavior
+- `acp-only.test.ts`: tests for ACP-only backend selection and native protocol rejection
 - `pool.ts`: backend pool with circuit breaker and health tracking
 - `subprocess.ts`: shared subprocess lifecycle management
-- `prompt-composer.ts`: prompt assembly for native backends
+- `prompt-composer.ts`: prompt assembly for prompt-only backends
 - `text-utils.ts`: output text normalization utilities
 - `error-hints.ts`: user-friendly error message mapping
 - `mcp-config.ts`: MCP server configuration generation per backend

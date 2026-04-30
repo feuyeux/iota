@@ -5,7 +5,7 @@ import type { McpServerDescriptor } from "../event/types.js";
 export class ClaudeCodeAcpAdapter extends AcpBackendAdapter {
   private configuredModel?: string;
 
-  constructor(mcpServers: McpServerDescriptor[] = [], commandArgs = ["@anthropic-ai/claude-code-acp"]) {
+  constructor(mcpServers: McpServerDescriptor[] = [], commandArgs = ["@zed-industries/claude-code-acp"]) {
     super({
       name: "claude-code",
       defaultExecutable: "npx",

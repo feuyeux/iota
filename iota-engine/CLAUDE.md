@@ -4,7 +4,7 @@ This file provides package-level guidance for working in `iota-engine/`.
 
 ## Workspace Overview
 
-`iota-engine` is the `@iota/engine` runtime library. It orchestrates multiple AI coding CLIs through native subprocess protocols and provides shared memory, workspace, visibility, storage, routing, approval, metrics, and event-streaming primitives for `../iota-cli/` and `../iota-agent/`.
+`iota-engine` is the `@iota/engine` runtime library. It orchestrates multiple AI coding CLIs through ACP subprocess protocols and provides shared memory, workspace, visibility, storage, routing, approval, metrics, and event-streaming primitives for `../iota-cli/` and `../iota-agent/`.
 
 Shared design documents live at the workspace root in `../docs/`.
 
@@ -19,25 +19,25 @@ If code and docs conflict, prefer the current implementation and then update doc
 
 - TypeScript / Bun runtime
 - Engine-internal adapters in `src/backend/`
-- ACP JSON-RPC 2.0 is the preferred backend protocol; legacy native CLI subprocess protocols remain as fallback for Claude Code, Codex, and Gemini
+- ACP JSON-RPC 2.0 is the only backend protocol path for first-party backends
 - No vendor internal SDK imports; adapter-backed ACP shims must remain external executables configured through backend protocol settings
 - Redact secret-like values in visibility, audit, snapshots, replay, logs, and examples
 
 ## Backend Integration Baseline
 
-| Backend | Native / Fallback Process | ACP Process | Protocol |
-|---|---|---|---|
-| Claude Code | `claude --print --output-format stream-json --verbose --bare --permission-mode auto` | `npx @anthropic-ai/claude-code-acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy NDJSON fallback |
-| Codex | `codex exec [-c model=...]` | `npx @openai/codex-acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy NDJSON fallback |
-| Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | `gemini --acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy stream-json fallback |
-| Hermes Agent | n/a | `hermes acp` | ACP JSON-RPC 2.0 |
-| OpenCode | n/a | `opencode acp` | ACP JSON-RPC 2.0 |
+| Backend | ACP Process | Protocol |
+|---|---|---|
+| Claude Code | `npx @zed-industries/claude-code-acp` | ACP JSON-RPC 2.0 |
+| Codex | `npx @zed-industries/codex-acp` | ACP JSON-RPC 2.0 |
+| Gemini CLI | `gemini --acp` | ACP JSON-RPC 2.0 |
+| Hermes Agent | `hermes acp` | ACP JSON-RPC 2.0 |
+| OpenCode | `opencode acp` | ACP JSON-RPC 2.0 |
 
 ## Current Implementation Notes
 
 - Approval enforcement is implemented in `src/engine.ts` through approval policy and hooks. CLI uses `CliApprovalHook`; Agent uses `DeferredApprovalHook` and routes `approval_decision` into `IotaEngine.resolveApproval()`.
 - Backend credentials, models, and endpoints are resolved through layered config plus Redis distributed config overlays. Do not reintroduce backend-local env files as the main configuration path.
-- ACP adapters expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini expose `mcpResponseChannel: false`. Keep Agent/App backend capability views aligned when this changes.
+- ACP adapters expose `mcpResponseChannel: true`. Keep Agent/App backend capability views aligned when this changes.
 - Keep Engine output aligned with Agent App Read Model expectations: snapshots and deltas are shaped above Engine, but Engine remains the source for visibility, trace, replay, and runtime events.
 
 ## Commands

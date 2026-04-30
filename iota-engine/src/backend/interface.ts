@@ -26,7 +26,7 @@ export interface BackendConfig {
   workingDirectory: string;
   timeoutMs: number;
   env?: Record<string, string>;
-  protocol?: "native" | "acp";
+  protocol?: "acp";
   acpAdapter?: string;
   acpAdapterArgs?: string[];
   processMode?: "per-execution" | "long-lived";
@@ -65,7 +65,7 @@ export interface RuntimeBackend {
   destroy(): Promise<void>;
 
   /**
-   * Optional: send a native-protocol response back to the backend process.
+   * Optional: send a protocol response back to the backend process.
    * Used for approval decisions and MCP tool results.
    * Returns true if the response was written, false if unsupported.
    */
@@ -73,7 +73,7 @@ export interface RuntimeBackend {
 
   /**
    * Optional: attach the per-execution visibility collector to adapters that
-   * can record native protocol refs and mapping details.
+   * can record backend protocol refs and mapping details.
    */
   setVisibilityCollector?(
     collector: VisibilityCollector | undefined,

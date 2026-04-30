@@ -921,6 +921,12 @@ export class IotaEngine {
     return this.metrics.getSnapshot();
   }
 
+  /** Return the model string configured for a given backend, if available. */
+  getBackendModel(backend: BackendName): string | undefined {
+    const adapter = this.requirePool().get(backend);
+    return adapter.getModel?.();
+  }
+
   resetCircuitBreaker(backend: BackendName): boolean {
     return this.requirePool().resetBreaker(backend);
   }

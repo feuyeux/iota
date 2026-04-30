@@ -41,7 +41,7 @@ If code and docs differ, prefer the current implementation and then update docs.
 - Backend protocol adaptation belongs inside `iota-engine/src/backend/`.
 - Do not add protocol-conversion executables.
 - Do not depend on vendor internal APIs or SDK internals.
-- All native backend events must normalize to `RuntimeEvent`.
+- All backend protocol events must normalize to `RuntimeEvent`.
 - App-facing UI should consume Agent App Read Model snapshots and deltas, not raw backend protocols.
 - Shared docs belong in root `docs/`.
 - Redact sensitive values in visibility, audit, snapshot, replay, docs, logs, and event examples.
@@ -52,15 +52,15 @@ All five backends are handled by engine-internal adapters:
 
 | Backend | Executable | Process Model | Protocol |
 |---|---|---|---|
-| Claude Code | `claude --print --output-format stream-json ...` | per-execution subprocess | stream-json NDJSON |
-| Codex | `codex exec [-c model=...]` | per-execution subprocess | NDJSON |
-| Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | per-execution subprocess | stream-json NDJSON |
+| Claude Code | `npx @zed-industries/claude-code-acp` | long-running subprocess | ACP JSON-RPC 2.0 |
+| Codex | `npx @zed-industries/codex-acp` | long-running subprocess | ACP JSON-RPC 2.0 |
+| Gemini CLI | `gemini --acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 | Hermes Agent | `hermes acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 | OpenCode | `opencode acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 
 Keep secrets out of argv. Pass credentials through environment or backend-native config files resolved by Engine config. Keep subprocess env cleanup lists aligned with every backend-specific credential/model variable, including OpenCode.
 
-ACP backends expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini do not support Engine mid-execution MCP result writes.
+ACP backends expose `mcpResponseChannel: true`; all first-party backends are ACP-only.
 
 ## Current Implementation Notes
 

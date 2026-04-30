@@ -62,6 +62,8 @@ const HELP_TEXT = [
 interface TuiState {
   sessionId: string;
   lastExecutionId?: string;
+  activeBackend: BackendName;
+  activeModel?: string;
 }
 
 export async function interactiveCommand(): Promise<void> {
@@ -75,14 +77,22 @@ export async function interactiveCommand(): Promise<void> {
     workingDirectory: process.cwd(),
   });
   const rl = readline.createInterface({ input, output });
-  const state: TuiState = { sessionId: session.id };
+  const sessionRecord = await engine.getSession(session.id);
+  const activeBackend: BackendName =
+    (sessionRecord?.activeBackend as BackendName) ?? "claude-code";
+  const activeModel = engine.getBackendModel(activeBackend);
+  const state: TuiState = {
+    sessionId: session.id,
+    activeBackend,
+    activeModel,
+  };
 
-  console.log(formatIotaBanner(session.id));
+  console.log(formatIotaBanner(session.id, state.activeBackend, state.activeModel));
 
   try {
     let running = true;
     while (running) {
-      const prompt = (await rl.question(chalk.green("iota> "))).trim();
+      const prompt = (await rl.question(chalk.green(`${state.activeBackend}> `))).trim();
       if (!prompt) continue;
 
       try {
@@ -106,7 +116,12 @@ export async function interactiveCommand(): Promise<void> {
           const backend = prompt.slice(7).trim();
           if (BACKENDS.has(backend as BackendName)) {
             await engine.switchBackend(state.sessionId, backend as BackendName);
-            console.log(chalk.cyan(`Switched to ${backend}`));
+            state.activeBackend = backend as BackendName;
+            state.activeModel = engine.getBackendModel(backend as BackendName);
+            const modelInfo = state.activeModel
+              ? ` (model: ${state.activeModel})`
+              : "";
+            console.log(chalk.cyan(`Switched to ${backend}${modelInfo}`));
           } else {
             console.error(
               chalk.red(
@@ -130,6 +145,11 @@ export async function interactiveCommand(): Promise<void> {
 
         if (prompt === "session") {
           console.log(chalk.cyan(`Session: ${state.sessionId}`));
+          console.log(
+            chalk.cyan(
+              `Backend: ${state.activeBackend}${state.activeModel ? ` | Model: ${state.activeModel}` : ""}`,
+            ),
+          );
           if (state.lastExecutionId) {
             console.log(chalk.dim(`Last execution: ${state.lastExecutionId}`));
           }
@@ -360,7 +380,11 @@ function truncate(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars - 3)}...`;
 }
 
-function formatIotaBanner(sessionId: string): string {
+function formatIotaBanner(
+  sessionId: string,
+  backend: BackendName,
+  model?: string,
+): string {
   const cyan = chalk.hex("#47bfff");
   const violet = chalk.hex("#aa3bff");
   const mark = LOGO_LINES.map((line, index) => {
@@ -373,9 +397,12 @@ function formatIotaBanner(sessionId: string): string {
     return chalk.dim(line.replaceAll("o", cyan("o")));
   }).join("\n");
 
+  const backendInfo = model ? `${backend} / ${model}` : backend;
+
   return [
     mark,
     `${chalk.bold("iota TUI")} ${chalk.dim(`session ${sessionId.slice(0, 8)}`)}`,
+    `${chalk.cyan("Backend:")} ${backendInfo}`,
     chalk.dim('Type "help" for commands, "exit" to quit.'),
   ].join("\n");
 }

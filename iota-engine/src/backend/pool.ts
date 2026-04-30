@@ -43,7 +43,7 @@ export class BackendPool {
             mcpServers,
             buildAdapterCommandArgs(
               config.backend.claudeCode,
-              "@anthropic-ai/claude-code-acp",
+              "@zed-industries/claude-code-acp",
             ),
           ),
       ),
@@ -56,7 +56,7 @@ export class BackendPool {
         () =>
           new CodexAcpAdapter(
             mcpServers,
-            buildAdapterCommandArgs(config.backend.codex, "@openai/codex-acp"),
+            buildAdapterCommandArgs(config.backend.codex, "@zed-industries/codex-acp"),
           ),
       ),
     );

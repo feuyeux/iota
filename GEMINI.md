@@ -20,7 +20,7 @@ The root directory is the single Git repository for iota. There is no root packa
 - Backend protocol adaptation belongs inside `iota-engine/src/backend/`.
 - Do not add protocol-conversion executables.
 - Do not depend on vendor internal APIs or SDK internals.
-- All native backend events must normalize to `RuntimeEvent`.
+- All backend protocol events must normalize to `RuntimeEvent`.
 - App-facing UI should consume Agent App Read Model snapshots / deltas, not raw backend protocols.
 - Redact sensitive values in visibility, audit, snapshot, replay, docs, logs, and event examples.
 - Shared docs belong in root `docs/`.
@@ -75,7 +75,7 @@ node dist/index.js run --backend <name> --trace "ping"
 For Gemini CLI adapter internals, see:
 
 - `iota-engine/GEMINI.md`
-- `iota-engine/src/backend/gemini.ts`
+- `iota-engine/src/backend/gemini-acp.ts`
 - `iota-engine/src/backend/subprocess.ts`
 - `iota-engine/src/backend/prompt-composer.ts`
 

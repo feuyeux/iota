@@ -116,7 +116,7 @@ export interface SubprocessAdapterOptions {
   buildInput?(request: RuntimeRequest): string | undefined;
   /** For long-lived processes, send a new message without closing stdin */
   buildMessage?(request: RuntimeRequest): string | undefined;
-  /** Build a native protocol response to send back to the subprocess stdin (e.g. approval response) */
+  /** Build a protocol response to send back to the subprocess stdin (e.g. approval response) */
   buildNativeResponse?(event: RuntimeEvent): string | undefined;
   /** Map a native JSON object to a RuntimeEvent using backend-specific protocol knowledge */
   mapNativeEvent?(
@@ -364,7 +364,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
   }
 
   /**
-   * Send a native protocol response back to the backend subprocess stdin.
+   * Send a protocol response back to the backend subprocess stdin.
    * Used for approval decisions, MCP tool results, etc.
    * The adapter's buildNativeResponse converts a RuntimeEvent to the backend's wire format.
    */
@@ -892,9 +892,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
             // Eagerly terminate so backends that retry internally (e.g. gemini-cli
             // exponential backoff on 429) do not hang the user-visible request.
             try {
-              child.kill(
-                process.platform === "win32" ? "SIGKILL" : "SIGINT",
-              );
+              child.kill(process.platform === "win32" ? "SIGKILL" : "SIGINT");
             } catch {
               // Ignore — process may already be exiting.
             }
@@ -915,9 +913,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
           if (issue) {
             detectedIssue = issue;
             try {
-              child.kill(
-                process.platform === "win32" ? "SIGKILL" : "SIGINT",
-              );
+              child.kill(process.platform === "win32" ? "SIGKILL" : "SIGINT");
             } catch {
               // Ignore.
             }
@@ -1035,10 +1031,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
 
   // ─── Line parsing ──────────────────────────────────────────────
 
-  protected mapLine(
-    line: string,
-    request: RuntimeRequest,
-  ): NativeMappedEvent {
+  protected mapLine(line: string, request: RuntimeRequest): NativeMappedEvent {
     const trimmed = line.trim();
     if (!trimmed) {
       return null;
@@ -1115,7 +1108,10 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
         vc!.endSpan(parseSpanId, {
           attributes: {
             mappingRule,
-            eventType: events.length === 0 ? "ignored" : events.map((event) => event.type).join(","),
+            eventType:
+              events.length === 0
+                ? "ignored"
+                : events.map((event) => event.type).join(","),
           },
         });
       }
@@ -1156,9 +1152,13 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
           totalTokens:
             typeof u.totalTokens === "number" ? u.totalTokens : undefined,
           reasoningTokens:
-            typeof u.reasoningTokens === "number" ? u.reasoningTokens : undefined,
+            typeof u.reasoningTokens === "number"
+              ? u.reasoningTokens
+              : undefined,
           cacheReadTokens:
-            typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : undefined,
+            typeof u.cacheReadTokens === "number"
+              ? u.cacheReadTokens
+              : undefined,
           cacheWriteTokens:
             typeof u.cacheWriteTokens === "number"
               ? u.cacheWriteTokens

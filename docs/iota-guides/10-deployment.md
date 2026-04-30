@@ -141,7 +141,7 @@ storage:
 
 ## 5. 后端安装与验证
 
-后端安装命令、Redis 配置、ACP 协议切换和 traced request 验证的完整参考见 [00-setup.md](./00-setup.md)。
+后端安装命令、Redis 配置、ACP-only 说明和 traced request 验证的完整参考见 [00-setup.md](./00-setup.md)。
 
 发现已安装后端：
 

@@ -9,7 +9,7 @@ export interface BackendSection {
   executable: string;
   timeoutMs: number;
   env: Record<string, string>;
-  protocol?: "native" | "acp";
+  protocol?: "acp";
   acpAdapter?: string;
   acpAdapterArgs?: string[];
   processMode?: "per-execution" | "long-lived";
@@ -93,11 +93,41 @@ export const DEFAULT_CONFIG: IotaConfig = {
     disabledBackends: [],
   },
   backend: {
-    claudeCode: { executable: "claude", timeoutMs: 600_000, env: {} },
-    codex: { executable: "codex", timeoutMs: 600_000, env: {} },
-    gemini: { executable: "gemini", timeoutMs: 600_000, env: {} },
-    hermes: { executable: "hermes", timeoutMs: 600_000, env: {}, protocol: "acp", processMode: "long-lived" },
-    opencode: { executable: "opencode", timeoutMs: 600_000, env: {}, protocol: "acp", processMode: "long-lived" },
+    claudeCode: {
+      executable: "claude",
+      timeoutMs: 600_000,
+      env: {},
+      protocol: "acp",
+      processMode: "long-lived",
+    },
+    codex: {
+      executable: "codex",
+      timeoutMs: 600_000,
+      env: {},
+      protocol: "acp",
+      processMode: "long-lived",
+    },
+    gemini: {
+      executable: "gemini",
+      timeoutMs: 600_000,
+      env: {},
+      protocol: "acp",
+      processMode: "long-lived",
+    },
+    hermes: {
+      executable: "hermes",
+      timeoutMs: 600_000,
+      env: {},
+      protocol: "acp",
+      processMode: "long-lived",
+    },
+    opencode: {
+      executable: "opencode",
+      timeoutMs: 600_000,
+      env: {},
+      protocol: "acp",
+      processMode: "long-lived",
+    },
   },
   approval: {
     shell: "auto",

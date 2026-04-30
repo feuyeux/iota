@@ -5,10 +5,10 @@
 
 ## 1. 概述
 
-iota 通过 `BackendPool` 管理 backend adapter。当前代码已经接入 ACP 双栈路径：
+iota 通过 `BackendPool` 管理 backend adapter。当前代码只保留 ACP 路径：
 
-- Claude Code / Codex / Gemini：可按配置选择 ACP adapter 或 legacy native adapter；ACP 模式下保留 native fallback。
-- Hermes / OpenCode：ACP-only backend，拒绝 native protocol。
+- Claude Code / Codex / Gemini / Hermes / OpenCode：全部通过 ACP adapter 对接。
+- `protocol: native` 被视为无效配置，初始化时直接拒绝。
 - 所有 backend 事件最终规范化为 `RuntimeEvent`。
 
 Backend 协议逻辑必须留在 `iota-engine/src/backend/`，不要引入 vendor 内部 SDK 或额外协议转换可执行程序。
@@ -17,13 +17,13 @@ Backend 协议逻辑必须留在 `iota-engine/src/backend/`，不要引入 vendo
 
 ## 2. Backend 矩阵
 
-| Backend | ACP 文件 | Legacy native 文件 | 默认协议 | 进程模型 |
-|---|---|---|---|---|
-| Claude Code | `claude-acp.ts` | `claude-code.ts` | config 可选；native fallback | ACP long-lived；native per-execution |
-| Codex | `codex-acp.ts` | `codex.ts` | config 可选；native fallback | ACP long-lived；native per-execution |
-| Gemini CLI | `gemini-acp.ts` | `gemini.ts` | config 可选；native fallback | ACP long-lived；native per-execution |
-| Hermes Agent | `hermes.ts` | n/a | ACP-only | long-lived subprocess |
-| OpenCode | `opencode-acp.ts` | n/a | ACP-only | long-lived subprocess |
+| Backend | ACP 文件 | 默认协议 | 进程模型 |
+|---|---|---|---|
+| Claude Code | `claude-acp.ts` | ACP-only | long-lived subprocess |
+| Codex | `codex-acp.ts` | ACP-only | long-lived subprocess |
+| Gemini CLI | `gemini-acp.ts` | ACP-only | long-lived subprocess |
+| Hermes Agent | `hermes.ts` | ACP-only | long-lived subprocess |
+| OpenCode | `opencode-acp.ts` | ACP-only | long-lived subprocess |
 
 默认配置见 `iota-engine/src/config/schema.ts`。
 
@@ -33,8 +33,8 @@ Backend 协议逻辑必须留在 `iota-engine/src/backend/`，不要引入 vendo
 
 `iota-engine/src/backend/pool.ts` 当前行为：
 
-- `claude-code`、`codex`、`gemini`：当 `backend.<name>.protocol === "acp"` 时使用 ACP adapter，并注册 legacy fallback；否则使用 native adapter。
-- `hermes`、`opencode`：通过 `requireAcpOnlyBackend()` 强制 ACP。
+- 全部 backend 通过 `requireAcpBackend()` 强制 ACP。
+- `claude-code`、`codex` 使用 adapter-backed ACP 命令；`gemini`、`hermes`、`opencode` 使用后端原生 ACP 命令。
 - `routing.disabledBackends` 中的 backend 不初始化、不返回。
 - Circuit breaker 包裹 backend 执行，失败后打开断路器。
 
@@ -44,8 +44,8 @@ Backend 协议逻辑必须留在 `iota-engine/src/backend/`，不要引入 vendo
 
 | Backend | 默认 ACP command args | 说明 |
 |---|---|---|
-| Claude Code | `@anthropic-ai/claude-code-acp` | 可通过 backend config 覆盖 adapter args |
-| Codex | `@openai/codex-acp` | 可通过 backend config 覆盖 adapter args |
+| Claude Code | `@zed-industries/claude-code-acp` | 可通过 backend config 覆盖 adapter args |
+| Codex | `@zed-industries/codex-acp` | 可通过 backend config 覆盖 adapter args |
 | Gemini CLI | `--acp` | 使用 Gemini 原生 ACP 模式 |
 | Hermes | `acp` | `hermes acp` |
 | OpenCode | `acp` | `opencode acp` |
@@ -89,9 +89,6 @@ sequenceDiagram
 ```text
 RuntimeBackend (interface)
   ├── SubprocessBackendAdapter (abstract)
-  │     ├── ClaudeCodeAdapter
-  │     ├── CodexAdapter
-  │     └── GeminiAdapter
   └── AcpBackendAdapter
         ├── ClaudeCodeAcpAdapter
         ├── CodexAcpAdapter
@@ -134,15 +131,13 @@ ACP 统一映射器：`iota-engine/src/backend/acp-event-mapper.ts`。
 - `session/request_permission` → extension `approval_request`
 - memory/file/native extension 事件映射到标准 RuntimeEvent 或 extension event
 
-Legacy native adapter 继续负责各自原生 NDJSON/stream-json 映射。
-
 ---
 
 ## 9. 配置
 
 Backend 凭证、模型、endpoint 通过 layered config + Redis distributed config overlay 解析。共享部署中建议把敏感配置放 Redis scope，不提交 `.env` 或 backend-local env 文件。
 
-全部 5 后端的 Redis 配置命令和 ACP 协议切换见 [00-setup.md](./00-setup.md#3-后端-redis-配置)。
+全部 5 后端的 Redis 配置命令见 [00-setup.md](./00-setup.md#4-后端-redis-配置)。
 
 ---
 
@@ -151,11 +146,10 @@ Backend 凭证、模型、endpoint 通过 layered config + Redis distributed con
 | 能力 | 代码状态 | 验收要求 |
 |---|---|---|
 | ACP adapter 基类 | 已接入 | adapter 单测 + traced request |
-| Claude/Codex/Gemini ACP path | 已接入，带 native fallback | 每个 backend 跑真实 traced request |
+| Claude/Codex/Gemini ACP path | 已接入，ACP-only | 每个 backend 跑真实 traced request |
 | Hermes/OpenCode ACP-only | 已接入 | 检查本机安装、配置和真实 traced request |
 | Approval response 回写 | 已接入 | backend permission request + Agent/CLI 决策测试 |
 | MCP tool result 回写 | 已接入基础通道 | 需要按 backend 能力验证 `mcpResponseChannel` |
-| Legacy native fallback | 保留，deprecated | 只作为降级路径维护 |
 
 不能只靠 `ensure-backends.sh --check-only` 或 `iota status` 判定后端切换成功。
 

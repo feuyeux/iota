@@ -25,11 +25,23 @@ graph LR
 ```bash
 cd iota-engine && bun install && bun run build
 cd ../iota-cli && bun install && bun run build
+```
 
+CLI 的实际入口是 `iota-cli/dist/index.js`，通过 Node.js 直接调用：
+
+```bash
 node iota-cli/dist/index.js <command>
 ```
 
-`package.json` 的 bin 指向 `iota-cli/dist/index.js`，也可以通过包管理器 link 后使用 `iota` 命令。
+若希望使用短命令 `iota`，可通过 `bun link` 或 `npm link` 在 `iota-cli/` 目录下注册全局 bin：
+
+```bash
+cd iota-cli && bun link
+```
+
+> **注意：** 系统中可能存在同名的 Python 包 `iota`（`pip install iota`）。如果执行 `iota` 时出现 `ModuleNotFoundError: No module named 'iota'`，说明 shell 解析到了 Python 版本而非本项目 CLI。请用 `pip uninstall iota` 移除冲突包，或确认 `which iota` / `where iota` 指向 `iota-cli/dist/index.js`。
+
+本文档后续示例中的 `iota` 命令均指 `node iota-cli/dist/index.js`（或 link 后的等价全局命令）。
 
 ---
 
@@ -127,9 +139,26 @@ iota visibility interactive --execution <executionId> --interval 1000
 ### 启动
 
 ```bash
-iota interactive
-iota i
+node iota-cli/dist/index.js interactive
+node iota-cli/dist/index.js i
 ```
+
+启动后 TUI 显示当前接入的 backend 名称与大模型：
+
+```
+      o
+   .--|--. 
+o-- IOTA --o
+   '--|--'
+      o
+iota TUI session a1b2c3d4
+Backend: claude-code / claude-sonnet-4-20250514
+Type "help" for commands, "exit" to quit.
+
+claude-code>
+```
+
+提示符格式为 `<backend名称>`，切换 backend 后提示符自动更新。
 
 ### 能力
 

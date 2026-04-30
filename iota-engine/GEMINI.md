@@ -1,8 +1,8 @@
 # GEMINI.md
 
-## Gemini CLI Backend Adapter
+## Gemini CLI ACP Backend Adapter
 
-This document describes the Gemini CLI backend adapter in `src/backend/gemini.ts`.
+This document describes the Gemini CLI ACP adapter in `src/backend/gemini-acp.ts`.
 
 ## Configuration
 
@@ -10,30 +10,20 @@ This document describes the Gemini CLI backend adapter in `src/backend/gemini.ts
 |---|---|
 | Backend name | `gemini` |
 | Default executable | `gemini` |
-| Process mode | per-execution subprocess |
-| Protocol | NDJSON stream-json |
-| stdin mode | none |
-
-## Command Line
-
-```typescript
-buildArgs: (request) => [
-  "--output-format",
-  "stream-json",
-  "--skip-trust",
-  "--prompt",
-  composeEffectivePrompt(request),
-]
-```
+| Process mode | long-running subprocess |
+| Protocol | ACP JSON-RPC 2.0 |
+| stdin mode | message |
+| command args | `--acp` |
 
 ## Capabilities
 
 ```typescript
 {
   sandbox: false,
-  mcp: false,
-  mcpResponseChannel: false,
-  acp: false,
+  mcp: true,
+  mcpResponseChannel: true,
+  acp: true,
+  acpMode: "native",
   streaming: true,
   thinking: true,
   multimodal: true,
@@ -44,50 +34,21 @@ buildArgs: (request) => [
 
 ## Event Mapping
 
-| Native Type | RuntimeEvent | Notes |
+Gemini ACP messages are normalized by `acp-event-mapper.ts`.
+
+| ACP Message | RuntimeEvent | Notes |
 |---|---|---|
-| `init` | `extension` | `gemini_init` |
-| `thought` / `thinking` | `extension` | thinking payload |
-| `message` / `text` / `content` | `output` | assistant text |
-| `tool_use` / `function_call` | `tool_call` | tool invocation |
-| `tool_result` / `function_response` | `tool_result` | tool result |
-| `result` / `done` | `output` | final output with usage metadata when available |
-| `error` | `error` | execution error |
-| unknown native event | `extension` | preserved as native event payload, not dropped |
-
-## Native Usage
-
-Gemini reports usage via `usageMetadata` in result events:
-
-```typescript
-{
-  promptTokenCount?: number;
-  candidatesTokenCount?: number;
-  totalTokenCount?: number;
-}
-```
-
-When native usage is absent, Engine visibility may fall back to estimated token accounting.
+| `session/update` content | `output` / `thinking` / `tool_call` / `tool_result` / `file_delta` | Depends on content part |
+| `session/request_permission` | `extension` | `approval_request` |
+| `session/complete` | `state` | terminal status |
+| JSON-RPC error | `error` | execution error |
 
 ## Prompt Composition
 
-Uses `composeEffectivePrompt(request)` as the `--prompt` value so Gemini CLI runs in non-interactive headless mode. Without `--prompt`, current Gemini CLI versions may enter interactive mode and block.
+Uses `composeEffectivePrompt(request)` through `AcpBackendAdapter` so Gemini receives the same effective prompt as other prompt-only backends.
 
 ## Current Workspace Constraints
 
-- Gemini backend credentials and model selection come from Redis distributed config, not package-local env files
-- Backend verification must use a real traced execution, not only executable discovery
-- Any architecture or sequence document that mentions Gemini flow must label exact arrow source and target boxes
-
-## Implementation Notes
-
-- Each `stream()` call spawns a new `gemini` subprocess
-- Thinking events are preserved as `extension` events
-- Adapters emit placeholder sequence values; final event sequencing is assigned by EventStore
-- Native protocol fragments should remain visible enough for traceability without leaking secrets
-
-## Related
-
-- `src/backend/subprocess.ts`
-- `src/backend/prompt-composer.ts`
-- `src/protocol/ndjson.ts`
+- Gemini backend credentials and model selection come from Redis distributed config, not package-local env files.
+- Backend verification must use a real traced execution, not only executable discovery.
+- Any architecture or sequence document that mentions Gemini flow must label exact arrow source and target boxes.

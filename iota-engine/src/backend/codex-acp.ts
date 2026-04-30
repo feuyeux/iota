@@ -5,7 +5,7 @@ import type { McpServerDescriptor } from "../event/types.js";
 export class CodexAcpAdapter extends AcpBackendAdapter {
   private configuredModel?: string;
 
-  constructor(mcpServers: McpServerDescriptor[] = [], commandArgs = ["@openai/codex-acp"]) {
+  constructor(mcpServers: McpServerDescriptor[] = [], commandArgs = ["@zed-industries/codex-acp"]) {
     super({
       name: "codex",
       defaultExecutable: "npx",

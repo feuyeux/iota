@@ -1,0 +1,3 @@
+﻿{"jsonrpc":"2.0","id":"init-0","method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{},"clientInfo":{"name":"iota-engine","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":"sess1:new","method":"session/new","params":{"cwd":"D:\\coding\\creative\\iota\\iota-cli"}}
+{"jsonrpc":"2.0","id":"exec1","method":"session/prompt","params":{"sessionId":"__INSERT__","prompt":[{"type":"text","text":"What is 2+2?"}]}}
