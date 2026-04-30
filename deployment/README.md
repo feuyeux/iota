@@ -64,13 +64,13 @@ curl http://localhost:3000/health
 curl http://localhost:3000/api/v1/status
 ```
 
-如果你还要在这台机器上运行 Iota 的四个 backend CLI，可先执行统一检测脚本：
+如果你还要在这台机器上运行 Iota 的五个 backend CLI，可先执行统一检测脚本：
 
 ```bash
 bash deployment/scripts/ensure-backends.sh --check-only
 ```
 
-该脚本会优先检查当前 shell 的 `PATH`，并在 Windows / WSL / Git Bash 环境下回退使用 `where.exe`，避免把 Windows 侧已安装的 `hermes.exe`、`codex`、`gemini` 等可执行文件误判为缺失。
+该脚本会优先检查当前 shell 的 `PATH`，并在 Windows / WSL / Git Bash 环境下回退使用 `where.exe`，避免把 Windows 侧已安装的 `hermes.exe`、`codex`、`gemini`、`opencode` 等可执行文件误判为缺失。
 
 ### 3. 停止所有服务
 

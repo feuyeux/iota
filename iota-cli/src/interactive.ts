@@ -8,6 +8,7 @@ const BACKENDS = new Set<BackendName>([
   "codex",
   "gemini",
   "hermes",
+  "opencode",
 ]);
 
 export async function interactiveCommand(): Promise<void> {

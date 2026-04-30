@@ -13,18 +13,21 @@ declare -A COMMANDS=(
   [codex]="codex"
   [gemini]="gemini"
   [hermes]="hermes"
+  [opencode]="opencode"
 )
 declare -A DISPLAY_NAMES=(
   [claude-code]="Claude Code"
   [codex]="Codex"
   [gemini]="Gemini CLI"
   [hermes]="Hermes Agent"
+  [opencode]="OpenCode"
 )
 declare -A INSTALL_HINTS=(
   [claude-code]="npm install -g @anthropic-ai/claude-code"
   [codex]="npm install -g @openai/codex"
   [gemini]="npm install -g @google/gemini-cli"
   [hermes]="curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash  # Linux/macOS/WSL2 only; native Windows not supported"
+  [opencode]="npm install -g opencode-ai@latest"
 )
 
 usage() {
@@ -33,7 +36,7 @@ Usage:
   bash deployment/scripts/ensure-backends.sh [options] [backend...]
 
 Backends:
-  claude-code  codex  gemini  hermes
+  claude-code  codex  gemini  hermes  opencode
 
 Options:
   --check-only   Only detect installation state; do not install missing backends
@@ -145,6 +148,9 @@ install_backend() {
     hermes)
       install_hermes_from_upstream
       ;;
+    opencode)
+      install_with_npm "opencode-ai@latest"
+      ;;
     *)
       log "Unknown backend: $backend"
       return 1
@@ -169,7 +175,7 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    claude-code|codex|gemini|hermes)
+    claude-code|codex|gemini|hermes|opencode)
       TARGETS+=("$1")
       ;;
     *)
@@ -182,7 +188,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-  TARGETS=(claude-code codex gemini hermes)
+  TARGETS=(claude-code codex gemini hermes opencode)
 fi
 
 log "Checking backend executables in $ROOT_DIR"

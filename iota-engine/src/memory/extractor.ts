@@ -89,7 +89,9 @@ export class MemoryExtractor {
           ? "session_history"
           : backend === "gemini"
             ? "interaction_log"
-            : "dialogue_memory";
+            : backend === "opencode"
+              ? "conversation_replay"
+              : "dialogue_memory";
     }
 
     const semanticProfileRegex = [
@@ -122,7 +124,9 @@ export class MemoryExtractor {
           ? "codebase_facts"
           : backend === "gemini"
             ? "entity_knowledge"
-            : "profile_memory";
+            : backend === "opencode"
+              ? "user_profile"
+              : "profile_memory";
     }
 
     const strategicRegex = [
@@ -147,7 +151,9 @@ export class MemoryExtractor {
           ? "task_planning"
           : backend === "gemini"
             ? "goal_tracking"
-            : "intention_memory";
+            : backend === "opencode"
+              ? "strategic_context"
+              : "intention_memory";
     }
 
     const proceduralRegex = [
@@ -173,7 +179,9 @@ export class MemoryExtractor {
           ? "tool_usage"
           : backend === "gemini"
             ? "execution_patterns"
-            : "skill_memory";
+            : backend === "opencode"
+              ? "procedural_knowledge"
+              : "skill_memory";
     }
 
     return backend === "claude-code"
@@ -182,7 +190,9 @@ export class MemoryExtractor {
         ? "session_history"
         : backend === "gemini"
           ? "interaction_log"
-          : "dialogue_memory";
+          : backend === "opencode"
+            ? "conversation_replay"
+            : "dialogue_memory";
   }
 
   private resolveSemanticFacet(

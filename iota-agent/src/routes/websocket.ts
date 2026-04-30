@@ -53,7 +53,9 @@ interface InterruptExecutionMessage {
 interface ApprovalDecisionMessage {
   type: "approval_decision";
   requestId: string;
-  decision: "approve" | "deny";
+  executionId?: string;
+  decision?: "approve" | "deny";
+  approved?: boolean;
   reason?: string;
 }
 
@@ -99,6 +101,45 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
     const activeVisibilityPollers = new Map<string, AbortController>();
     const visibilityHashes = new Map<string, string>();
     let deltaRevision = 0;
+    const unsubscribeApprovals = fastify.engine.onDeferredApprovalRequest?.(
+      (requestId, request) => {
+        if (!appSessionSubscriptions.has(request.sessionId)) return;
+        const timestamp = Date.now();
+        const approvalDelta: AppVisibilityDelta = {
+          type: "conversation_delta",
+          executionId: request.executionId,
+          item: {
+            id: `approval-${requestId}`,
+            role: "tool",
+            content: "Approval required",
+            timestamp,
+            executionId: request.executionId,
+            eventSequence: -1,
+            metadata: {
+              approval: {
+                id: requestId,
+                type: request.operationType,
+                command: approvalDetailString(request.details, "command"),
+                path:
+                  approvalDetailString(request.details, "path") ??
+                  approvalDetailString(request.details, "absolutePath"),
+                reason: request.description,
+              },
+            },
+          },
+        };
+        safeSend(
+          ws,
+          JSON.stringify({
+            type: "app_delta",
+            sessionId: request.sessionId,
+            delta: approvalDelta,
+            revision: ++deltaRevision,
+          } satisfies AppDeltaResponseMessage),
+        );
+      },
+    );
+
 
     // Bridge Redis pub/sub to WebSocket for multi-instance event distribution (Section 4.3)
     const pubsubUnsubscribers: Array<() => Promise<void>> = [];
@@ -292,8 +333,21 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
         }
 
         if (message.type === "approval_decision") {
+          const decisionValue = normalizeApprovalDecision(message);
+          if (!decisionValue) {
+            safeSend(
+              ws,
+              JSON.stringify({
+                type: "error",
+                executionId: message.executionId,
+                error:
+                  "approval_decision requires decision='approve'|'deny' or approved boolean",
+              } satisfies StreamResponseMessage),
+            );
+            return;
+          }
           const decision: ApprovalDecision = {
-            decision: message.decision,
+            decision: decisionValue,
             reason: message.reason,
           };
           const resolved = fastify.engine.resolveApproval(
@@ -426,6 +480,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
       }
       activeVisibilityPollers.clear();
       visibilityHashes.clear();
+      unsubscribeApprovals?.();
       // Clean up pub/sub bridge subscriptions
       for (const unsub of pubsubUnsubscribers) {
         unsub().catch(() => {});
@@ -435,6 +490,26 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
     });
   });
 };
+
+function normalizeApprovalDecision(
+  message: ApprovalDecisionMessage,
+): ApprovalDecision["decision"] | undefined {
+  if (message.decision === "approve" || message.decision === "deny") {
+    return message.decision;
+  }
+  if (typeof message.approved === "boolean") {
+    return message.approved ? "approve" : "deny";
+  }
+  return undefined;
+}
+
+function approvalDetailString(
+  details: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = details[key];
+  return typeof value === "string" ? value : undefined;
+}
 
 async function pushSessionSnapshot(
   fastify: FastifyInstance,

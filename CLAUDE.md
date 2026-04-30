@@ -52,7 +52,7 @@ If code and docs differ, prefer the current implementation and then update docs.
 
 ## Backend Integration
 
-All four backends are handled by engine-internal adapters:
+All five backends are handled by engine-internal adapters:
 
 | Backend | Executable | Process Model | Protocol |
 |---|---|---|---|
@@ -60,6 +60,7 @@ All four backends are handled by engine-internal adapters:
 | Codex | `codex exec [-c model=...]` | per-execution subprocess | NDJSON |
 | Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | per-execution subprocess | stream-json NDJSON |
 | Hermes Agent | `hermes acp` | long-running subprocess | ACP JSON-RPC 2.0 |
+| OpenCode | `opencode acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 
 Keep secrets out of argv. Pass credentials through environment or backend-native config files resolved by Engine config.
 
@@ -96,7 +97,7 @@ Notes:
 ## Backend Verification Rule
 
 - Do not stop verification at executable discovery or `iota status`.
-- After switching Claude Code, Codex, Gemini CLI, or Hermes, run one real request with trace:
+- After switching Claude Code, Codex, Gemini CLI, Hermes, or OpenCode, run one real request with trace:
 
 ```bash
 cd iota-cli

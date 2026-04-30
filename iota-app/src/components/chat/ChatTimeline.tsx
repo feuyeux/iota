@@ -139,6 +139,7 @@ export const ChatTimeline: React.FC = () => {
       type: 'approval_decision',
       executionId: activeExecution.executionId,
       requestId,
+      decision: approved ? 'approve' : 'deny',
       approved
     });
   };

@@ -73,6 +73,11 @@ Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor in
 - The `iota-fun` MCP server is implemented in Engine and uses source files under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`.
 - Project toolchain convention: use `bun` for install, build, typecheck, test, lint, format, and dev execution; use `node` to run built JavaScript artifacts under `dist/`.
 
+## Codex Tooling Notes
+
+- `apply_patch` is a FREEFORM tool. Do not call it with JSON such as `{ "input": "..." }`.
+- When using `apply_patch`, the tool message body must be the raw unified diff text, beginning with `*** Begin Patch` and ending with `*** End Patch`.
+- If the environment or tool bridge keeps wrapping `apply_patch` as JSON and patching fails repeatedly, stop retrying immediately. Use a scoped fallback edit method, then verify with `git diff`.
 ## Development Workflow
 
 1. Engine changes: `cd iota-engine && bun install && bun run build && bun run typecheck && bun run test`

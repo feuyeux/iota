@@ -46,6 +46,7 @@ import {
   AutoApprovalHook,
   type ApprovalHook,
   type ApprovalDecision,
+  type ApprovalRequest,
 } from "./approval/hook.js";
 import { DeferredApprovalHook } from "./approval/deferred-hook.js";
 import { enforceApprovalPolicy } from "./approval/policy.js";
@@ -593,6 +594,15 @@ export class IotaEngine {
     return false;
   }
 
+  /** Subscribe to deferred approval requests produced by the active approval hook. */
+  onDeferredApprovalRequest(
+    listener: (requestId: string, request: ApprovalRequest) => void,
+  ): () => void {
+    if (this.approvalHook instanceof DeferredApprovalHook) {
+      return this.approvalHook.addRequestListener(listener);
+    }
+    return () => {};
+  }
   /** Get execution record by ID. Returns null if not found. */
   async getExecution(executionId: string): Promise<ExecutionRecord | null> {
     return this.requireStorage().getExecution(executionId);

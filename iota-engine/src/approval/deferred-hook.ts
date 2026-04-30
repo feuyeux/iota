@@ -4,6 +4,11 @@ import type {
   ApprovalRequest,
 } from "./hook.js";
 
+export type DeferredApprovalRequestListener = (
+  requestId: string,
+  request: ApprovalRequest,
+) => void;
+
 /**
  * An ApprovalHook that defers decisions to an external caller (e.g. WebSocket client).
  *
@@ -12,6 +17,7 @@ import type {
  * If no decision arrives within `timeoutMs`, the request is auto-denied.
  */
 export class DeferredApprovalHook implements ApprovalHook {
+  private readonly requestListeners = new Set<DeferredApprovalRequestListener>();
   private readonly pending = new Map<
     string,
     {
@@ -23,8 +29,11 @@ export class DeferredApprovalHook implements ApprovalHook {
   async requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
     const requestId = `${request.executionId}-${Date.now()}`;
 
-    // Notify listener so external caller knows a request is pending
+    // Notify listeners so external callers know a request is pending.
     this.onRequest?.(requestId, request);
+    for (const listener of this.requestListeners) {
+      listener(requestId, request);
+    }
 
     return new Promise<ApprovalDecision>((resolve) => {
       const timer = setTimeout(() => {
@@ -53,7 +62,14 @@ export class DeferredApprovalHook implements ApprovalHook {
   }
 
   /** Optional callback invoked when a new approval request is registered. */
-  onRequest?: (requestId: string, request: ApprovalRequest) => void;
+  onRequest?: DeferredApprovalRequestListener;
+
+  addRequestListener(listener: DeferredApprovalRequestListener): () => void {
+    this.requestListeners.add(listener);
+    return () => {
+      this.requestListeners.delete(listener);
+    };
+  }
 
   /** Cancel all pending requests (e.g. on connection close). */
   cancelAll(): void {
