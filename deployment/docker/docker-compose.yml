@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Iota Infrastructure — Docker Compose with Profiles
+# iota Infrastructure — Docker Compose with Profiles
 #
 # Profiles:
 #   (none)    → minimal: Redis only (sufficient for dev with Engine/CLI/Agent)

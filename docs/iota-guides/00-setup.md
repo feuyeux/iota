@@ -3,7 +3,7 @@
 **版本:** 1.0  
 **最后更新:** 2026-04-30
 
-本文档是 Iota **全部 5 个后端**的初始化配置唯一参考。其他指南中的后端配置操作均引用此处。
+本文档是 iota **全部 5 个后端**的初始化配置唯一参考。其他指南中的后端配置操作均引用此处。
 
 ---
 
@@ -84,9 +84,9 @@ bash deployment/scripts/ensure-backends.sh --check-only
 
 ## 3. 后端登录与账号切换
 
-**安装完成后、写入 Redis 配置之前**，必须为每个要使用的后端完成登录或账号切换。Iota 在运行时检测到 `BACKEND_AUTH_REQUIRED`（401/403、`Authentication not implemented`、token 过期）会立即终止子进程并打印中文 Hint，但前提是凭证至少已经存在；如果完全未登录，运行期提示只能告诉你「请先登录」，无法替代本节操作。
+**安装完成后、写入 Redis 配置之前**，必须为每个要使用的后端完成登录或账号切换。iota 在运行时检测到 `BACKEND_AUTH_REQUIRED`（401/403、`Authentication not implemented`、token 过期）会立即终止子进程并打印中文 Hint，但前提是凭证至少已经存在；如果完全未登录，运行期提示只能告诉你「请先登录」，无法替代本节操作。
 
-> Iota 不会代你执行交互式登录。下列命令都需要在终端里手动跑一次，按提示完成 OAuth 跳转或粘贴 API Key。
+> iota 不会代你执行交互式登录。下列命令都需要在终端里手动跑一次，按提示完成 OAuth 跳转或粘贴 API Key。
 
 ### 3.1 是否需要登录
 
@@ -146,7 +146,7 @@ hermes setup
 
 ### 3.4 逐后端登录成功校验
 
-运行后端自带的检查命令，确认凭证能走通。这些命令不经过 Iota，目的是隔离后端 CLI 本身的登录问题与 Iota 配置问题。
+运行后端自带的检查命令，确认凭证能走通。这些命令不经过 iota，目的是隔离后端 CLI 本身的登录问题与 iota 配置问题。
 
 ```bash
 # Claude Code——账号、计划、剩余额度一次列出
@@ -190,7 +190,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 ## 4. 后端 Redis 配置
 
-Backend 凭证、模型、endpoint 通过 Redis 分布式配置管理，**不要**使用本地 `.env` 文件。本节只配置 Iota 自己读取的环境变量；后端 CLI 自身的登录态由第 3 节负责。
+Backend 凭证、模型、endpoint 通过 Redis 分布式配置管理，**不要**使用本地 `.env` 文件。本节只配置 iota 自己读取的环境变量；后端 CLI 自身的登录态由第 3 节负责。
 
 ### 4.1 Claude Code
 
@@ -229,7 +229,7 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 iota config set env.OPENCODE_MODEL "MiniMax-M2.7" --scope backend --scope-id opencode
 ```
 
-> ⚠️ OpenCode ACP 会读 `~/.config/opencode/opencode.json` 里的 `model` 字段作为默认会话模型，它**不读** `OPENCODE_MODEL` 环境变量，`opencode acp` 也不接受 `-m` 标志。如果该字段设为一个未运行的 provider（常见默认 `ollama/gemma4`），Iota 的 `session/new` 会返回但 prompt 永远不响应。检查并修改：
+> ⚠️ OpenCode ACP 会读 `~/.config/opencode/opencode.json` 里的 `model` 字段作为默认会话模型，它**不读** `OPENCODE_MODEL` 环境变量，`opencode acp` 也不接受 `-m` 标志。如果该字段设为一个未运行的 provider（常见默认 `ollama/gemma4`），iota 的 `session/new` 会返回但 prompt 永远不响应。检查并修改：
 >
 > ```powershell
 > $cfg = "$env:USERPROFILE\.config\opencode\opencode.json"

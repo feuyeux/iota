@@ -1,7 +1,7 @@
 {
   "name": "@iota/cli",
   "version": "0.1.0",
-  "description": "Iota CLI - Command-line interface for Iota Agent Engine",
+  "description": "iota CLI - Command-line interface for iota Agent Engine",
   "type": "module",
   "bin": {
     "iota": "./dist/index.js"

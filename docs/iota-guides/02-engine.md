@@ -5,7 +5,7 @@
 
 ## 1. 简介
 
-`@iota/engine` 是 Iota 的核心运行时库，负责 backend 适配、执行生命周期、事件规范化、Redis 持久化、可见性采集、记忆注入、审批策略、MCP 路由和 workspace 管理。CLI 和 Agent 都通过 TypeScript 直接导入 Engine。
+`@iota/engine` 是 iota 的核心运行时库，负责 backend 适配、执行生命周期、事件规范化、Redis 持久化、可见性采集、记忆注入、审批策略、MCP 路由和 workspace 管理。CLI 和 Agent 都通过 TypeScript 直接导入 Engine。
 
 ---
 

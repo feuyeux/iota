@@ -21,7 +21,7 @@ const PORT = parseInt(process.env.PORT ?? "9666", 10);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
 async function main() {
-  // Initialize Iota Engine with PROJECT_ROOT and deferred approval for WebSocket
+  // Initialize iota Engine with PROJECT_ROOT and deferred approval for WebSocket
   const approvalHook = new DeferredApprovalHook();
   const engine = new IotaEngine({
     workingDirectory: PROJECT_ROOT,
@@ -124,7 +124,7 @@ async function main() {
   // Start server
   try {
     await fastify.listen({ port: PORT, host: HOST });
-    fastify.log.info(`Iota Agent HTTP service listening on ${HOST}:${PORT}`);
+    fastify.log.info(`iota Agent HTTP service listening on ${HOST}:${PORT}`);
   } catch (error) {
     fastify.log.error(error);
     process.exit(1);

@@ -5,7 +5,7 @@
 
 ## 1. 概述
 
-Iota 通过 `BackendPool` 管理 backend adapter。当前代码已经接入 ACP 双栈路径：
+iota 通过 `BackendPool` 管理 backend adapter。当前代码已经接入 ACP 双栈路径：
 
 - Claude Code / Codex / Gemini：可按配置选择 ACP adapter 或 legacy native adapter；ACP 模式下保留 native fallback。
 - Hermes / OpenCode：ACP-only backend，拒绝 native protocol。

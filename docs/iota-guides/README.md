@@ -1,9 +1,9 @@
-# Iota 文档中心
+# iota 文档中心
 
 **版本:** 2.1  
 **最后更新:** 2026-04-30
 
-本目录是 Iota 项目的统一文档，覆盖当前代码实现中的架构、Engine、Backend、CLI/TUI、Agent、App、Visibility、Memory、Skill 和部署。文档以当前源码为准；如果文档和代码冲突，优先按代码修正文档。
+本目录是 iota 项目的统一文档，覆盖当前代码实现中的架构、Engine、Backend、CLI/TUI、Agent、App、Visibility、Memory、Skill 和部署。文档以当前源码为准；如果文档和代码冲突，优先按代码修正文档。
 
 ## 文档索引
 

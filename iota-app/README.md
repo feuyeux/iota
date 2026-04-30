@@ -1,6 +1,6 @@
-# Iota App
+# iota App
 
-`iota-app` 是 Iota 的前端应用，使用 React 19 + Vite + Zustand + TanStack Query。它通过 HTTP 和 WebSocket 连接 `iota-agent`，展示会话对话、执行追踪、可见性信息和审批交互。
+`iota-app` 是 iota 的前端应用，使用 React 19 + Vite + Zustand + TanStack Query。它通过 HTTP 和 WebSocket 连接 `iota-agent`，展示会话对话、执行追踪、可见性信息和审批交互。
 
 ## 技术栈
 

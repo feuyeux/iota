@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides root-level guidance for working in the Iota workspace with Claude-oriented workflows.
+This file provides root-level guidance for working in the iota workspace with Claude-oriented workflows.
 
 ## Workspace Overview
 
-The root directory is the single Git repository for Iota.
+The root directory is the single Git repository for iota.
 
 Primary first-party areas:
 

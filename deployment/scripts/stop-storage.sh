@@ -2,7 +2,7 @@
 set -e
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Iota Storage Shutdown
+# iota Storage Shutdown
 #
 # Usage:
 #   bash stop-storage.sh          # stop all running services (keep data)
@@ -40,7 +40,7 @@ fi
 
 cd "$(dirname "$0")/../docker"
 
-echo "Stopping Iota storage services..."
+echo "Stopping iota storage services..."
 
 if [ "$PURGE" = true ]; then
   $COMPOSE --profile full --profile ha down -v

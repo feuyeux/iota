@@ -2,7 +2,7 @@
   "name": "@iota/agent",
   "version": "0.1.0",
   "type": "module",
-  "description": "HTTP microservice for Iota Agent Engine",
+  "description": "HTTP microservice for iota Agent Engine",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -b --force",

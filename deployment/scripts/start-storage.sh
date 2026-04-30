@@ -2,7 +2,7 @@
 set -e
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Iota Storage Startup — Parameterized Profiles
+# iota Storage Startup — Parameterized Profiles
 #
 # Usage:
 #   bash start-storage.sh              # minimal (Redis only)
@@ -62,7 +62,7 @@ fi
 
 cd "$(dirname "$0")/../docker"
 
-echo "Starting Iota storage services..."
+echo "Starting iota storage services..."
 if [ "$FULL" = true ] && [ "$HA" = true ]; then
   echo "  Mode: full + HA (Redis + Sentinel + MinIO + Milvus)"
 elif [ "$FULL" = true ]; then

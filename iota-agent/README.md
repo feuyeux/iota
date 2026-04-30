@@ -1,6 +1,6 @@
-# Iota Agent
+# iota Agent
 
-`@iota/agent` 是 Iota 的 Fastify HTTP / WebSocket 服务。它基于 `@iota/engine` 对外提供 session 管理、execution 控制、visibility 查询、app snapshot、execution replay 与实时增量流。
+`@iota/agent` 是 iota 的 Fastify HTTP / WebSocket 服务。它基于 `@iota/engine` 对外提供 session 管理、execution 控制、visibility 查询、app snapshot、execution replay 与实时增量流。
 
 ## 包结构
 

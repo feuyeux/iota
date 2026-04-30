@@ -10,7 +10,7 @@ export const IotaLogo: React.FC<{ className?: string; showWordmark?: boolean }> 
   className,
   showWordmark = false,
 }) => (
-  <div className={cn('flex items-center gap-3', className)} aria-label="Iota">
+  <div className={cn('flex items-center gap-3', className)} aria-label="iota">
     <svg
       className="h-9 w-9 shrink-0"
       viewBox="0 0 48 48"
@@ -47,7 +47,7 @@ export const IotaLogo: React.FC<{ className?: string; showWordmark?: boolean }> 
     </svg>
     {showWordmark && (
       <div className="leading-none">
-        <div className="text-sm font-black uppercase tracking-[0.18em] text-iota-heading">Iota</div>
+        <div className="text-sm font-black uppercase tracking-[0.18em] text-iota-heading">iota</div>
         <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.16em] text-iota-text/50">Engine</div>
       </div>
     )}

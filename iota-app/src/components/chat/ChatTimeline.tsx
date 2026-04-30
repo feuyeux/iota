@@ -37,52 +37,53 @@ export const ChatTimeline: React.FC = () => {
     const raw = activeExecution?.conversation?.items || [];
     if (raw.length === 0) return raw;
 
-    // Merge consecutive assistant (non-thinking, non-tool) messages into one
     const merged: typeof raw = [];
     for (const item of raw) {
-      const rawToolCall = (item.metadata as Record<string, unknown> | undefined)
-        ?.toolCall as
-        | { name: string; arguments?: Record<string, unknown> }
-        | undefined;
+      const rawToolCall = getToolCall(item);
       if (rawToolCall && !shouldShowToolCall(rawToolCall)) continue;
 
-      const isThinking = !!(
-        item.metadata as Record<string, unknown> | undefined
-      )?.thinking;
-      const isFinal = !!(item.metadata as Record<string, unknown> | undefined)
-        ?.final;
-      const prev = merged[merged.length - 1];
-      const prevIsThinking =
-        prev &&
-        !!(prev.metadata as Record<string, unknown> | undefined)?.thinking;
+      if (isAssistantResponseItem(item)) {
+        const response = buildAssistantResponse(item);
+        const prev = merged[merged.length - 1];
+        const prevResponse = getAssistantResponse(prev);
 
-      if (
-        prev &&
-        item.role === "assistant" &&
-        prev.role === "assistant" &&
-        !isThinking &&
-        !prevIsThinking &&
-        item.executionId === prev.executionId
-      ) {
-        // Merge into previous: concatenate content
-        merged[merged.length - 1] = {
-          ...prev,
-          id: item.id,
-          content: prev.content + item.content,
-          timestamp: item.timestamp,
-          eventSequence: item.eventSequence,
-          metadata: isFinal ? { ...prev.metadata, final: true } : prev.metadata,
-        };
-      } else {
-        merged.push(item);
+        if (prev && prevResponse && prev.executionId === item.executionId) {
+          merged[merged.length - 1] = {
+            ...prev,
+            id: item.id,
+            content: appendText(prev.content, item.content),
+            timestamp: item.timestamp,
+            eventSequence: item.eventSequence,
+            metadata: {
+              ...prev.metadata,
+              assistantResponse: {
+                thinking: appendText(prevResponse.thinking, response.thinking),
+                result: appendText(prevResponse.result, response.result),
+                final: prevResponse.final || response.final,
+              },
+              final: prevResponse.final || response.final || undefined,
+            },
+          };
+          continue;
+        }
+
+        merged.push({
+          ...item,
+          metadata: {
+            ...item.metadata,
+            assistantResponse: response,
+          },
+        });
+        continue;
       }
+
+      merged.push(item);
     }
     return merged;
   }, [activeExecution]);
   const parentRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   // Virtualizer for high-performance long lists
   const rowVirtualizer = useVirtualizer({
     count: items.length,
@@ -209,7 +210,7 @@ export const ChatTimeline: React.FC = () => {
       {/* Enhanced Input Area */}
       <div className="p-4 border-t border-iota-border bg-gray-50/50 space-y-3">
         {isCircuitOpen && (
-          <div className="max-w-4xl mx-auto flex items-center justify-between text-red-600 bg-red-50 p-3 rounded-lg border border-red-100 text-xs font-medium">
+          <div className="max-w-[34rem] mx-auto flex items-center justify-between text-red-600 bg-red-50 p-3 rounded-lg border border-red-100 text-xs font-medium">
             <div className="flex items-center space-x-2">
               <AlertCircle size={14} />
               <span>Backend circuit breaker is open.</span>
@@ -227,7 +228,7 @@ export const ChatTimeline: React.FC = () => {
           </div>
         )}
 
-        <div className="max-w-4xl mx-auto relative group">
+        <div className="max-w-[34rem] mx-auto relative group">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -263,7 +264,7 @@ export const ChatTimeline: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto mt-2 flex items-center justify-between text-[10px] text-iota-text/40 uppercase tracking-widest font-bold px-1">
+        <div className="max-w-[34rem] mx-auto mt-2 flex items-center justify-between text-[10px] text-iota-text/40 uppercase tracking-widest font-bold px-1">
           <div className="flex items-center space-x-3">
             <span>⏎ send</span>
             <span>⇧⏎ newline</span>
@@ -278,29 +279,189 @@ export const ChatTimeline: React.FC = () => {
   );
 };
 
+type ToolCallView = {
+  name: string;
+  arguments?: Record<string, unknown>;
+};
+
+type AssistantResponseView = {
+  thinking: string;
+  result: string;
+  final?: boolean;
+};
+
+function getMetadata(item: ConversationTimelineItem | undefined) {
+  return item?.metadata as Record<string, unknown> | undefined;
+}
+
+function getToolCall(item: ConversationTimelineItem): ToolCallView | undefined {
+  return getMetadata(item)?.toolCall as ToolCallView | undefined;
+}
+
+function getAssistantResponse(
+  item: ConversationTimelineItem | undefined,
+): AssistantResponseView | undefined {
+  return getMetadata(item)?.assistantResponse as
+    | AssistantResponseView
+    | undefined;
+}
+
+function isAssistantResponseItem(item: ConversationTimelineItem): boolean {
+  if (item.role !== "assistant") return false;
+  const metadata = getMetadata(item);
+  if (metadata?.approval || metadata?.toolCall) return false;
+  return true;
+}
+
+function buildAssistantResponse(
+  item: ConversationTimelineItem,
+): AssistantResponseView {
+  const metadata = getMetadata(item);
+  if (metadata?.thinking) {
+    return { thinking: item.content.trim(), result: "" };
+  }
+
+  const parsed = parseAssistantContent(item.content);
+  return {
+    thinking: parsed.thinking,
+    result: parsed.result,
+    final: Boolean(metadata?.final),
+  };
+}
+
+function parseAssistantContent(content: string): AssistantResponseView {
+  let thinking = "";
+  let result = content;
+
+  const appendThinking = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) thinking = appendText(thinking, trimmed);
+  };
+
+  result = result.replace(
+    /<think>([\s\S]*?)(?:<\/think>|$)/gi,
+    (_full, body) => {
+      appendThinking(String(body));
+      return "";
+    },
+  );
+
+  result = result.replace(
+    /<details>([\s\S]*?)(?:<\/details>|$)/gi,
+    (_full, body) => {
+      const details = String(body).replace(
+        /<summary>([\s\S]*?)<\/summary>/gi,
+        "**$1**\n\n",
+      );
+      appendThinking(details);
+      return "";
+    },
+  );
+
+  return {
+    thinking: thinking.trim(),
+    result: stripAssistantResultDecorators(result).trim(),
+  };
+}
+
+function stripAssistantResultDecorators(value: string): string {
+  return value
+    .replace(/^\s*(?:#{1,6}\s*)?(?:最终结果|final result)\s*[:：-]?\s*/i, "")
+    .replace(/^\s*Model Information\s*$/i, "")
+    .trim();
+}
+
+function appendText(
+  current: string | undefined,
+  next: string | undefined,
+): string {
+  const left = current?.trim() ?? "";
+  const right = next?.trim() ?? "";
+  if (!left) return right;
+  if (!right) return left;
+  return `${left}\n\n${right}`;
+}
+const MarkdownContent: React.FC<{ content: string }> = ({ content }) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    rehypePlugins={[rehypeRaw]}
+    components={{
+      code({
+        inline,
+        className,
+        children,
+        ...props
+      }: {
+        inline?: boolean;
+        className?: string;
+        children?: React.ReactNode;
+      }) {
+        const match = /language-(\w+)/.exec(className || "");
+        return !inline && match ? (
+          <div className="my-4 rounded-lg overflow-hidden border border-white/10 shadow-lg bg-gray-900">
+            <div className="bg-gray-800 px-4 py-1.5 flex justify-between items-center">
+              <span className="text-[10px] font-bold text-gray-400 uppercase">
+                {match[1]}
+              </span>
+            </div>
+            <SyntaxHighlighter
+              style={oneDark}
+              language={match[1]}
+              PreTag="div"
+              customStyle={{
+                margin: 0,
+                padding: "1rem",
+                fontSize: "12px",
+                background: "transparent",
+              }}
+              {...props}
+            >
+              {String(children).replace(/\n$/, "")}
+            </SyntaxHighlighter>
+          </div>
+        ) : (
+          <code
+            className="bg-black/10 px-1.5 py-0.5 rounded font-mono text-[0.9em]"
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      },
+      p: ({ children }) => (
+        <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>
+      ),
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+);
 const MessageItem: React.FC<{
   item: ConversationTimelineItem;
   onApprove: (id: string, approved: boolean) => void;
 }> = ({ item, onApprove }) => {
   const isUser = item.role === "user";
   const isTool = item.role === "tool";
-  const isThinking = !!(item.metadata as Record<string, unknown> | undefined)
-    ?.thinking;
-  const rawToolCall = (item.metadata as Record<string, unknown> | undefined)
-    ?.toolCall as
-    | { name: string; arguments?: Record<string, unknown> }
-    | undefined;
+  const metadata = getMetadata(item);
+  const isThinking = Boolean(metadata?.thinking);
+  const rawToolCall = getToolCall(item);
   const toolCall = shouldShowToolCall(rawToolCall) ? rawToolCall : undefined;
-  const approval = item.metadata?.approval as ApprovalRequest | undefined;
+  const approval = metadata?.approval as ApprovalRequest | undefined;
   const isDecisionOnly =
     !!approval?.status &&
     !approval?.command &&
     !approval?.path &&
     !approval?.reason;
 
+  const assistantResponse = getAssistantResponse(item);
+  const thinkingContent = isThinking
+    ? item.content
+    : (assistantResponse?.thinking ?? "");
+  const resultContent = assistantResponse?.result ?? item.content;
+
   return (
     <div
-      className={`flex space-x-4 max-w-4xl mx-auto ${isUser ? "flex-row-reverse space-x-reverse" : "flex-row"}`}
+      className={`flex gap-3 max-w-[34rem] mx-auto ${isUser ? "flex-row-reverse" : "flex-row"}`}
     >
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${
@@ -325,10 +486,10 @@ const MessageItem: React.FC<{
       </div>
 
       <div
-        className={`flex flex-col max-w-[90%] ${isUser ? "items-end" : "items-start"}`}
+        className={`flex flex-col min-w-0 ${isUser ? "items-end" : "items-start"}`}
       >
         <div
-          className={`rounded-2xl px-5 py-4 shadow-sm border ${
+          className={`max-w-full rounded-xl px-4 py-3 shadow-sm border ${
             isUser
               ? "bg-iota-accent text-white border-iota-accent"
               : isThinking
@@ -361,64 +522,34 @@ const MessageItem: React.FC<{
           ) : approval && !isDecisionOnly ? (
             <ApprovalCard approval={approval} onApprove={onApprove} />
           ) : (
-            <div className="markdown-content text-sm leading-relaxed overflow-hidden">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-                components={{
-                  code({
-                    inline,
-                    className,
-                    children,
-                    ...props
-                  }: {
-                    inline?: boolean;
-                    className?: string;
-                    children?: React.ReactNode;
-                  }) {
-                    const match = /language-(\w+)/.exec(className || "");
-                    return !inline && match ? (
-                      <div className="my-4 rounded-lg overflow-hidden border border-white/10 shadow-lg bg-gray-900">
-                        <div className="bg-gray-800 px-4 py-1.5 flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">
-                            {match[1]}
-                          </span>
-                        </div>
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language={match[1]}
-                          PreTag="div"
-                          customStyle={{
-                            margin: 0,
-                            padding: "1rem",
-                            fontSize: "12px",
-                            background: "transparent",
-                          }}
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, "")}
-                        </SyntaxHighlighter>
-                      </div>
-                    ) : (
-                      <code
-                        className="bg-black/10 px-1.5 py-0.5 rounded font-mono text-[0.9em]"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  p: ({ children }) => (
-                    <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>
-                  ),
-                }}
-              >
-                {item.content}
-              </ReactMarkdown>
+            <div className="flex flex-col gap-3 min-w-[16rem] max-w-[30rem]">
+              {/* Extracted Thinking Area */}
+              {thinkingContent && (
+                <section className="border-l-2 border-purple-200 pl-3 py-1 text-purple-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1.5 flex items-center">
+                    <Settings2 size={12} className="mr-1" />
+                    思考区
+                  </div>
+                  <div className="markdown-content text-xs leading-relaxed opacity-85 italic">
+                    <MarkdownContent content={thinkingContent} />
+                  </div>
+                </section>
+              )}
+
+              {/* Final Result Area */}
+              {resultContent && (
+                <section className="markdown-content text-sm leading-relaxed overflow-hidden">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-iota-accent mb-1.5 flex items-center">
+                    <Bot size={12} className="mr-1" />
+                    最终结果
+                  </div>
+                  <MarkdownContent content={resultContent} />
+                </section>
+              )}
             </div>
           )}
         </div>
-        <div className="text-[10px] mt-1.5 text-iota-text/40 font-bold tracking-wider px-2">
+        <div className="text-[10px] mt-1 text-iota-text/40 font-bold tracking-wider px-1">
           {new Date(item.timestamp).toLocaleTimeString()}
         </div>
       </div>

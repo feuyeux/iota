@@ -1,6 +1,6 @@
-# Iota Infrastructure Deployment
+# iota Infrastructure Deployment
 
-本目录包含 Iota 项目所有基础设施组件的统一部署配置。使用 Docker Compose **profile** 实现参数化启动。
+本目录包含 iota 项目所有基础设施组件的统一部署配置。使用 Docker Compose **profile** 实现参数化启动。
 
 ## 部署模式
 

@@ -1,8 +1,5 @@
-import { ClaudeCodeAdapter } from "./claude-code.js";
 import { ClaudeCodeAcpAdapter } from "./claude-acp.js";
-import { CodexAdapter } from "./codex.js";
 import { CodexAcpAdapter } from "./codex-acp.js";
-import { GeminiAdapter } from "./gemini.js";
 import { GeminiAcpAdapter } from "./gemini-acp.js";
 import { HermesAdapter } from "./hermes.js";
 import { OpenCodeAcpAdapter } from "./opencode-acp.js";
@@ -27,7 +24,6 @@ import type {
 
 export class BackendPool {
   private readonly backends = new Map<BackendName, RuntimeBackend>();
-  private readonly fallbackBackends = new Map<BackendName, RuntimeBackend>();
   private readonly breakers = new Map<BackendName, CircuitBreaker>();
   private initialized = false;
 
@@ -39,48 +35,59 @@ export class BackendPool {
     const mcpServers = config.mcp?.servers ?? [];
     this.backends.set(
       "claude-code",
-      config.backend.claudeCode.protocol === "acp"
-        ? acpWithFallback(
-            "claude-code",
-            new ClaudeCodeAcpAdapter(
-              mcpServers,
-              buildAdapterCommandArgs(config.backend.claudeCode, "@anthropic-ai/claude-code-acp"),
+      requireAcpBackend(
+        "claude-code",
+        config.backend.claudeCode,
+        () =>
+          new ClaudeCodeAcpAdapter(
+            mcpServers,
+            buildAdapterCommandArgs(
+              config.backend.claudeCode,
+              "@anthropic-ai/claude-code-acp",
             ),
-            new ClaudeCodeAdapter(mcpServers),
-            this.fallbackBackends,
-          )
-        : legacyNativeAdapter("claude-code", () => new ClaudeCodeAdapter(mcpServers)),
+          ),
+      ),
     );
     this.backends.set(
       "codex",
-      config.backend.codex.protocol === "acp"
-        ? acpWithFallback(
-            "codex",
-            new CodexAcpAdapter(
-              mcpServers,
-              buildAdapterCommandArgs(config.backend.codex, "@openai/codex-acp"),
-            ),
-            new CodexAdapter(mcpServers),
-            this.fallbackBackends,
-          )
-        : legacyNativeAdapter("codex", () => new CodexAdapter(mcpServers)),
+      requireAcpBackend(
+        "codex",
+        config.backend.codex,
+        () =>
+          new CodexAcpAdapter(
+            mcpServers,
+            buildAdapterCommandArgs(config.backend.codex, "@openai/codex-acp"),
+          ),
+      ),
     );
     this.backends.set(
       "gemini",
-      config.backend.gemini.protocol === "acp"
-        ? acpWithFallback(
-            "gemini",
-            new GeminiAcpAdapter(
-              mcpServers,
-              ["--acp", ...(config.backend.gemini.acpAdapterArgs ?? [])],
-            ),
-            new GeminiAdapter(mcpServers),
-            this.fallbackBackends,
-          )
-        : legacyNativeAdapter("gemini", () => new GeminiAdapter(mcpServers)),
+      requireAcpBackend(
+        "gemini",
+        config.backend.gemini,
+        () =>
+          new GeminiAcpAdapter(mcpServers, [
+            "--acp",
+            ...(config.backend.gemini.acpAdapterArgs ?? []),
+          ]),
+      ),
     );
-    this.backends.set("hermes", requireAcpOnlyBackend("hermes", config.backend.hermes, () => new HermesAdapter(mcpServers)));
-    this.backends.set("opencode", requireAcpOnlyBackend("opencode", config.backend.opencode, () => new OpenCodeAcpAdapter(mcpServers)));
+    this.backends.set(
+      "hermes",
+      requireAcpBackend(
+        "hermes",
+        config.backend.hermes,
+        () => new HermesAdapter(mcpServers),
+      ),
+    );
+    this.backends.set(
+      "opencode",
+      requireAcpBackend(
+        "opencode",
+        config.backend.opencode,
+        () => new OpenCodeAcpAdapter(mcpServers),
+      ),
+    );
     for (const name of this.backends.keys()) {
       this.breakers.set(name, new CircuitBreaker());
     }
@@ -99,10 +106,6 @@ export class BackendPool {
       }
       const backendConfig = await this.resolveBackendConfig(name);
       initPromises.push(backend.init(toRuntimeBackendConfig(backendConfig, this.workingDirectory)));
-      const fallback = this.fallbackBackends.get(name);
-      if (fallback) {
-        initPromises.push(fallback.init(toFallbackBackendConfig(name, backendConfig, this.workingDirectory)));
-      }
     }
 
     // Initialize all enabled backends (warm processes start during init for long-lived)
@@ -246,28 +249,18 @@ export class BackendPool {
 
 
 
-function requireAcpOnlyBackend<T extends RuntimeBackend>(
+function requireAcpBackend<T extends RuntimeBackend>(
   backend: BackendName,
   section: BackendSection,
   factory: () => T,
 ): T {
-  if (section.protocol === "native") {
+  if (section.protocol !== undefined && section.protocol !== "acp") {
     throw new IotaError({
       code: ErrorCode.BACKEND_NOT_FOUND,
-      message: `Backend ${backend} does not provide a native protocol adapter; use protocol: acp`,
+      message: `Backend ${backend} only supports ACP protocol; remove native protocol config or use protocol: acp`,
     });
   }
   return factory();
-}
-
-function acpWithFallback(
-  backend: BackendName,
-  acp: RuntimeBackend,
-  fallback: RuntimeBackend,
-  fallbackBackends: Map<BackendName, RuntimeBackend>,
-): RuntimeBackend {
-  fallbackBackends.set(backend, fallback);
-  return new AcpFallbackBackend(backend, acp, fallback);
 }
 
 function toRuntimeBackendConfig(
@@ -284,38 +277,6 @@ function toRuntimeBackendConfig(
     acpAdapterArgs: section.acpAdapterArgs,
     processMode: section.processMode,
   };
-}
-
-function toFallbackBackendConfig(
-  backend: BackendName,
-  section: BackendSection,
-  workingDirectory: string,
-): BackendConfig {
-  const nativeExecutable: Partial<Record<BackendName, string>> = {
-    "claude-code": "claude",
-    codex: "codex",
-    gemini: "gemini",
-  };
-  return {
-    ...toRuntimeBackendConfig(section, workingDirectory),
-    executable: nativeExecutable[backend] ?? section.executable,
-    protocol: "native",
-    acpAdapter: undefined,
-    acpAdapterArgs: undefined,
-    processMode: "per-execution",
-  };
-}
-
-function legacyNativeAdapter<T extends RuntimeBackend>(
-  backend: BackendName,
-  factory: () => T,
-): T {
-  if (process.env.IOTA_DEBUG_ACP === "true") {
-    console.warn(
-      `[iota-engine] Using legacy native adapter for ${backend}; consider switching to protocol: acp`,
-    );
-  }
-  return factory();
 }
 
 function buildAdapterCommandArgs(
@@ -350,7 +311,7 @@ function applyBackendScopedValue(
     return;
   }
   if (key === "protocol") {
-    if (value !== "native" && value !== "acp") {
+    if (value !== "acp") {
       throw new Error(`Invalid backend protocol: ${value}`);
     }
     config.protocol = value;
@@ -384,111 +345,6 @@ function applyBackendScopedValue(
     if (envKey) {
       config.env[envKey] = value;
     }
-  }
-}
-
-
-export class AcpFallbackBackend implements RuntimeBackend {
-  constructor(
-    private readonly backendName: BackendName,
-    private readonly acp: RuntimeBackend,
-    private readonly fallback: RuntimeBackend,
-  ) {}
-
-  get name(): BackendName {
-    return this.acp.name;
-  }
-
-  get capabilities(): BackendCapabilities {
-    return this.acp.capabilities;
-  }
-
-  getModel(): string | undefined {
-    return this.acp.getModel?.() ?? this.fallback.getModel?.();
-  }
-
-  async init(config: BackendConfig): Promise<void> {
-    return this.acp.init(config);
-  }
-
-  async *stream(request: RuntimeRequest): AsyncIterable<RuntimeEvent> {
-    let emitted = false;
-    try {
-      for await (const event of this.acp.stream(request)) {
-        emitted = true;
-        yield event;
-      }
-    } catch (error) {
-      // If ACP already emitted events, the caller has partial results — re-throw
-      // so it can handle the mid-stream failure. Otherwise, silently degrade to
-      // the legacy native subprocess adapter so the request still succeeds.
-      if (emitted) throw error;
-      const msg = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[iota-engine] ACP adapter for backend "${this.backendName}" failed before emitting events (${msg}); falling back to legacy native adapter`,
-      );
-      yield* this.fallback.stream(request);
-    }
-  }
-
-  async execute(request: RuntimeRequest): Promise<RuntimeResponse> {
-    const events: RuntimeEvent[] = [];
-    const chunks: string[] = [];
-    let failed = false;
-    let usage: RuntimeResponse["usage"];
-    for await (const event of this.stream(request)) {
-      events.push(event);
-      if (event.type === "output") {
-        chunks.push(event.data.content);
-        if (event.data.usage) usage = event.data.usage;
-      }
-      if (event.type === "error") failed = true;
-    }
-    return {
-      sessionId: request.sessionId,
-      executionId: request.executionId,
-      backend: this.name,
-      status: failed ? "failed" : "completed",
-      output: chunks.join(""),
-      events,
-      usage,
-      error: events.find((event) => event.type === "error")?.data,
-    };
-  }
-
-  async interrupt(executionId: string): Promise<void> {
-    await Promise.all([
-      this.acp.interrupt(executionId),
-      this.fallback.interrupt(executionId),
-    ]);
-  }
-
-  async snapshot(sessionId: string): Promise<BackendSnapshot> {
-    return this.acp.snapshot(sessionId);
-  }
-
-  async probe(): Promise<HealthStatus> {
-    return this.acp.probe();
-  }
-
-  async destroy(): Promise<void> {
-    await Promise.all([this.acp.destroy(), this.fallback.destroy()]);
-  }
-
-  setVisibilityCollector(
-    collector: VisibilityCollector | undefined,
-    executionId?: string,
-  ): void {
-    this.acp.setVisibilityCollector?.(collector, executionId);
-    this.fallback.setVisibilityCollector?.(collector, executionId);
-  }
-
-  sendNativeResponse(executionId: string, event: RuntimeEvent): boolean {
-    return (
-      this.acp.sendNativeResponse?.(executionId, event) ??
-      this.fallback.sendNativeResponse?.(executionId, event) ??
-      false
-    );
   }
 }
 

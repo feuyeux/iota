@@ -1,10 +1,10 @@
 # GEMINI.md
 
-This file provides root-level guidance for working in the Iota workspace with Gemini-oriented workflows.
+This file provides root-level guidance for working in the iota workspace with Gemini-oriented workflows.
 
 ## Workspace Overview
 
-The root directory is the single Git repository for Iota. There is no root package manifest.
+The root directory is the single Git repository for iota. There is no root package manifest.
 
 - `iota-engine/`: `@iota/engine`, core runtime, backend adapters, approval, memory, visibility, MCP, workspace, and skill execution
 - `iota-cli/`: `@iota/cli`, command-line and interactive interface

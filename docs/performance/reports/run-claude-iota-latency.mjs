@@ -87,7 +87,7 @@ function parseNative(stdout) {
         result.nativeDurationMs = event.duration_ms;
         if (typeof event.result === "string" && result.assistantTextChars === 0) result.assistantTextChars = event.result.length;
       }
-    } catch {}
+    } catch { }
   }
   return result;
 }
@@ -203,7 +203,7 @@ function firstRow(label, stat) {
   return `| ${label} | ${stat.n} | ${stat.errorCount} | ${round(stat.min)} | ${round(stat.p50)} | ${round(stat.p90)} | ${round(stat.p95)} | ${round(stat.max)} |`;
 }
 
-const report = `# Claude Code Native vs Iota ACP Claude 延迟对比报告
+const report = `# Claude Code Native vs iota ACP Claude 延迟对比报告
 
 **生成时间:** ${new Date().toISOString()}  
 **实验文档:** ../claude-code-vs-iota-acp-latency.md  
@@ -219,9 +219,9 @@ const report = `# Claude Code Native vs Iota ACP Claude 延迟对比报告
 | Node | ${process.version} |
 | Bun | 1.3.11 |
 | Claude Code version | 2.1.123 |
-| Iota commit | 07069ba |
+| iota commit | 07069ba |
 | Backend protocol | claude-code: ${iotaProtocol} |
-| Iota ACP command | ${iotaCommand} |
+| iota ACP command | ${iotaCommand} |
 | Model | ${nativeObservedModel} |
 | Prompt | ${prompt} |
 | Working directory | ${repo} |
@@ -239,7 +239,7 @@ ${statRow("D iota acp warm", warmIota)}
 
 ## First Output 统计
 
-该指标按实验文档定义为 stdout 首次出现非空输出的时间。Iota CLI 会先打印 skill/MCP 初始化日志，所以此指标反映客户端首字节，不等价于模型首 token。
+该指标按实验文档定义为 stdout 首次出现非空输出的时间。iota CLI 会先打印 skill/MCP 初始化日志，所以此指标反映客户端首字节，不等价于模型首 token。
 
 | 组别 | 样本数 | error_count | min_ms | p50_ms | p90_ms | p95_ms | max_ms |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -248,7 +248,7 @@ ${firstRow("B iota acp cold", firstStats["B-iota-acp-cold"])}
 ${firstRow("C native warm", firstStats["C-native-warm"])}
 ${firstRow("D iota acp warm", firstStats["D-iota-acp-warm"])}
 
-## Iota Trace 补充
+## iota Trace 补充
 
 | 组别 | 样本数 | error_count | min_ms | p50_ms | p90_ms | p95_ms | max_ms | mean_ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -258,14 +258,14 @@ ${firstRow("D iota acp warm", firstStats["D-iota-acp-warm"])}
 
 | 对比 | overhead_p50_ms | overhead_p95_ms | overhead_ratio_p50 | overhead_ratio_p95 | 结论 |
 |---|---:|---:|---:|---:|---|
-| B - A cold | ${round(coldIota.p50 - coldNative.p50)} | ${round(coldIota.p95 - coldNative.p95)} | ${ratio(coldIota.p50, coldNative.p50)} | ${ratio(coldIota.p95, coldNative.p95)} | Iota ACP CLI 冷启动路径相对 native 的端到端开销 |
-| D - C warm | ${round(warmIota.p50 - warmNative.p50)} | ${round(warmIota.p95 - warmNative.p95)} | ${ratio(warmIota.p50, warmNative.p50)} | ${ratio(warmIota.p95, warmNative.p95)} | Iota ACP CLI 热启动路径相对 native 的端到端开销 |
+| B - A cold | ${round(coldIota.p50 - coldNative.p50)} | ${round(coldIota.p95 - coldNative.p95)} | ${ratio(coldIota.p50, coldNative.p50)} | ${ratio(coldIota.p95, coldNative.p95)} | iota ACP CLI 冷启动路径相对 native 的端到端开销 |
+| D - C warm | ${round(warmIota.p50 - warmNative.p50)} | ${round(warmIota.p95 - warmNative.p95)} | ${ratio(warmIota.p50, warmNative.p50)} | ${ratio(warmIota.p95, warmNative.p95)} | iota ACP CLI 热启动路径相对 native 的端到端开销 |
 
 ## 备注
 
 - 本次实验按 CLI 路径采样，不代表 iota-agent 常驻服务路径。
-- Iota CLI 每个样本都是新的 Node 进程；ACP adapter 的 long-lived subprocess 在单次 CLI 执行内启动，样本之间不复用。
-- Iota trace 中本次 ACP 映射的 engine outputChars 可能为 0；报告的主指标使用外层 wall_ms。
+- iota CLI 每个样本都是新的 Node 进程；ACP adapter 的 long-lived subprocess 在单次 CLI 执行内启动，样本之间不复用。
+- iota trace 中本次 ACP 映射的 engine outputChars 可能为 0；报告的主指标使用外层 wall_ms。
 - JSONL 样本只保存聚合字段和长度，不保存 stdout/stderr 原文。
 `;
 

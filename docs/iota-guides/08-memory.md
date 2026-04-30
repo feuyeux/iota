@@ -5,7 +5,7 @@
 
 ## 1. 核心理念
 
-Iota 的 Memory 模块将“记忆”从 backend 内部抽离到 Engine 层，使后端变成可热插拔的执行器。Memory 生命周期由 Engine 管理：Extract → Store → Recall → Inject。
+iota 的 Memory 模块将“记忆”从 backend 内部抽离到 Engine 层，使后端变成可热插拔的执行器。Memory 生命周期由 Engine 管理：Extract → Store → Recall → Inject。
 
 ```mermaid
 flowchart TD

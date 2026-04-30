@@ -5,7 +5,7 @@
 
 ## 1. 概述
 
-Visibility 是 Iota 的可观测性层，捕获执行上下文、memory 注入/抽取、token 估算或原生用量、backend link、native event 映射和 trace spans。Trace 是基于 `TraceSpan` 构建的执行树。
+Visibility 是 iota 的可观测性层，捕获执行上下文、memory 注入/抽取、token 估算或原生用量、backend link、native event 映射和 trace spans。Trace 是基于 `TraceSpan` 构建的执行树。
 
 ---
 

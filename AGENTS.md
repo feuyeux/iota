@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Iota is a pluggable AI coding assistant runtime. The root repository currently contains five first-party areas:
+iota is a pluggable AI coding assistant runtime. The root repository currently contains five first-party areas:
 
 - `iota-engine`: core runtime, backend adapters, approval, memory, visibility, workspace, MCP, and skill execution
 - `iota-cli`: command-line and interactive interface for direct Engine execution

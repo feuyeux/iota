@@ -1,11 +1,11 @@
-# Iota 架构概览
+# iota 架构概览
 
 **版本:** 2.1  
 **最后更新:** 2026-04-30
 
 ## 1. 架构总览
 
-Iota 是一个可插拔 AI coding assistant runtime。CLI/TUI 和 Agent 都直接导入 `@iota/engine`，Engine 统一负责后端适配、执行生命周期、事件规范化、Redis 持久化、可见性采集、记忆注入和审批策略。
+iota 是一个可插拔 AI coding assistant runtime。CLI/TUI 和 Agent 都直接导入 `@iota/engine`，Engine 统一负责后端适配、执行生命周期、事件规范化、Redis 持久化、可见性采集、记忆注入和审批策略。
 
 核心约束：
 

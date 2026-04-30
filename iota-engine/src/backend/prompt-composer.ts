@@ -6,7 +6,7 @@ import type { RuntimeBackend } from "./interface.js";
  * backends that only receive stdin text (not structured context).
  *
  * Per-execution CLIs manage their own system prompt and conversation history.
- * Iota injects memory by prepending it as structured context before the user prompt.
+ * iota injects memory by prepending it as structured context before the user prompt.
  * Skill definitions are prepended as a system prompt section so the backend LLM
  * can decide whether to trigger them.
  */

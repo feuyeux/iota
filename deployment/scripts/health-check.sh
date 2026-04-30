@@ -2,10 +2,10 @@
 set -e
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Iota Storage Health Check — checks whichever services are running
+# iota Storage Health Check — checks whichever services are running
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo "Checking Iota storage services health..."
+echo "Checking iota storage services health..."
 echo ""
 
 HEALTHY=0

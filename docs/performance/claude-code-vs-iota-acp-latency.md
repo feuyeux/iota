@@ -1,18 +1,18 @@
-# Claude Code Native vs Iota ACP Claude 延迟对比实验
+# Claude Code Native vs iota ACP Claude 延迟对比实验
 
 **版本:** 0.1  
 **最后更新:** 2026-04-30
 
 ## 1. 实验目标
 
-验证同一台机器、同一账号、同一模型、同一工作目录、同一提示词下，直接使用 Claude Code 与通过 Iota + ACP + Claude Code adapter 使用 Claude Code 的端到端延迟差异。
+验证同一台机器、同一账号、同一模型、同一工作目录、同一提示词下，直接使用 Claude Code 与通过 iota + ACP + Claude Code adapter 使用 Claude Code 的端到端延迟差异。
 
 对比路径：
 
 | 路径 | 说明 | 入口命令 |
 |---|---|---|
-| Claude Code native | 直接启动 Claude Code CLI，绕过 Iota Engine / ACP adapter | `claude --print ...` |
-| Iota + ACP + Claude | `iota-cli -> IotaEngine -> ClaudeCodeAcpAdapter -> @anthropic-ai/claude-code-acp -> Claude Code` | `node dist/index.js run --backend claude-code --trace ...` |
+| Claude Code native | 直接启动 Claude Code CLI，绕过 iota Engine / ACP adapter | `claude --print ...` |
+| iota + ACP + Claude | `iota-cli -> IotaEngine -> ClaudeCodeAcpAdapter -> @anthropic-ai/claude-code-acp -> Claude Code` | `node dist/index.js run --backend claude-code --trace ...` |
 
 本实验只回答延迟问题，不评价回答质量。回答质量只作为剔除异常样本的依据，例如空响应、认证失败、限流、工具调用失败。
 
@@ -24,11 +24,11 @@
 |---|---|---|
 | `wall_ms` | 客户端命令从启动到退出的墙钟时间 | 外层计时脚本，使用 `performance.now()` 或 PowerShell `Stopwatch` |
 | `first_output_ms` | 客户端启动到 stdout 首次出现非空输出的时间 | Node 脚本监听子进程 stdout 第一块数据 |
-| `trace_duration_ms` | Iota visibility / trace 记录的执行耗时 | Iota `--trace-json` 输出或 trace API |
+| `trace_duration_ms` | iota visibility / trace 记录的执行耗时 | iota `--trace-json` 输出或 trace API |
 | `exit_code` | 进程退出码 | 外层计时脚本 |
 | `response_chars` | stdout 响应字符数 | 外层计时脚本统计，辅助识别异常 |
 
-主结论使用 `wall_ms`。`first_output_ms` 用于观察流式首包延迟。`trace_duration_ms` 只用于 Iota 路径内部拆解，不直接与 Claude Code native 的 `wall_ms` 混用。
+主结论使用 `wall_ms`。`first_output_ms` 用于观察流式首包延迟。`trace_duration_ms` 只用于 iota 路径内部拆解，不直接与 Claude Code native 的 `wall_ms` 混用。
 
 ---
 
@@ -69,7 +69,7 @@ claude --version
 
 确认账号、组织、配额和模型符合预期。不要把 token、账号邮箱或组织 ID 写入实验结果。
 
-### 4.2 Iota CLI 与 ACP Claude
+### 4.2 iota CLI 与 ACP Claude
 
 ```bash
 cd iota-cli
@@ -94,11 +94,11 @@ node dist/index.js run --backend claude-code --trace "ping。只回复 pong。"
 | 组别 | 路径 | 启动状态 | 样本数 | 说明 |
 |---|---|---|---:|---|
 | A | Claude Code native | 冷启动 | 5 | 每次都启动新进程 |
-| B | Iota + ACP + Claude | 冷启动 | 5 | 首次触发 Iota CLI、Engine、ACP adapter |
+| B | iota + ACP + Claude | 冷启动 | 5 | 首次触发 iota CLI、Engine、ACP adapter |
 | C | Claude Code native | 热启动 | 30 | 预热 3 次后采样 |
-| D | Iota + ACP + Claude | 热启动 | 30 | 预热 3 次后采样；如 adapter 复用长连接，需记录复用策略 |
+| D | iota + ACP + Claude | 热启动 | 30 | 预热 3 次后采样；如 adapter 复用长连接，需记录复用策略 |
 
-如果 Iota CLI 每次命令都会重新创建 Engine 进程，则 D 组仍然是 CLI 进程级热启动，而不是单 Agent 服务内的长连接热启动。若要验证 Agent 常驻路径，应另建 `iota-agent` WebSocket/REST 实验，不与本页 CLI 实验混合。
+如果 iota CLI 每次命令都会重新创建 Engine 进程，则 D 组仍然是 CLI 进程级热启动，而不是单 Agent 服务内的长连接热启动。若要验证 Agent 常驻路径，应另建 `iota-agent` WebSocket/REST 实验，不与本页 CLI 实验混合。
 
 ---
 
@@ -114,14 +114,14 @@ claude --print --output-format stream-json --verbose --bare --permission-mode au
 
 如果本机 Claude Code 版本不支持某个参数，记录实际命令并保持所有 native 样本一致。
 
-### 6.2 Iota ACP Claude 命令
+### 6.2 iota ACP Claude 命令
 
 ```bash
 cd iota-cli
 node dist/index.js run --backend claude-code --trace-json "ping。只回复 pong。"
 ```
 
-`--trace-json` 便于从输出中提取 Iota trace 耗时。若输出中混有普通响应与 JSON，可先只统计外层 `wall_ms` 和 `first_output_ms`，再通过 `iota trace` 或 Agent visibility API 补取 trace。
+`--trace-json` 便于从输出中提取 iota trace 耗时。若输出中混有普通响应与 JSON，可先只统计外层 `wall_ms` 和 `first_output_ms`，再通过 `iota trace` 或 Agent visibility API 补取 trace。
 
 ---
 
@@ -216,7 +216,7 @@ overhead_ratio = iota_acp_wall_ms / claude_native_wall_ms
 | Node |  |
 | Bun |  |
 | Claude Code version |  |
-| Iota commit |  |
+| iota commit |  |
 | Backend protocol | `claude-code: acp` |
 | Model | 仅写模型名，不写凭证 |
 | Network |  |
@@ -244,7 +244,7 @@ overhead_ratio = iota_acp_wall_ms / claude_native_wall_ms
 - 不要在实验结果里提交 token、完整环境变量、账号邮箱、组织 ID、原始 stderr 中的敏感内容。
 - Claude 服务端负载会影响结果。建议同一组实验连续运行，必要时在不同时段重复一次。
 - 如果提示词触发了工具调用、审批、MCP 或文件读取，延迟会包含额外链路，应单独建“工具调用场景”实验。
-- Iota 路径可能包含 Engine 初始化、配置解析、visibility 记录、事件规范化、ACP JSON-RPC 转发等开销。分析时不要把这些开销误判为 Claude 模型推理时间。
+- iota 路径可能包含 Engine 初始化、配置解析、visibility 记录、事件规范化、ACP JSON-RPC 转发等开销。分析时不要把这些开销误判为 Claude 模型推理时间。
 - 如果使用 `iota-agent` 常驻服务测试，需要单独记录 Agent 进程启动时间、WebSocket 建连时间、session 创建时间和 execution 时间。
 
 ---
@@ -255,8 +255,8 @@ overhead_ratio = iota_acp_wall_ms / claude_native_wall_ms
 在 <日期>、<机器>、<模型>、<提示词>、串行采样条件下：
 
 - Claude Code native warm p50 = <x> ms，p95 = <y> ms。
-- Iota + ACP + Claude warm p50 = <x> ms，p95 = <y> ms。
-- Iota ACP 路径 warm p50 额外开销 = <x> ms，p95 额外开销 = <y> ms。
+- iota + ACP + Claude warm p50 = <x> ms，p95 = <y> ms。
+- iota ACP 路径 warm p50 额外开销 = <x> ms，p95 额外开销 = <y> ms。
 - 冷启动额外开销 = <x> ms。
 
 本结论只适用于当前 CLI 实验路径，不代表 iota-agent 常驻服务路径，也不代表工具调用场景。

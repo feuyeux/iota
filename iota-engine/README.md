@@ -1,6 +1,6 @@
-# Iota Engine
+# iota Engine
 
-`@iota/engine` 是 Iota 的核心 TypeScript 运行时库。它负责统一执行、事件流、工作区状态、记忆系统、审批、可见性、追踪、配置与存储，并把多个 AI coding backend 的原生协议归一化为统一运行时模型。
+`@iota/engine` 是 iota 的核心 TypeScript 运行时库。它负责统一执行、事件流、工作区状态、记忆系统、审批、可见性、追踪、配置与存储，并把多个 AI coding backend 的原生协议归一化为统一运行时模型。
 
 ## 包结构
 

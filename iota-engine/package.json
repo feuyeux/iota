@@ -1,7 +1,7 @@
 {
   "name": "@iota/engine",
   "version": "0.1.0",
-  "description": "Iota Agent Engine - Core runtime library",
+  "description": "iota Agent Engine - Core runtime library",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b --force",
     "test": "vitest run",

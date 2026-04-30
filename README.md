@@ -1,6 +1,6 @@
-# Iota
+# iota
 
-Iota 是一个可插拔的 AI Coding Agent 运行时工程。它通过统一的 `iota-engine`、`iota-cli`、`iota-agent` 与 `iota-app`，编排 Claude Code、Codex、Gemini CLI、Hermes Agent 与 OpenCode，并把原生后端协议归一化为统一的运行时事件、可见性数据和 App Read Model。
+iota 是一个可插拔的 AI Coding Agent 运行时工程。它通过统一的 `iota-engine`、`iota-cli`、`iota-agent` 与 `iota-app`，编排 Claude Code、Codex、Gemini CLI、Hermes Agent 与 OpenCode，并把原生后端协议归一化为统一的运行时事件、可见性数据和 App Read Model。
 
 ## 仓库结构
 

@@ -1,15 +1,15 @@
-# Iota Fun - Multi-Language Function Examples
+# iota Fun - Multi-Language Function Examples
 
 > **Version:** 1.0  
 > **Last Updated:** 2026-04-28
 
 ## Overview
 
-`iota-fun/` contains example functions in multiple programming languages that demonstrate Iota's multi-language execution capabilities. These functions can be executed directly via `IotaFunEngine` or automatically routed through `IotaEngine` using natural language prompts.
+`iota-fun/` contains example functions in multiple programming languages that demonstrate iota's multi-language execution capabilities. These functions can be executed directly via `IotaFunEngine` or automatically routed through `IotaEngine` using natural language prompts.
 
 ## Purpose
 
-- **Demonstrate multi-language support**: Show how Iota can execute code in Python, TypeScript, Go, Rust, Zig, Java, and C++
+- **Demonstrate multi-language support**: Show how iota can execute code in Python, TypeScript, Go, Rust, Zig, Java, and C++
 - **Provide simple examples**: Each function generates a random value (number, color, shape, material, size, animal, action)
 - **Enable testing**: Serve as test cases for the fun-call routing system
 - **Educational reference**: Help developers understand how to add new language support
@@ -79,7 +79,7 @@ console.log(result.exitCode); // 0
 
 ### Method 2: Natural Language Routing via IotaEngine
 
-Let Iota automatically detect and route based on natural language prompts:
+Let iota automatically detect and route based on natural language prompts:
 
 ```typescript
 import { IotaEngine } from "@iota/engine";
@@ -399,7 +399,7 @@ To contribute new language examples:
 
 ## License
 
-Part of the Iota project. See root LICENSE file.
+Part of the iota project. See root LICENSE file.
 
 ---
 
