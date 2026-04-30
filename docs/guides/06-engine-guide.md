@@ -217,7 +217,7 @@ hermes config show
 
 **核心文件**：
 - `src/backend/acp-backend-adapter.ts` — ACP 生命周期、session 映射、双向 response 写回
-- `src/backend/acp-event-mapper.ts` — `session/update`、`session/complete`、`session/request_permission`、`session/memory`、`session/file_delta` 到 `RuntimeEvent`
+- `src/backend/acp-event-mapper.ts` — `session/update`、`session/complete`、`session/request_permission`、`session/memory`、`session/file_delta` 到 `RuntimeEvent`；permission request 同时发出 `state: waiting_approval` 和 `extension: approval_request` 以兼容核心状态与现有 approval 扩展路径
 - `src/protocol/acp.ts` — ACP 方法常量与消息类型
 
 **配置字段**（backend scope）：
@@ -228,7 +228,7 @@ iota config set acpAdapter "@anthropic-ai/claude-code-acp" --scope backend --sco
 iota config set acpAdapterArgs "--verbose" --scope backend --scope-id claude-code
 ```
 
-`BackendPool` 在 `protocol: acp` 时优先创建 ACP adapter。Claude/Codex/Gemini 若 ACP adapter 在发出任何事件前失败，会自动回退到 legacy native adapter；默认不打印降级提醒，只有 `IOTA_DEBUG_ACP=true` 时输出 legacy native 使用日志。
+`BackendPool` 在 `protocol: acp` 时优先创建 ACP adapter。Claude/Codex/Gemini 若 ACP adapter 在发出任何事件前失败，会自动回退到 legacy native adapter；默认不打印降级提醒，只有 `IOTA_DEBUG_ACP=true` 时输出 legacy native 使用日志。`AcpBackendAdapter` 负责 `initialize -> session/new -> session/prompt`，并在 `interrupt()` / `destroy()` 时发送 `session/interrupt` / `session/destroy`，同时清理 session 映射和 deferred prompt 状态。
 
 实现差异与验证状态：Hermes 没有新增 `hermes-acp.ts`，而是在 `hermes.ts` 原地重构为继承/复用 `AcpBackendAdapter`，Hermes 配置生成拆到 `hermes-config.ts`。默认配置仍保守：Hermes/OpenCode 默认 `protocol: acp`，Claude/Codex/Gemini 默认 native，只有显式设置 `protocol=acp` 才启用 ACP adapter。Gemini `--acp`、Claude/Codex adapter shim 包、OpenCode `opencode acp` 都需要在目标机器上跑真实 traced request 后才算验证完成。
 
@@ -501,6 +501,11 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 ```
 
 **ACP JSON-RPC 2.0 解析**（Gemini ACP、Hermes、OpenCode、Claude/Codex adapter-backed）：
+```typescript
+// session/complete.usage 会映射 input/output/cache/reasoning/total tokens
+// session/request_permission 会映射 waiting_approval state + approval_request extension
+```
+
 ```typescript
 // 从 stdout 读取完整 JSON 对象
 // 将请求 ID 与响应 ID 匹配

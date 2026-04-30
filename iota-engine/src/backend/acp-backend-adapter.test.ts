@@ -67,4 +67,86 @@ describe("AcpBackendAdapter", () => {
       result: { approved: true },
     });
   });
+
+  it("sends deferred prompt after session/new resolves", () => {
+    const adapter = new TestAcpAdapter();
+    const writes: string[] = [];
+    // @ts-expect-error - intercept protected method for lifecycle test
+    adapter.writeToStdin = (_executionId: string, data: string) => {
+      writes.push(data);
+      return true;
+    };
+
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.buildMessage(request);
+    // @ts-expect-error - accessing protected test surface through adapter options
+    const mapped = adapter.options.mapNativeEvent("gemini", request, {
+      id: "e1:new",
+      result: { sessionId: "agent-s1" },
+    });
+
+    expect(mapped).toBeNull();
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0]!).method).toBe("session/prompt");
+  });
+
+  it("sends session/interrupt and clears execution ownership", async () => {
+    const adapter = new TestAcpAdapter();
+    const writes: string[] = [];
+    // @ts-expect-error - intercept protected method for lifecycle test
+    adapter.writeToStdin = (_executionId: string, data: string) => {
+      writes.push(data);
+      return true;
+    };
+
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.buildMessage(request);
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.mapNativeEvent("gemini", request, {
+      id: "e1:new",
+      result: { sessionId: "agent-s1" },
+    });
+    await adapter.interrupt(request.executionId);
+
+    expect(writes.map((wire) => JSON.parse(wire).method)).toContain("session/interrupt");
+  });
+
+  it("sends session/destroy and clears sessions on destroy", async () => {
+    const adapter = new TestAcpAdapter();
+    const writes: string[] = [];
+    // @ts-expect-error - intercept protected method for lifecycle test
+    adapter.writeToStdin = (_executionId: string, data: string) => {
+      writes.push(data);
+      return true;
+    };
+
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.buildMessage(request);
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.mapNativeEvent("gemini", request, {
+      id: "e1:new",
+      result: { sessionId: "agent-s1" },
+    });
+    await adapter.destroy();
+
+    expect(writes.map((wire) => JSON.parse(wire).method)).toContain("session/destroy");
+  });
+
+  it("clears pending session state when session/new fails", () => {
+    const adapter = new TestAcpAdapter();
+    // @ts-expect-error - accessing protected test surface through adapter options
+    adapter.options.buildMessage(request);
+    // @ts-expect-error - accessing protected test surface through adapter options
+    const event = adapter.options.mapNativeEvent("gemini", request, {
+      id: "e1:new",
+      error: { message: "new failed" },
+    });
+
+    expect(event?.type).toBe("error");
+    // @ts-expect-error - accessing private state to verify cleanup
+    expect(adapter.pendingNewSessions.size).toBe(0);
+    // @ts-expect-error - accessing private state to verify cleanup
+    expect(adapter.deferredPrompts.size).toBe(0);
+  });
+
 });

@@ -567,7 +567,7 @@ class TraceRecorder {
 | `estimated` | 引擎使用启发式方法估算令牌（例如字符数 / 4） |
 
 **Backend 后端 Token 令牌支持**：
-- **ACP 后端**：优先读取 `session/complete.usage` 或 ACP response usage 字段
+- **ACP 后端**：优先读取 `session/complete.usage` 或 ACP response usage 字段，包括 `reasoningTokens`
 - **Claude Code native fallback**：`native`（在 `result` 事件中的 usage）
 - **Codex native fallback**：`native`（在 `turn.completed` / result usage）
 - **Gemini native fallback**：`native`（在 result/stats usage）

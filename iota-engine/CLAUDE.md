@@ -21,19 +21,20 @@ If code and docs conflict, prefer the current implementation and then update doc
 
 - TypeScript / Bun runtime
 - Engine-internal adapters in `src/backend/`
-- Native CLI subprocess protocols over stdio
+- ACP JSON-RPC 2.0 is the preferred backend protocol; legacy native CLI subprocess protocols remain as fallback for Claude Code, Codex, and Gemini
 - No vendor internal SDK imports
-- No extra protocol-conversion executables
+- No vendor internal SDK imports; adapter-backed ACP shims must remain external executables configured through backend protocol settings
 - Redact secret-like values in visibility, audit, snapshots, replay, logs, and examples
 
 ## Backend Integration Baseline
 
-| Backend | Process | Protocol |
-|---|---|---|
-| Claude Code | `claude --print --output-format stream-json --verbose --bare --permission-mode auto` | NDJSON stream-json output |
-| Codex | `codex exec [-c model=...]` | NDJSON output |
-| Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | NDJSON stream-json output |
-| Hermes Agent | `hermes acp` | ACP JSON-RPC 2.0 |
+| Backend | Native / Fallback Process | ACP Process | Protocol |
+|---|---|---|---|
+| Claude Code | `claude --print --output-format stream-json --verbose --bare --permission-mode auto` | `npx @anthropic-ai/claude-code-acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy NDJSON fallback |
+| Codex | `codex exec [-c model=...]` | `npx @openai/codex-acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy NDJSON fallback |
+| Gemini CLI | `gemini --output-format stream-json --skip-trust --prompt <prompt>` | `gemini --acp` when `protocol: acp` | ACP JSON-RPC 2.0, legacy stream-json fallback |
+| Hermes Agent | n/a | `hermes acp` | ACP JSON-RPC 2.0 |
+| OpenCode | n/a | `opencode acp` | ACP JSON-RPC 2.0 |
 
 ## Current Implementation Notes
 

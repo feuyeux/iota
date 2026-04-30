@@ -114,6 +114,11 @@ flowchart TD
 - **Redis 是外部大脑**：按 type + facet 的 key 前缀分桶存储，方便观察、可清理、可迁移。
 
 
+
+## 当前边界与后续 P1
+
+当前 `memory/extractor.ts` 是确定性关键词 fallback，已经把提取入口从 Engine 中抽出，但还没有调用 LLM 生成 `{type, facet, content, confidence}` schema。`MemoryStorage.store()` 已经支持 hash 级 ADD/UPDATE history；计划中的 top-5 同桶召回 + LLM ADD/UPDATE/SKIP 决策仍属于后续 P1。Session close 时将多条 episodic 压缩为 procedural-summary 的 compaction 也尚未实现。
+
 ## 存储后端演进路径
 
 Memory 存储的业务边界是 `MemoryStorageBackend`。Engine、Injector、Agent 和 App 不直接拼 Redis key，也不依赖某个向量库协议；后续切换后端时只替换 storage 实现和部署配置。

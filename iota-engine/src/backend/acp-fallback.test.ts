@@ -121,6 +121,63 @@ describe("ACP backend selection fallback", () => {
     );
     warn.mockRestore();
   });
+
+  it("propagates usage from final output in execute", async () => {
+    const request: RuntimeRequest = {
+      sessionId: "s1",
+      executionId: "e1",
+      prompt: "ping",
+      workingDirectory: process.cwd(),
+    };
+    const usage = { inputTokens: 1, outputTokens: 2, reasoningTokens: 3 };
+    const finalEvent: RuntimeEvent = {
+      type: "output",
+      sessionId: "s1",
+      executionId: "e1",
+      backend: "gemini",
+      sequence: 0,
+      timestamp: Date.now(),
+      data: {
+        role: "assistant",
+        content: "pong",
+        format: "markdown",
+        final: true,
+        usage,
+      },
+    };
+    const acp = new MockBackend("gemini", async function* () {
+      yield finalEvent;
+    });
+    const native = new MockBackend("gemini", () => ({
+      [Symbol.asyncIterator]() {
+        return { async next() { return { done: true, value: undefined }; } };
+      },
+    }));
+    const backend = new AcpFallbackBackend("gemini", acp, native);
+
+    const response = await backend.execute(request);
+
+    expect(response.usage).toEqual(usage);
+    expect(response.output).toBe("pong");
+  });
+
+
+  it("rejects native protocol for ACP-only Hermes and OpenCode backends", () => {
+    expect(
+      () =>
+        new BackendPool(
+          {
+            ...DEFAULT_CONFIG,
+            backend: {
+              ...DEFAULT_CONFIG.backend,
+              hermes: { ...DEFAULT_CONFIG.backend.hermes, protocol: "native" },
+            },
+          },
+          process.cwd(),
+        ),
+    ).toThrow(/does not provide a native protocol adapter/);
+  });
+
 });
 
 class MockBackend implements RuntimeBackend {

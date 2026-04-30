@@ -986,6 +986,8 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
             typeof u.outputTokens === "number" ? u.outputTokens : undefined,
           totalTokens:
             typeof u.totalTokens === "number" ? u.totalTokens : undefined,
+          reasoningTokens:
+            typeof u.reasoningTokens === "number" ? u.reasoningTokens : undefined,
           cacheReadTokens:
             typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : undefined,
           cacheWriteTokens:

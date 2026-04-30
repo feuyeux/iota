@@ -26,6 +26,7 @@ export function mapAcpNotificationToEvent(
     case ACP_METHODS.SESSION_REQUEST_PERMISSION:
     case "request_permission":
     case "permission/request":
+    case "session/request_permission":
       return mapPermissionRequest(backend, request, message, params);
     case ACP_METHODS.SESSION_MEMORY:
       return mapMemoryEvent(backend, request, params);

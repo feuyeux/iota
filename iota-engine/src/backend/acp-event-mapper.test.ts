@@ -49,9 +49,13 @@ describe("mapAcpNotificationToEvent", () => {
       }),
     );
 
-    expect(event?.type).toBe("extension");
-    expect(event?.data.name).toBe("approval_request");
-    expect(event?.data.payload.requestId).toBe("perm-1");
+    expect(Array.isArray(event)).toBe(true);
+    const events = event as NonNullable<typeof event>[];
+    expect(events[0]?.type).toBe("state");
+    expect(events[0]?.data.state).toBe("waiting_approval");
+    expect(events[1]?.type).toBe("extension");
+    expect(events[1]?.data.name).toBe("approval_request");
+    expect(events[1]?.data.payload.requestId).toBe("perm-1");
   });
 
   it("maps session/complete usage to a final output event", () => {
@@ -64,7 +68,7 @@ describe("mapAcpNotificationToEvent", () => {
           sessionId: "agent-s1",
           stopReason: "end_turn",
           finalMessage: "done",
-          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3, reasoningTokens: 4 },
         },
       }),
     );
@@ -75,6 +79,94 @@ describe("mapAcpNotificationToEvent", () => {
       inputTokens: 1,
       outputTokens: 2,
       totalTokens: 3,
+      reasoningTokens: 4,
     });
   });
+
+  it("maps thought updates to thinking extensions", () => {
+    const event = mapAcpNotificationToEvent(
+      "gemini",
+      request,
+      msg({
+        method: "session/update",
+        params: {
+          sessionId: "agent-s1",
+          type: "agent_thought",
+          content: [{ type: "thinking", text: "considering" }],
+        },
+      }),
+    );
+
+    expect(event?.type).toBe("extension");
+    expect(event?.data.name).toBe("thinking");
+    expect(event?.data.payload.text).toBe("considering");
+  });
+
+  it("maps tool_use content blocks to tool_call events", () => {
+    const event = mapAcpNotificationToEvent(
+      "opencode",
+      request,
+      msg({
+        id: "tool-1",
+        method: "session/update",
+        params: {
+          sessionId: "agent-s1",
+          type: "tool_call",
+          content: [
+            {
+              type: "tool_use",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              arguments: { path: "README.md" },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(event?.type).toBe("tool_call");
+    expect(event?.data.toolCallId).toBe("call-1");
+    expect(event?.data.arguments).toEqual({ path: "README.md" });
+  });
+
+  it("maps interrupted and error completions", () => {
+    const interrupted = mapAcpNotificationToEvent(
+      "hermes",
+      request,
+      msg({
+        method: "session_complete",
+        params: { sessionId: "agent-s1", stopReason: "interrupted" },
+      }),
+    );
+    expect(interrupted?.type).toBe("state");
+    expect(interrupted?.data.state).toBe("interrupted");
+
+    const failed = mapAcpNotificationToEvent(
+      "hermes",
+      request,
+      msg({
+        method: "session/complete",
+        params: { sessionId: "agent-s1", stopReason: "error", finalMessage: "bad" },
+      }),
+    );
+    expect(failed?.type).toBe("error");
+    expect(failed?.data.message).toBe("bad");
+  });
+
+  it("maps alias permission methods", () => {
+    const event = mapAcpNotificationToEvent(
+      "hermes",
+      request,
+      msg({
+        id: "perm-2",
+        method: "permission/request",
+        params: { name: "shell", input: { command: "pwd" } },
+      }),
+    );
+    const events = event as NonNullable<typeof event>[];
+    expect(events[0]?.type).toBe("state");
+    expect(events[1]?.type).toBe("extension");
+    expect(events[1]?.data.payload.requestId).toBe("perm-2");
+  });
+
 });

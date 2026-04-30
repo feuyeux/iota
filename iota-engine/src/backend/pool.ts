@@ -79,8 +79,8 @@ export class BackendPool {
           )
         : legacyNativeAdapter("gemini", () => new GeminiAdapter(mcpServers)),
     );
-    this.backends.set("hermes", new HermesAdapter(mcpServers));
-    this.backends.set("opencode", new OpenCodeAcpAdapter(mcpServers));
+    this.backends.set("hermes", requireAcpOnlyBackend("hermes", config.backend.hermes, () => new HermesAdapter(mcpServers)));
+    this.backends.set("opencode", requireAcpOnlyBackend("opencode", config.backend.opencode, () => new OpenCodeAcpAdapter(mcpServers)));
     for (const name of this.backends.keys()) {
       this.breakers.set(name, new CircuitBreaker());
     }
@@ -244,6 +244,21 @@ export class BackendPool {
 
 
 
+
+
+function requireAcpOnlyBackend<T extends RuntimeBackend>(
+  backend: BackendName,
+  section: BackendSection,
+  factory: () => T,
+): T {
+  if (section.protocol === "native") {
+    throw new IotaError({
+      code: ErrorCode.BACKEND_NOT_FOUND,
+      message: `Backend ${backend} does not provide a native protocol adapter; use protocol: acp`,
+    });
+  }
+  return factory();
+}
 
 function acpWithFallback(
   backend: BackendName,
@@ -412,9 +427,13 @@ export class AcpFallbackBackend implements RuntimeBackend {
     const events: RuntimeEvent[] = [];
     const chunks: string[] = [];
     let failed = false;
+    let usage: RuntimeResponse["usage"];
     for await (const event of this.stream(request)) {
       events.push(event);
-      if (event.type === "output") chunks.push(event.data.content);
+      if (event.type === "output") {
+        chunks.push(event.data.content);
+        if (event.data.usage) usage = event.data.usage;
+      }
       if (event.type === "error") failed = true;
     }
     return {
@@ -424,6 +443,7 @@ export class AcpFallbackBackend implements RuntimeBackend {
       status: failed ? "failed" : "completed",
       output: chunks.join(""),
       events,
+      usage,
       error: events.find((event) => event.type === "error")?.data,
     };
   }

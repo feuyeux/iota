@@ -16,13 +16,14 @@ type AcpBackendOptions = Omit<
     backend: BackendName,
     request: RuntimeRequest,
     message: AcpMessage,
-  ) => RuntimeEvent | null;
+  ) => RuntimeEvent | RuntimeEvent[] | null;
 };
 
 export class AcpBackendAdapter extends SubprocessBackendAdapter {
   private readonly sessionMap = new Map<string, string>();
   private readonly pendingNewSessions = new Map<string, string>();
   private readonly deferredPrompts = new Map<string, { id: string; prompt: string }>();
+  private readonly executionSessions = new Map<string, string>();
   private adapterReady = false;
 
   constructor(private readonly acpOptions: AcpBackendOptions) {
@@ -78,6 +79,7 @@ export class AcpBackendAdapter extends SubprocessBackendAdapter {
   }
 
   private buildPromptLifecycleMessage(request: RuntimeRequest): string {
+    this.executionSessions.set(request.executionId, request.sessionId);
     const agentSessionId = this.sessionMap.get(request.sessionId);
     const prompt = composeEffectivePrompt(request, this.adapterReady ? this : undefined);
     if (agentSessionId) {
@@ -102,11 +104,15 @@ export class AcpBackendAdapter extends SubprocessBackendAdapter {
     backend: BackendName,
     request: RuntimeRequest,
     value: Record<string, unknown>,
-  ): RuntimeEvent | null {
+  ): RuntimeEvent | RuntimeEvent[] | null {
     const message = { jsonrpc: "2.0", ...value } as AcpMessage;
-    if (message.result !== undefined && message.id !== undefined) {
+    if ((message.result !== undefined || message.error !== undefined) && message.id !== undefined) {
       const id = String(message.id);
       const requestSessionId = this.pendingNewSessions.get(id);
+      if (requestSessionId && message.error !== undefined) {
+        this.cleanupSession(requestSessionId);
+        return mapAcpNotificationToEvent(backend, request, message);
+      }
       if (requestSessionId) {
         this.pendingNewSessions.delete(id);
         const result = asRecord(message.result);
@@ -131,9 +137,59 @@ export class AcpBackendAdapter extends SubprocessBackendAdapter {
       if (id === "init-0") return null;
     }
 
-    return this.acpOptions.mapAcpEvent
+    const mapped = this.acpOptions.mapAcpEvent
       ? this.acpOptions.mapAcpEvent(backend, request, message)
       : mapAcpNotificationToEvent(backend, request, message);
+    if (isTerminalMappedEvent(mapped)) {
+      this.executionSessions.delete(request.executionId);
+    }
+    return mapped;
+  }
+
+  async interrupt(executionId: string): Promise<void> {
+    const sessionId = this.executionSessions.get(executionId);
+    const agentSessionId = sessionId ? this.sessionMap.get(sessionId) : undefined;
+    if (agentSessionId) {
+      this.writeToStdin(
+        executionId,
+        encodeAcp({
+          id: `${executionId}:interrupt`,
+          method: ACP_METHODS.SESSION_INTERRUPT,
+          params: { sessionId: agentSessionId },
+        }),
+      );
+    }
+    this.executionSessions.delete(executionId);
+    return super.interrupt(executionId);
+  }
+
+  async destroy(): Promise<void> {
+    for (const [sessionId, agentSessionId] of this.sessionMap) {
+      this.writeToStdin(
+        `session-destroy:${sessionId}`,
+        encodeAcp({
+          id: `destroy:${sessionId}`,
+          method: ACP_METHODS.SESSION_DESTROY,
+          params: { sessionId: agentSessionId },
+        }),
+      );
+    }
+    this.sessionMap.clear();
+    this.pendingNewSessions.clear();
+    this.deferredPrompts.clear();
+    this.executionSessions.clear();
+    return super.destroy();
+  }
+
+  private cleanupSession(sessionId: string): void {
+    this.sessionMap.delete(sessionId);
+    this.deferredPrompts.delete(sessionId);
+    for (const [requestId, pendingSessionId] of this.pendingNewSessions) {
+      if (pendingSessionId === sessionId) this.pendingNewSessions.delete(requestId);
+    }
+    for (const [executionId, executionSessionId] of this.executionSessions) {
+      if (executionSessionId === sessionId) this.executionSessions.delete(executionId);
+    }
   }
 
   private buildAcpNativeResponse(event: RuntimeEvent): string | undefined {
@@ -162,4 +218,19 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+
+function isTerminalMappedEvent(mapped: RuntimeEvent | RuntimeEvent[] | null): boolean {
+  const events = mapped ? (Array.isArray(mapped) ? mapped : [mapped]) : [];
+  return events.some((event) => {
+    if (event.type === "error") return true;
+    if (event.type === "output" && event.data.final) return true;
+    return (
+      event.type === "state" &&
+      (event.data.state === "completed" ||
+        event.data.state === "failed" ||
+        event.data.state === "interrupted")
+    );
+  });
 }

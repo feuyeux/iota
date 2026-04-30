@@ -4,11 +4,11 @@
 **最后更新：** 2026-04-29
 **验证环境：** Windows workspace `D:\coding\creative\iota`
 
-这篇文档记录 `pet-generator` 这个结构化 skill 的设计取舍、真实执行链路和本机验证结果。它不是一篇概念介绍：文中的结论来自四种 backend 的 traced request，以及 `iota-fun` 下七种语言工具的真实运行。
+这篇文档记录 `pet-generator` 这个结构化 skill 的设计取舍、真实执行链路和本机验证结果。它不是一篇概念介绍：文中的结论来自已验证 backend 的 traced request；新增 OpenCode ACP 后端需在本机可用后补充同类验证，以及 `iota-fun` 下七种语言工具的真实运行。
 
 ## 核心结论
 
-`生成宠物` 这类能力不应该交给模型每次重新推理。七个工具要不要调用、是否并行、结果如何拼接，都是确定规则；这些规则应写在 skill 声明里，由 Engine 执行，而不是依赖 Claude Code、Codex、Gemini CLI 或 Hermes Agent 自行发现 MCP 工具。
+`生成宠物` 这类能力不应该交给模型每次重新推理。七个工具要不要调用、是否并行、结果如何拼接，都是确定规则；这些规则应写在 skill 声明里，由 Engine 执行，而不是依赖 Claude Code、Codex、Gemini CLI、Hermes Agent 或 OpenCode 自行发现 MCP 工具。
 
 Iota 在这里验证的是两个边界：
 
@@ -90,7 +90,7 @@ Engine 不包含 `if (prompt === "生成宠物")` 这样的专用分支，也不
   -> IotaEngine.buildRequest()
   -> loadSkills(skill.roots) 加载 pet-generator
   -> matchExecutableSkill(prompt, skills) 命中 triggers
-  -> 选择 backend adapter: claude-code / codex / gemini / hermes
+  -> 选择 backend adapter: claude-code / codex / gemini / hermes / opencode（结构化 skill 不依赖后端自行调用工具）
   -> runSkillViaMcp()
        - 持久化 7 个 tool_call
        - 按 execution.parallel 并行调用 MCP tools/call
@@ -135,7 +135,7 @@ Engine 不包含 `if (prompt === "生成宠物")` 这样的专用分支，也不
 | Zig     | **`0.16.x`**                                                  | 当前 skill 固定按 Zig 0.16 API/CLI 验证；`runner.zig` 使用 `extern write`，编译必须带 `-lc`      |
 | C++     | Windows 使用 Zig `0.16.x` 的 `zig c++`；非 Windows 使用 `g++` | 当前 Windows 环境的 MinGW `g++ 15.2.0` 驱动会无诊断返回 1，因此 Windows C++ 编译固定走 `zig c++` |
 
-Zig 这里必须明确版本：不同 Zig 版本的标准库 API 和链接行为不兼容。本文档和当前实现只承诺 `zig version` 为 `0.16.x` 时的行为；升级 Zig 前要先跑本文末尾的四 backend traced request。
+Zig 这里必须明确版本：不同 Zig 版本的标准库 API 和链接行为不兼容。本文档和当前实现只承诺 `zig version` 为 `0.16.x` 时的行为；升级 Zig 前要先跑本文末尾的已验证 backend traced request；OpenCode 可用时也应纳入。
 
 ## 缓存行为
 
@@ -149,7 +149,7 @@ $HOME/.iota/iota-fun
 
 本次修复后，第一次 `claude-code` traced request 触发冷编译，`mcp.proxy` 约 27.9s；后续 backend 命中缓存后，`mcp.proxy` 稳定在 241-286ms。
 
-## 四 Backend 验证
+## Backend 验证
 
 验证命令必须使用已构建 CLI 产物，并跑真实 traced request：
 
@@ -159,6 +159,8 @@ node dist/index.js run --backend claude-code --trace "生成宠物"
 node dist/index.js run --backend codex --trace "生成宠物"
 node dist/index.js run --backend gemini --trace "生成宠物"
 node dist/index.js run --backend hermes --trace "生成宠物"
+# OpenCode 可用时补充：
+node dist/index.js run --backend opencode --trace "生成宠物"
 ```
 
 2026-04-29 本机最终验证结果：
@@ -169,8 +171,9 @@ node dist/index.js run --backend hermes --trace "生成宠物"
 | `codex`       | `5ac018e7-2a8a-4bb0-982e-cd295dffdb8a` | `7bc200e8-c06c-485c-a982-3a441b238df6` | `ok 356ms`     | `ok 286ms`    | 缓存命中   |
 | `gemini`      | `e17ed6d8-39cb-4e06-a6b9-614bbfcfd218` | `7aa18bb8-32d4-495b-921e-b556b18e3a22` | `ok 300ms`     | `ok 241ms`    | 缓存命中   |
 | `hermes`      | `c161ef92-6fcc-4683-b9dd-612773559c23` | `cebdac09-64c9-4c1a-99b2-83844736ea1b` | `ok 332ms`     | `ok 262ms`    | 缓存命中   |
+| `opencode`    | 待验证                                  | 待验证                                  | 待验证         | 待验证        | ACP 后端待补 |
 
-四条 trace 都有相同的结构特征：
+已验证 trace 都有相同的结构特征：
 
 - `configured servers: iota-fun`
 - `loaded skill "pet-generator"`
@@ -183,7 +186,7 @@ node dist/index.js run --backend hermes --trace "生成宠物"
 
 ## 修复记录
 
-本轮验证开始时，四个 backend 都失败在相同位置：
+本轮验证开始时，已验证 backend 都失败在相同位置：
 
 ```text
 pet-generator 执行失败：以下工具没有返回真实结果，未使用默认值补齐。
@@ -235,11 +238,13 @@ node dist/index.js run --backend claude-code --trace "生成宠物"
 node dist/index.js run --backend codex --trace "生成宠物"
 node dist/index.js run --backend gemini --trace "生成宠物"
 node dist/index.js run --backend hermes --trace "生成宠物"
+# OpenCode 可用时补充：
+node dist/index.js run --backend opencode --trace "生成宠物"
 ```
 
 验收点：
 
-- 四个 backend 都 `status="completed"`；
+- 已验证 backend 都 `status="completed"`；
 - trace 中 `mcp.proxy` 为 `ok`，`toolCount=7`，`parallel=true`；
 - 输出包含 `action/color/material/size/animal/lengthCm/toyShape` 七个真实工具结果；
 - `animal` 中文正常显示为 `猫/狗/鸟`；
