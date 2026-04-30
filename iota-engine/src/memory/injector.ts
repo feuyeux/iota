@@ -16,6 +16,7 @@ import type {
   VisibilityPolicy,
 } from "../visibility/types.js";
 import { DEFAULT_VISIBILITY_POLICY } from "../visibility/types.js";
+import { createDefaultEmbeddingChain, type EmbeddingProvider } from "./embedding.js";
 import type {
   MemoryContext,
   MemoryQuery,
@@ -42,22 +43,63 @@ export interface InjectWithVisibilityResult {
 }
 
 const DEFAULT_TOKEN_BUDGET = 4096;
+const IDENTITY_TOKEN_BUDGET = 256;
+const PREFERENCE_TOKEN_BUDGET = 512;
 const CHARS_PER_TOKEN = 4;
 
 export class MemoryInjector {
-  constructor(private readonly storage: MemoryStorage) {}
+  private readonly embeddingProvider: EmbeddingProvider;
+
+  constructor(
+    private readonly storage: MemoryStorage,
+    embeddingProvider: EmbeddingProvider = createDefaultEmbeddingChain(1024),
+  ) {
+    this.embeddingProvider = embeddingProvider;
+  }
 
   async buildContext(scope: MemoryScopeContext): Promise<MemoryContext> {
     const projectScopeId = scope.projectId ?? scope.workingDirectory;
     const userScopeId = scope.userId ?? "default";
+    const promptVector = await this.embeddingProvider.embed(
+      scope.prompt ?? `${scope.sessionId}\n${projectScopeId}\n${userScopeId}`,
+    );
 
     const queries: MemoryQuery[] = [
       {
-        type: "episodic",
-        scope: "session",
-        scopeId: scope.sessionId,
+        type: "semantic",
+        facet: "identity",
+        scope: "user",
+        scopeId: userScopeId,
         limit: 20,
-        minConfidence: 0.7,
+        minConfidence: 0.85,
+        vector: promptVector,
+      },
+      {
+        type: "semantic",
+        facet: "preference",
+        scope: "user",
+        scopeId: userScopeId,
+        limit: 30,
+        minConfidence: 0.8,
+        vector: promptVector,
+      },
+      {
+        type: "semantic",
+        facet: "strategic",
+        scope: "project",
+        scopeId: projectScopeId,
+        limit: 30,
+        minConfidence: 0.8,
+        vector: promptVector,
+      },
+      {
+        type: "semantic",
+        facet: "domain",
+        scope: "project",
+        scopeId: projectScopeId,
+        limit: 50,
+        minConfidence: 0.8,
+        vector: promptVector,
       },
       {
         type: "procedural",
@@ -65,40 +107,37 @@ export class MemoryInjector {
         scopeId: projectScopeId,
         limit: 10,
         minConfidence: 0.75,
+        vector: promptVector,
       },
       {
-        type: "factual",
-        scope: "user",
-        scopeId: userScopeId,
-        limit: 50,
-        minConfidence: 0.8,
-      },
-      {
-        type: "strategic",
-        scope: "project",
-        scopeId: projectScopeId,
-        limit: 30,
-        minConfidence: 0.8,
+        type: "episodic",
+        scope: "session",
+        scopeId: scope.sessionId,
+        limit: 20,
+        minConfidence: 0.7,
+        vector: promptVector,
       },
     ];
 
-    const [episodic, procedural, factual, strategic] = await Promise.all(
-      queries.map((query) => this.storage.retrieve(query)),
-    );
+    const [identity, preference, strategic, domain, procedural, episodic] =
+      await Promise.all(queries.map((query) => this.storage.retrieve(query)));
 
-    return { episodic, procedural, factual, strategic };
+    return { episodic, procedural, identity, preference, domain, strategic };
   }
 
   formatAsPrompt(memoryContext: MemoryContext): string {
+    const normalized = normalizeMemoryContext(memoryContext);
     const sections: string[] = [];
 
-    appendSection(sections, "Factual Memory", memoryContext.factual);
-    appendSection(sections, "Strategic Memory", memoryContext.strategic);
-    appendSection(sections, "Procedural Memory", memoryContext.procedural);
+    appendSection(sections, "Identity Memory", normalized.identity);
+    appendSection(sections, "Preference Memory", normalized.preference);
+    appendSection(sections, "Strategic Memory", normalized.strategic);
+    appendSection(sections, "Domain Memory", normalized.domain);
+    appendSection(sections, "Procedural Memory", normalized.procedural);
 
-    if (memoryContext.episodic.length > 0) {
+    if (normalized.episodic.length > 0) {
       sections.push("# Episodic Memory");
-      for (const memory of memoryContext.episodic) {
+      for (const memory of normalized.episodic) {
         sections.push(
           `- [${new Date(memory.timestamp).toISOString()}] ${memory.content}`,
         );
@@ -110,6 +149,9 @@ export class MemoryInjector {
   }
 }
 
+/**
+ * @deprecated Passing MemoryBlock[] is a legacy compatibility path; prefer MemoryContext.
+ */
 export function injectMemory(
   context: RuntimeContext,
   memoryContext: MemoryContext | MemoryBlock[],
@@ -118,6 +160,9 @@ export function injectMemory(
   return injectMemoryWithVisibility(context, memoryContext, options).context;
 }
 
+/**
+ * @deprecated Passing MemoryBlock[] is a legacy compatibility path; prefer MemoryContext.
+ */
 export function injectMemoryWithVisibility(
   context: RuntimeContext,
   memoryContext: MemoryContext | MemoryBlock[],
@@ -140,39 +185,38 @@ export function injectMemoryWithVisibility(
   );
   const selected: MemorySelectedVisibility[] = [];
   const excluded: MemoryExcludedVisibility[] = [];
-
-  let usedTokens = 0;
   const selectedBlocks: RuntimeContext["injectedMemory"] = [];
+
+  const hasIdentity = ordered.some((memory) => injectionBudgetBucket(memory) === "identity");
+  const hasPreference = ordered.some((memory) => injectionBudgetBucket(memory) === "preference");
+  const identityBudget = hasIdentity ? Math.min(IDENTITY_TOKEN_BUDGET, budget) : 0;
+  const preferenceBudget = hasPreference
+    ? Math.min(PREFERENCE_TOKEN_BUDGET, Math.max(0, budget - identityBudget))
+    : 0;
+  const sharedBudget = Math.max(0, budget - identityBudget - preferenceBudget);
+  const usedByBucket: Record<string, number> = { identity: 0, preference: 0, shared: 0 };
 
   for (let index = 0; index < ordered.length; index += 1) {
     const memory = ordered[index];
     const candidate = candidates[index];
     const tokens = estimateTokens(memory.content);
+    const bucket = injectionBudgetBucket(memory);
+    const bucketBudget = bucket === "identity" ? identityBudget : bucket === "preference" ? preferenceBudget : sharedBudget;
 
     if (existingIds.has(memory.id)) {
       excluded.push({ ...candidate, reason: "duplicate" });
       continue;
     }
 
-    if (minScore > 0 && (memory.confidence ?? 0) < minScore) {
+    if (minScore > 0 && computeMemoryScore(memory) < minScore) {
       excluded.push({ ...candidate, reason: "low_score" });
       continue;
     }
 
-    if (usedTokens + tokens > budget) {
-      const remaining = budget - usedTokens;
+    if (usedByBucket[bucket] + tokens > bucketBudget) {
+      const remaining = bucketBudget - usedByBucket[bucket];
       if (remaining > 50) {
-        selectedBlocks.push({
-          id: memory.id,
-          type: memory.type,
-          content: memory.content.slice(0, remaining * CHARS_PER_TOKEN),
-          metadata: {
-            ...memory.metadata,
-            source: memory.scope,
-            memoryScopeId: memory.scopeId,
-            confidence: memory.confidence,
-          },
-        });
+        selectedBlocks.push(toInjectedBlock(memory, memory.content.slice(0, remaining * CHARS_PER_TOKEN)));
         selected.push({
           ...candidate,
           injectedSegmentId: memory.id,
@@ -181,38 +225,21 @@ export function injectMemoryWithVisibility(
           trimmedToTokens: remaining,
           visibleToBackend: true,
         });
-        usedTokens += remaining;
+        usedByBucket[bucket] += remaining;
       } else {
         excluded.push({ ...candidate, reason: "token_budget_exceeded" });
       }
-
-      for (let tail = index + 1; tail < ordered.length; tail += 1) {
-        excluded.push({
-          ...candidates[tail],
-          reason: "token_budget_exceeded",
-        });
-      }
-      break;
+      continue;
     }
 
-    selectedBlocks.push({
-      id: memory.id,
-      type: memory.type,
-      content: memory.content,
-      metadata: {
-        ...memory.metadata,
-        source: memory.scope,
-        memoryScopeId: memory.scopeId,
-        confidence: memory.confidence,
-      },
-    });
+    selectedBlocks.push(toInjectedBlock(memory, memory.content));
     selected.push({
       ...candidate,
       injectedSegmentId: memory.id,
       trimmed: false,
       visibleToBackend: true,
     });
-    usedTokens += tokens;
+    usedByBucket[bucket] += tokens;
   }
 
   return {
@@ -244,10 +271,12 @@ function appendSection(
 
 function flattenMemoryContext(memoryContext: MemoryContext): StoredMemory[] {
   return [
-    ...memoryContext.factual,
-    ...memoryContext.strategic,
-    ...memoryContext.procedural,
-    ...memoryContext.episodic,
+    ...sortMemories(memoryContext.identity),
+    ...sortMemories(memoryContext.preference),
+    ...sortMemories(memoryContext.strategic),
+    ...sortMemories(memoryContext.domain),
+    ...sortMemories(memoryContext.procedural),
+    ...sortMemories(memoryContext.episodic),
   ];
 }
 
@@ -259,10 +288,12 @@ function normalizeMemoryContext(
     return {
       episodic: memoryContext.map((memory, index) => ({
         id: memory.id,
-        type: memory.type ?? "episodic",
+        type: normalizeBlockType(memory.type),
+        facet: normalizeBlockFacet(memory.type),
         scope: "session",
         scopeId: "legacy-session",
         content: memory.content,
+        contentHash: contentHash(memory.content),
         source: {
           backend: "claude-code",
           nativeType: "legacy_memory_block",
@@ -282,12 +313,21 @@ function normalizeMemoryContext(
         expiresAt: now + 7 * 24 * 60 * 60 * 1000,
       })),
       procedural: [],
-      factual: [],
+      identity: [],
+      preference: [],
+      domain: [],
       strategic: [],
     };
   }
 
-  return memoryContext;
+  return {
+    episodic: memoryContext.episodic ?? [],
+    procedural: memoryContext.procedural ?? [],
+    identity: memoryContext.identity ?? [],
+    preference: memoryContext.preference ?? [],
+    domain: memoryContext.domain ?? [],
+    strategic: memoryContext.strategic ?? [],
+  };
 }
 
 function toCandidate(
@@ -307,11 +347,30 @@ function toCandidate(
     memoryId: memory.id,
     type: memory.type,
     source: normalizeCandidateSource(memory.scope),
-    score: memory.confidence,
+    score: computeMemoryScore(memory),
     contentHash: contentHash(memory.content),
     preview,
     charCount: memory.content.length,
     estimatedTokens: visEstimateTokens(memory.content, backend),
+  };
+}
+
+function toInjectedBlock(memory: StoredMemory, content: string): RuntimeContext["injectedMemory"][number] {
+  return {
+    id: memory.id,
+    type: memory.type,
+    content,
+    facet: memory.facet,
+    scope: memory.scope,
+    scopeId: memory.scopeId,
+    confidence: memory.confidence,
+    metadata: {
+      ...memory.metadata,
+      facet: memory.facet,
+      source: memory.scope,
+      memoryScopeId: memory.scopeId,
+      confidence: memory.confidence,
+    },
   };
 }
 
@@ -328,6 +387,48 @@ function normalizeCandidateSource(
     default:
       return "store";
   }
+}
+
+function sortMemories(memories: StoredMemory[]): StoredMemory[] {
+  return [...memories].sort((a, b) => computeMemoryScore(b) - computeMemoryScore(a));
+}
+
+function computeMemoryScore(memory: StoredMemory): number {
+  const now = Date.now();
+  const ageDays = Math.max(0, (now - memory.lastAccessedAt) / 86_400_000);
+  const recencyDecay = Math.exp(-ageDays / 30);
+  const accessBoost = Math.log1p(memory.accessCount) / 10;
+  const rawVectorScore = (memory as StoredMemory & { score?: unknown }).score;
+  const vectorScore =
+    typeof rawVectorScore === "number"
+      ? rawVectorScore
+      : typeof memory.metadata.vectorScore === "number"
+        ? memory.metadata.vectorScore
+        : undefined;
+  if (vectorScore === undefined) {
+    return 0.5 * memory.confidence + 0.3 * recencyDecay + 0.2 * accessBoost;
+  }
+  return (
+    0.3 * memory.confidence +
+    0.2 * recencyDecay +
+    0.1 * accessBoost +
+    0.4 * vectorScore
+  );
+}
+
+function injectionBudgetBucket(memory: StoredMemory): "identity" | "preference" | "shared" {
+  if (memory.type === "semantic" && memory.facet === "identity") return "identity";
+  if (memory.type === "semantic" && memory.facet === "preference") return "preference";
+  return "shared";
+}
+
+function normalizeBlockType(type: MemoryBlock["type"]): StoredMemory["type"] {
+  if (type === "procedural" || type === "semantic") return type;
+  return "episodic";
+}
+
+function normalizeBlockFacet(_type: MemoryBlock["type"]): StoredMemory["facet"] {
+  return undefined;
 }
 
 function estimateTokens(text: string): number {

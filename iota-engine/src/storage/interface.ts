@@ -1,6 +1,5 @@
 import type {
   BackendName,
-  MemoryKind,
   RuntimeEvent,
   RuntimeRequest,
   RuntimeResponse,
@@ -66,7 +65,41 @@ export interface LockLease {
   expiresAt: number;
 }
 
-export interface StorageBackend {
+export interface OptionalMemoryStorageOperations {
+  saveUnifiedMemory?(memory: StoredMemory): Promise<void>;
+  loadUnifiedMemories?(query: MemoryQuery): Promise<StoredMemory[]>;
+  deleteUnifiedMemory?(type: StoredMemory["type"], memoryId: string): Promise<boolean>;
+  touchUnifiedMemories?(memoryIds: string[], accessedAt: number): Promise<void>;
+  searchUnifiedMemories?(
+    query: string,
+    limit?: number,
+    scope?: { scope: MemoryScope; scopeId: string },
+  ): Promise<Array<StoredMemory & { score?: number }>>;
+  checkHashExists?(
+    type: StoredMemory["type"],
+    scopeId: string,
+    contentHash: string,
+    facet?: StoredMemory["facet"],
+  ): Promise<boolean>;
+  findUnifiedMemoryByHash?(
+    type: StoredMemory["type"],
+    scopeId: string,
+    contentHash: string,
+    facet?: StoredMemory["facet"],
+  ): Promise<StoredMemory | null>;
+  addHistory?(
+    memoryId: string,
+    event: string,
+    oldContent: string | null,
+    newContent: string,
+  ): Promise<void>;
+  searchByVector?(
+    vector: number[],
+    query: MemoryQuery,
+    topK: number,
+  ): Promise<Array<StoredMemory & { score?: number }>>;
+}
+export interface StorageBackend extends OptionalMemoryStorageOperations {
   init(): Promise<void>;
   createSession(record: SessionRecord): Promise<void>;
   updateSession(record: Partial<SessionRecord> & { id: string }): Promise<void>;
@@ -84,15 +117,6 @@ export interface StorageBackend {
   queryExecutions?(options?: LogQueryOptions): Promise<ExecutionRecord[]>;
   queryLogs?(options?: LogQueryOptions): Promise<RuntimeLogEntry[]>;
   aggregateLogs?(options?: LogQueryOptions): Promise<LogAggregation>;
-  saveUnifiedMemory?(memory: StoredMemory): Promise<void>;
-  loadUnifiedMemories?(query: MemoryQuery): Promise<StoredMemory[]>;
-  deleteUnifiedMemory?(type: MemoryKind, memoryId: string): Promise<boolean>;
-  touchUnifiedMemories?(memoryIds: string[], accessedAt: number): Promise<void>;
-  searchUnifiedMemories?(
-    query: string,
-    limit?: number,
-    scope?: { scope: MemoryScope; scopeId: string },
-  ): Promise<Array<StoredMemory & { score?: number }>>;
   getBackendIsolationReport?(): Promise<{
     sessions: Array<{
       sessionId: string;

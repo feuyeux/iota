@@ -39,7 +39,9 @@ import { MetricsCollector } from "./metrics/collector.js";
 import { McpRouter } from "./mcp/router.js";
 import { MemoryStorage, type MemoryStorageBackend } from "./memory/storage.js";
 import { memoryMapper } from "./memory/mapper.js";
-import type { BackendMemoryEvent, StoredMemory } from "./memory/types.js";
+import { createDefaultEmbeddingChain } from "./memory/embedding.js";
+import { MemoryExtractor } from "./memory/extractor.js";
+import type { StoredMemory } from "./memory/types.js";
 import {
   AutoApprovalHook,
   type ApprovalHook,
@@ -142,6 +144,7 @@ export class IotaEngine {
   private readonly workingMemory = new WorkingMemory();
   private memoryStorage?: MemoryStorage;
   private memoryInjector?: MemoryInjector;
+  private readonly memoryExtractor = new MemoryExtractor();
   private readonly metrics = new MetricsCollector();
   private readonly approvalHook: ApprovalHook;
   private mcpRouter?: McpRouter;
@@ -245,8 +248,9 @@ export class IotaEngine {
     this.multiplexer = new EventMultiplexer(this.eventStore);
 
     if (hasUnifiedMemoryStorage(this.storage)) {
-      this.memoryStorage = new MemoryStorage(this.storage);
-      this.memoryInjector = new MemoryInjector(this.memoryStorage);
+      const embeddingProvider = createDefaultEmbeddingChain(1024);
+      this.memoryStorage = new MemoryStorage(this.storage, embeddingProvider);
+      this.memoryInjector = new MemoryInjector(this.memoryStorage, embeddingProvider);
     }
 
     // Production mode: MinIO for snapshots
@@ -1856,6 +1860,7 @@ export class IotaEngine {
             session.workingDirectory ??
             config.engine.workingDirectory,
         ),
+        prompt: input.prompt,
       });
 
       const visibilityPolicy = this.requireConfig().visibility;
@@ -2480,8 +2485,8 @@ export class IotaEngine {
     output: string;
     workingDirectory: string;
   }): Promise<StoredMemory | null> {
-    const content = this.extractMemoryContent(input.prompt, input.output);
-    if (!content) {
+    const extracted = this.memoryExtractor.extract(input);
+    if (!extracted) {
       return null;
     }
 
@@ -2490,15 +2495,11 @@ export class IotaEngine {
       return null;
     }
 
-    // Classify based on the user prompt alone, not the combined prompt+response.
-    // The assistant's reply often paraphrases earlier facts (e.g. "你叫张明")
-    // which would otherwise pull every classification toward the factual bucket.
-    const nativeType = this.resolveNativeMemoryType(input.backend, input.prompt);
     const unified = memoryMapper.map(
       {
         backend: input.backend,
-        nativeType,
-        content,
+        nativeType: extracted.nativeType,
+        content: extracted.content,
         metadata: {
           sessionId: input.sessionId,
           workingDirectory: input.workingDirectory,
@@ -2507,144 +2508,20 @@ export class IotaEngine {
       input.executionId,
     );
 
+    if (unified.type === "semantic") {
+      unified.facet = extracted.semanticFacet ?? unified.facet;
+      if (unified.facet === "identity" || unified.facet === "preference") {
+        unified.scope = "user";
+        unified.ttlDays = Math.max(unified.ttlDays, 365);
+      }
+    }
+
     if (unified.confidence < 0.7) {
       return null;
     }
 
     const scopeId = this.resolveScopeId(unified.scope, session);
     return this.requireMemoryStorage().store(unified, scopeId);
-  }
-
-  private extractMemoryContent(prompt: string, output: string): string | null {
-    const promptText = prompt.trim();
-    const outputText = output.trim();
-    if (!promptText && !outputText) {
-      return null;
-    }
-
-    const responseSummary = outputText.slice(0, 800);
-    const combined = promptText
-      ? `User request: ${promptText}\nResult: ${responseSummary}`
-      : responseSummary;
-
-    return combined.length >= 20 ? combined.slice(0, 2000) : null;
-  }
-
-  private resolveNativeMemoryType(
-    backend: BackendName,
-    content: string,
-  ): BackendMemoryEvent["nativeType"] {
-    const lower = content.toLowerCase();
-
-    // Order matters. Episodic recap cues win first ("回顾/复盘/recap"), so a
-    // prompt like "请回顾我们之前的对话...战略目标..." classifies as episodic
-    // even though it mentions strategic terms. Then identity → strategic →
-    // procedural → default.
-    const EPISODIC_HINTS = [
-      "回顾",
-      "复盘",
-      "回看",
-      "recap",
-      "summarize our",
-      "summarize the conversation",
-      "之前的对话",
-      "前面的对话",
-    ];
-    if (EPISODIC_HINTS.some((hint) => lower.includes(hint))) {
-      return backend === "claude-code"
-        ? "conversation_context"
-        : backend === "codex"
-          ? "session_history"
-          : backend === "gemini"
-            ? "interaction_log"
-            : "context_memory";
-    }
-
-    // factual: stable identity / preferences / named entities about the user.
-    // Keep this list narrow — generic meta-cues like "记住" or "事实" leak into
-    // strategic / procedural prompts and pollute the classification.
-    const FACTUAL_HINTS = [
-      "my name is",
-      "i am ",
-      "i'm ",
-      "prefer",
-      "我叫",
-      "我的名字",
-      "我是",
-      "身份信息",
-      "姓名",
-      "兼任",
-      "职位",
-      "产品经理",
-      "架构师",
-      "工程师",
-    ];
-    if (FACTUAL_HINTS.some((hint) => lower.includes(hint))) {
-      return backend === "claude-code"
-        ? "user_preferences"
-        : backend === "codex"
-          ? "codebase_facts"
-          : backend === "gemini"
-            ? "entity_knowledge"
-            : "profile_memory";
-    }
-
-    // strategic: long-term goals, plans, architecture decisions.
-    const STRATEGIC_HINTS = [
-      "decided",
-      "plan",
-      "architecture",
-      "goal",
-      "strategy",
-      "目标",
-      "战略",
-      "规划",
-      "架构",
-      "方向",
-      "决定",
-    ];
-    if (STRATEGIC_HINTS.some((hint) => lower.includes(hint))) {
-      return backend === "claude-code"
-        ? "project_context"
-        : backend === "codex"
-          ? "task_planning"
-          : backend === "gemini"
-            ? "goal_tracking"
-            : "intention_memory";
-    }
-
-    // procedural: how-to, steps, tool/command usage.
-    const PROCEDURAL_HINTS = [
-      "use ",
-      "run ",
-      "command",
-      "step",
-      "how to",
-      "步骤",
-      "流程",
-      "如何",
-      "怎样",
-      "怎么",
-      "方法",
-      "总结",
-    ];
-    if (PROCEDURAL_HINTS.some((hint) => lower.includes(hint))) {
-      return backend === "claude-code"
-        ? "code_context"
-        : backend === "codex"
-          ? "tool_usage"
-          : backend === "gemini"
-            ? "execution_patterns"
-            : "skill_memory";
-    }
-
-    return backend === "claude-code"
-      ? "conversation_context"
-      : backend === "codex"
-        ? "session_history"
-        : backend === "gemini"
-          ? "interaction_log"
-          : "dialogue_memory";
   }
 
   private resolveScopeId(
@@ -2684,6 +2561,19 @@ export class IotaEngine {
       },
       event.executionId,
     );
+
+    if (unified.type === "semantic") {
+      unified.facet =
+        this.memoryExtractor.resolveBackendMemoryEvent(
+          event.backend,
+          event.data.nativeType,
+          event.data.content,
+        ).semanticFacet ?? unified.facet;
+      if (unified.facet === "identity" || unified.facet === "preference") {
+        unified.scope = "user";
+        unified.ttlDays = Math.max(unified.ttlDays, 365);
+      }
+    }
 
     if (unified.confidence < 0.7) {
       return null;

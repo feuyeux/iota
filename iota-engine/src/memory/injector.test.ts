@@ -24,7 +24,8 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
         (m) =>
           m.type === query.type &&
           m.scope === query.scope &&
-          m.scopeId === query.scopeId,
+          m.scopeId === query.scopeId &&
+          (query.facet === undefined || m.facet === query.facet),
       )
       .filter(
         (m) => !query.minConfidence || m.confidence >= query.minConfidence,
@@ -61,7 +62,7 @@ describe("MemoryInjector", () => {
   });
 
   describe("buildContext", () => {
-    it("retrieves all four memory types", async () => {
+    it("retrieves all memory buckets", async () => {
       const now = Date.now();
       const memories: StoredMemory[] = [
         {
@@ -106,10 +107,11 @@ describe("MemoryInjector", () => {
         },
         {
           id: "m3",
-          type: "factual",
+          type: "semantic",
+          facet: "preference",
           scope: "user",
           scopeId: "user_1",
-          content: "User is backend engineer",
+          content: "User prefers backend-focused answers",
           source: {
             backend: "claude-code",
             nativeType: "user_preferences",
@@ -126,7 +128,8 @@ describe("MemoryInjector", () => {
         },
         {
           id: "m4",
-          type: "strategic",
+          type: "semantic",
+          facet: "strategic",
           scope: "project",
           scopeId: "/project",
           content: "Plan to add OpenTelemetry",
@@ -157,7 +160,7 @@ describe("MemoryInjector", () => {
 
       expect(context.episodic).toHaveLength(1);
       expect(context.procedural).toHaveLength(1);
-      expect(context.factual).toHaveLength(1);
+      expect(context.preference).toHaveLength(1);
       expect(context.strategic).toHaveLength(1);
     });
 
@@ -198,10 +201,11 @@ describe("MemoryInjector", () => {
       const now = Date.now();
       const memory: StoredMemory = {
         id: "m1",
-        type: "factual",
+        type: "semantic",
+        facet: "preference",
         scope: "user",
         scopeId: "default",
-        content: "Default user memory",
+        content: "Default user preference",
         source: {
           backend: "claude-code",
           nativeType: "user_preferences",
@@ -224,7 +228,7 @@ describe("MemoryInjector", () => {
         workingDirectory: "/project",
       });
 
-      expect(context.factual).toHaveLength(1);
+      expect(context.preference).toHaveLength(1);
     });
   });
 
@@ -276,10 +280,11 @@ describe("MemoryInjector", () => {
             expiresAt: now + 30 * 86400000,
           },
         ],
-        factual: [
+        domain: [
           {
             id: "m3",
-            type: "factual",
+            type: "semantic",
+          facet: "domain",
             scope: "user",
             scopeId: "user_1",
             content: "User is backend engineer",
@@ -301,7 +306,8 @@ describe("MemoryInjector", () => {
         strategic: [
           {
             id: "m4",
-            type: "strategic",
+            type: "semantic",
+          facet: "strategic",
             scope: "project",
             scopeId: "/project",
             content: "Plan to add OpenTelemetry",
@@ -324,7 +330,7 @@ describe("MemoryInjector", () => {
 
       const prompt = injector.formatAsPrompt(memoryContext);
 
-      expect(prompt).toContain("# Factual Memory");
+      expect(prompt).toContain("# Domain Memory");
       expect(prompt).toContain("User is backend engineer");
       expect(prompt).toContain("# Strategic Memory");
       expect(prompt).toContain("Plan to add OpenTelemetry");
@@ -338,7 +344,7 @@ describe("MemoryInjector", () => {
       const memoryContext: MemoryContext = {
         episodic: [],
         procedural: [],
-        factual: [],
+        domain: [],
         strategic: [],
       };
 
@@ -372,7 +378,7 @@ describe("MemoryInjector", () => {
           },
         ],
         procedural: [],
-        factual: [],
+        domain: [],
         strategic: [],
       };
 
@@ -396,10 +402,11 @@ describe("MemoryInjector", () => {
       const memoryContext: MemoryContext = {
         episodic: [],
         procedural: [],
-        factual: [
+        domain: [
           {
             id: "m1",
-            type: "factual",
+            type: "semantic",
+          facet: "domain",
             scope: "user",
             scopeId: "user_1",
             content: "User is backend engineer",
@@ -443,10 +450,11 @@ describe("MemoryInjector", () => {
       const memoryContext: MemoryContext = {
         episodic: [],
         procedural: [],
-        factual: [
+        domain: [
           {
             id: "m1",
-            type: "factual",
+            type: "semantic",
+          facet: "domain",
             scope: "user",
             scopeId: "user_1",
             content: longContent,
@@ -466,7 +474,8 @@ describe("MemoryInjector", () => {
           },
           {
             id: "m2",
-            type: "factual",
+            type: "semantic",
+          facet: "domain",
             scope: "user",
             scopeId: "user_1",
             content: longContent,
@@ -510,10 +519,11 @@ describe("MemoryInjector", () => {
       const memoryContext: MemoryContext = {
         episodic: [],
         procedural: [],
-        factual: [
+        domain: [
           {
             id: "m1",
-            type: "factual",
+            type: "semantic",
+          facet: "domain",
             scope: "user",
             scopeId: "user_1",
             content: "Short memory",

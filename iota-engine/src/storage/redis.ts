@@ -1,11 +1,12 @@
 import IoRedis from "ioredis";
 import type { AuditEntry } from "../audit/logger.js";
-import type { MemoryKind, RuntimeEvent } from "../event/types.js";
+import type { RuntimeEvent } from "../event/types.js";
 import type {
   MemoryQuery,
   MemoryScope,
   StoredMemory,
 } from "../memory/types.js";
+import { scoreMemoryByVector } from "../memory/storage.js";
 import type {
   ExecutionRecord,
   LogAggregation,
@@ -257,6 +258,13 @@ export class RedisStorage implements StorageBackend {
           (tag): tag is string => typeof tag === "string",
         )
       : [];
+    const ttlMs = Math.max(memory.expiresAt - Date.now(), 1);
+    const hashKey = memoryHashKey(
+      memory.type,
+      memory.scopeId,
+      memory.contentHash,
+      memory.facet,
+    );
     await this.client
       .multi()
       .hset(key, {
@@ -264,7 +272,10 @@ export class RedisStorage implements StorageBackend {
         scope: memory.scope,
         scopeId: memory.scopeId,
         content: memory.content,
+        contentHash: memory.contentHash,
+        embeddingJson: memory.embeddingJson ?? "",
         type: memory.type,
+        facet: memory.facet ?? "",
         confidence: String(memory.confidence),
         sourceBackend: memory.source.backend,
         sourceNativeType: memory.source.nativeType,
@@ -278,8 +289,10 @@ export class RedisStorage implements StorageBackend {
         accessCount: String(memory.accessCount),
         expiresAt: String(memory.expiresAt),
       })
-      .pexpire(key, Math.max(memory.expiresAt - Date.now(), 1))
-      .zadd(`iota:memories:${memory.type}:${memory.scopeId}`, score, memory.id)
+      .pexpire(key, ttlMs)
+      .zadd(memoryIndexKey(memory.type, memory.scopeId, memory.facet), score, memory.id)
+      .sadd(hashKey, memory.id)
+      .pexpire(hashKey, ttlMs)
       .sadd(`iota:memory:by-backend:${memory.source.backend}`, memory.id)
       .exec();
 
@@ -290,23 +303,31 @@ export class RedisStorage implements StorageBackend {
 
   async loadUnifiedMemories(query: MemoryQuery): Promise<StoredMemory[]> {
     const scanLimit = Math.max((query.limit ?? 100) * 5, query.limit ?? 100);
-    const ids = await this.client.zrevrange(
-      `iota:memories:${query.type}:${query.scopeId}`,
-      0,
-      Math.max(0, scanLimit - 1),
-    );
+    const indexKeys = memoryIndexKeysForQuery(query);
+    const idSet = new Set<string>();
+    for (const indexKey of indexKeys) {
+      const ids = await this.client.zrevrange(
+        indexKey,
+        0,
+        Math.max(0, scanLimit - 1),
+      );
+      for (const id of ids) idSet.add(id);
+    }
+
     const memories: StoredMemory[] = [];
-    for (const id of ids) {
-      const data = await this.client.hgetall(`iota:memory:${query.type}:${id}`);
+    for (const id of idSet) {
+      const data = await this.loadMemoryHash(query.type, id);
       if (!data.id) {
-        await this.client.zrem(
-          `iota:memories:${query.type}:${query.scopeId}`,
-          id,
-        );
+        for (const indexKey of indexKeys) {
+          await this.client.zrem(indexKey, id);
+        }
         continue;
       }
       const memory = deserializeStoredMemory(data);
       if (memory.scope !== query.scope || memory.scopeId !== query.scopeId) {
+        continue;
+      }
+      if (query.facet !== undefined && memory.facet !== query.facet) {
         continue;
       }
       if (
@@ -331,23 +352,30 @@ export class RedisStorage implements StorageBackend {
         break;
       }
     }
-    return memories;
+    return memories.sort((a, b) => getMemoryIndexScore(b) - getMemoryIndexScore(a));
   }
 
   async deleteUnifiedMemory(
-    type: MemoryKind,
+    type: StoredMemory["type"],
     memoryId: string,
   ): Promise<boolean> {
-    const key = `iota:memory:${type}:${memoryId}`;
-    const data = await this.client.hgetall(key);
+    const data = await this.loadMemoryHash(type, memoryId);
     if (!data.id) {
       return false;
     }
 
+    const memory = deserializeStoredMemory(data);
+    const key = memoryDataKey(memory.type, memoryId);
     const tags = data.tagsJson ? (JSON.parse(data.tagsJson) as string[]) : [];
     const pipeline = this.client.multi();
     pipeline.del(key);
-    pipeline.zrem(`iota:memories:${type}:${data.scopeId}`, memoryId);
+    pipeline.zrem(memoryIndexKey(memory.type, data.scopeId, memory.facet), memoryId);
+        if (data.contentHash) {
+      pipeline.srem(
+        memoryHashKey(memory.type, data.scopeId, data.contentHash, memory.facet),
+        memoryId,
+      );
+    }
     pipeline.srem(`iota:memory:by-backend:${data.sourceBackend}`, memoryId);
     for (const tag of tags) {
       pipeline.srem(`iota:memory:by-tag:${tag}`, memoryId);
@@ -365,14 +393,13 @@ export class RedisStorage implements StorageBackend {
     }
 
     for (const memoryId of memoryIds) {
-      const keys = await this.scanKeys(`iota:memory:*:${memoryId}`, 10);
-      for (const key of keys) {
-        await this.client
-          .multi()
-          .hset(key, "lastAccessedAt", String(accessedAt))
-          .hincrby(key, "accessCount", 1)
-          .exec();
-      }
+      const data = await this.loadMemoryHashById(memoryId);
+      if (!data.id) continue;
+      await this.client
+        .multi()
+        .hset(memoryDataKey(normalizeStoredType(data.type), memoryId), "lastAccessedAt", String(accessedAt))
+        .hincrby(memoryDataKey(normalizeStoredType(data.type), memoryId), "accessCount", 1)
+        .exec();
     }
   }
 
@@ -384,20 +411,20 @@ export class RedisStorage implements StorageBackend {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     const keys = scope
       ? await this.scanKeys(
-          `iota:memories:*:${escapeScanPattern(scope.scopeId)}`,
+          `iota:memories:*:${escapeScanPattern(scope.scopeId)}*`,
           200,
         )
       : await this.scanKeys("iota:memories:*", 1000);
     const results: Array<StoredMemory & { score?: number }> = [];
 
     for (const indexKey of keys) {
-      const parts = indexKey.split(":");
-      const type = parts[2];
-      const scopeId = parts.slice(3).join(":");
+      const parsed = parseMemoryIndexKey(indexKey);
+      if (!parsed) continue;
       const memories = await this.loadUnifiedMemories({
-        type: type as MemoryKind,
-        scope: scope?.scope ?? inferScopeFromType(type as MemoryKind),
-        scopeId,
+        type: parsed.type,
+        facet: parsed.facet,
+        scope: scope?.scope ?? inferScopeFromType(parsed.type),
+        scopeId: parsed.scopeId,
         limit: 100,
       });
       for (const memory of memories) {
@@ -415,13 +442,83 @@ export class RedisStorage implements StorageBackend {
       .slice(0, limit);
   }
 
+  async checkHashExists(
+    type: StoredMemory["type"],
+    scopeId: string,
+    contentHash: string,
+    facet?: StoredMemory["facet"],
+  ): Promise<boolean> {
+    const ids = await this.client.smembers(memoryHashKey(type, scopeId, contentHash, facet));
+    return ids.length > 0;
+  }
+
+  async findUnifiedMemoryByHash(
+    type: StoredMemory["type"],
+    scopeId: string,
+    contentHash: string,
+    facet?: StoredMemory["facet"],
+  ): Promise<StoredMemory | null> {
+    const ids = await this.client.smembers(memoryHashKey(type, scopeId, contentHash, facet));
+    for (const id of ids) {
+      const data = await this.loadMemoryHash(type, id);
+      if (!data.id) continue;
+      const memory = deserializeStoredMemory(data);
+      if (memory.scopeId === scopeId && memory.contentHash === contentHash) {
+        if (facet === undefined || memory.facet === facet) return memory;
+      }
+    }
+    return null;
+  }
+
+  async addHistory(
+    memoryId: string,
+    event: string,
+    oldContent: string | null,
+    newContent: string,
+  ): Promise<void> {
+    const timestamp = Date.now();
+    await this.client.zadd(
+      `iota:memory:history:${memoryId}`,
+      timestamp,
+      JSON.stringify({ event, oldContent, newContent, timestamp }),
+    );
+  }
+
+  async searchByVector(
+    vector: number[],
+    query: MemoryQuery,
+    topK: number,
+  ): Promise<Array<StoredMemory & { score?: number }>> {
+    const memories = await this.loadUnifiedMemories({ ...query, vector: undefined, limit: Math.max(topK * 5, topK) });
+    return memories
+      .map((memory) => ({ ...memory, score: scoreMemoryByVector(memory, vector) }))
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, topK);
+  }
+
+  private async loadMemoryHash(
+    type: StoredMemory["type"],
+    memoryId: string,
+  ): Promise<Record<string, string>> {
+    return this.client.hgetall(memoryDataKey(type, memoryId));
+  }
+
+
+  private async loadMemoryHashById(memoryId: string): Promise<Record<string, string>> {
+    for (const type of ["semantic", "episodic", "procedural"] as const) {
+      const data = await this.client.hgetall(memoryDataKey(type, memoryId));
+      if (data.id) return data;
+    }
+    return {};
+  }
+
+
   async gc(
     retentionMs: number,
     now = Date.now(),
   ): Promise<{
     removedEvents: number;
     removedAuditEntries: number;
-    removedLocks: number;
     removedMemories: number;
   }> {
     const cutoff = now - retentionMs;
@@ -431,11 +528,10 @@ export class RedisStorage implements StorageBackend {
       "-inf",
       cutoff,
     );
-    const removedMemories = await this.gcMemories(cutoff);
+    const removedMemories = await this.gcMemories(now);
     return {
       removedEvents,
       removedAuditEntries,
-      removedLocks: 0,
       removedMemories,
     };
   }
@@ -692,7 +788,20 @@ export class RedisStorage implements StorageBackend {
     return removed;
   }
 
-  private async gcMemories(cutoff: number): Promise<number> {
+  private async removeStaleSecondaryIndexMembers(memoryId: string): Promise<void> {
+    const keys = [
+      ...(await this.scanKeys("iota:memory:by-backend:*", 500)),
+      ...(await this.scanKeys("iota:memory:by-tag:*", 1000)),
+    ];
+    if (keys.length === 0) return;
+    const pipeline = this.client.multi();
+    for (const key of keys) {
+      pipeline.srem(key, memoryId);
+    }
+    await pipeline.exec();
+  }
+
+  private async gcMemories(now: number): Promise<number> {
     let cursor = "0";
     let removed = 0;
     do {
@@ -705,19 +814,88 @@ export class RedisStorage implements StorageBackend {
       );
       cursor = nextCursor;
       for (const key of keys) {
-        const type = getMemoryTypeFromIndexKey(key);
-        const ids = await this.client.zrangebyscore(key, "-inf", cutoff);
+        const parsed = parseMemoryIndexKey(key);
+        if (!parsed) continue;
+        const ids = await this.client.zrange(key, 0, -1);
         if (ids.length === 0) continue;
+
         const pipeline = this.client.multi();
-        pipeline.zrem(key, ...ids);
+        let changed = 0;
         for (const id of ids) {
-          pipeline.del(`iota:memory:${type}:${id}`);
+          const data = await this.loadMemoryHash(parsed.type, id);
+          if (!data.id) {
+            pipeline.zrem(key, id);
+            await this.removeStaleSecondaryIndexMembers(id);
+            changed += 1;
+            continue;
+          }
+
+          const memory = deserializeStoredMemory(data);
+          if (memory.expiresAt > now) {
+            continue;
+          }
+
+          if (isSoftExpiredMemory(memory)) {
+            pipeline.hset(memoryDataKey(memory.type, id), {
+              confidence: String(Math.max(0, memory.confidence * 0.5)),
+              expiresAt: String(now + memory.ttlDays * 24 * 60 * 60 * 1000),
+              lastAccessedAt: String(now),
+              softExpiredAt: String(now),
+            });
+            pipeline.zadd(
+              memoryIndexKey(memory.type, memory.scopeId, memory.facet),
+              getMemoryIndexScore({
+                ...memory,
+                confidence: Math.max(0, memory.confidence * 0.5),
+                expiresAt: now + memory.ttlDays * 24 * 60 * 60 * 1000,
+              }),
+              id,
+            );
+            changed += 1;
+            continue;
+          }
+
+          removeMemoryIndexes(pipeline, key, memory, id);
+          removed += 1;
+          changed += 1;
         }
-        await pipeline.exec();
-        removed += ids.length;
+
+        if (changed > 0) {
+          await pipeline.exec();
+        }
       }
     } while (cursor !== "0");
     return removed;
+  }
+}
+
+
+function isSoftExpiredMemory(memory: StoredMemory): boolean {
+  return memory.type === "semantic" &&
+    (memory.facet === "identity" || memory.facet === "preference");
+}
+
+function removeMemoryIndexes(
+  pipeline: ReturnType<RedisClient["multi"]>,
+  indexKey: string,
+  memory: StoredMemory,
+  id: string,
+): void {
+  pipeline.zrem(indexKey, id);
+  pipeline.zrem(memoryIndexKey(memory.type, memory.scopeId, memory.facet), id);
+  pipeline.del(memoryDataKey(memory.type, id));
+  pipeline.srem(`iota:memory:by-backend:${memory.source.backend}`, id);
+  const tags = Array.isArray(memory.metadata.tags)
+    ? memory.metadata.tags.filter((tag): tag is string => typeof tag === "string")
+    : [];
+  for (const tag of tags) {
+    pipeline.srem(`iota:memory:by-tag:${tag}`, id);
+  }
+  if (memory.contentHash) {
+    pipeline.srem(
+      memoryHashKey(memory.type, memory.scopeId, memory.contentHash, memory.facet),
+      id,
+    );
   }
 }
 
@@ -726,12 +904,17 @@ function cryptoId(): string {
 }
 
 function deserializeStoredMemory(data: Record<string, string>): StoredMemory {
+  const type = normalizeStoredType(data.type);
+  const facet = normalizeStoredFacet(data.type, data.facet);
   return {
     id: data.id,
-    type: data.type as MemoryKind,
+    type,
+    facet,
     scope: data.scope as StoredMemory["scope"],
     scopeId: data.scopeId,
     content: data.content,
+    contentHash: data.contentHash || "",
+    embeddingJson: data.embeddingJson || undefined,
     source: {
       backend: data.sourceBackend as StoredMemory["source"]["backend"],
       nativeType: data.sourceNativeType,
@@ -750,29 +933,25 @@ function deserializeStoredMemory(data: Record<string, string>): StoredMemory {
   };
 }
 
-function inferScopeFromType(type: MemoryKind): MemoryScope {
+function inferScopeFromType(type: StoredMemory["type"]): MemoryScope {
   switch (type) {
     case "episodic":
       return "session";
-    case "factual":
-      return "user";
+    case "semantic":
     case "procedural":
-    case "strategic":
     default:
       return "project";
   }
 }
 
-function getTypeWeight(type: MemoryKind): number {
+function getTypeWeight(type: StoredMemory["type"], facet?: StoredMemory["facet"]): number {
   switch (type) {
     case "episodic":
       return 0;
     case "procedural":
       return 1_000_000_000;
-    case "factual":
-      return 2_000_000_000;
-    case "strategic":
-      return 3_000_000_000;
+    case "semantic":
+      return facet === "strategic" ? 3_000_000_000 : 2_000_000_000;
   }
 }
 
@@ -781,15 +960,77 @@ function getMemoryIndexScore(memory: StoredMemory): number {
     return memory.timestamp;
   }
   return (
-    getTypeWeight(memory.type) +
+    getTypeWeight(memory.type, memory.facet) +
     memory.confidence * 1000 +
     memory.timestamp / 1_000_000
   );
 }
 
-function getMemoryTypeFromIndexKey(key: string): MemoryKind {
+function memoryDataKey(type: StoredMemory["type"], id: string): string {
+  return `iota:memory:${type}:${id}`;
+}
+
+function memoryIndexKey(
+  type: StoredMemory["type"],
+  scopeId: string,
+  facet?: StoredMemory["facet"],
+): string {
+  return facet ? `iota:memories:${type}:${scopeId}:${facet}` : `iota:memories:${type}:${scopeId}`;
+}
+
+function memoryHashKey(
+  type: StoredMemory["type"],
+  scopeId: string,
+  contentHash: string,
+  facet?: StoredMemory["facet"],
+): string {
+  return facet
+    ? `iota:memory:hashes:${type}:${scopeId}:${facet}:${contentHash}`
+    : `iota:memory:hashes:${type}:${scopeId}:${contentHash}`;
+}
+
+function memoryIndexKeysForQuery(query: MemoryQuery): string[] {
+  return [memoryIndexKey(query.type, query.scopeId, query.facet)];
+}
+
+function parseMemoryIndexKey(key: string): {
+  type: StoredMemory["type"];
+  scopeId: string;
+  facet?: StoredMemory["facet"];
+} | null {
   const parts = key.split(":");
-  return parts[2] as MemoryKind;
+  if (parts.length < 4 || parts[0] !== "iota" || parts[1] !== "memories") {
+    return null;
+  }
+  const type = parseMemoryType(parts[2]);
+  if (!type) return null;
+  const rawTail = parts.slice(3);
+  const maybeFacet = rawTail[rawTail.length - 1];
+  const facet = isMemoryFacet(maybeFacet) ? maybeFacet : undefined;
+  const scopeParts = facet ? rawTail.slice(0, -1) : rawTail;
+  return { type, scopeId: scopeParts.join(":"), facet };
+}
+
+function normalizeStoredType(value: string): StoredMemory["type"] {
+  return parseMemoryType(value) ?? "episodic";
+}
+
+function normalizeStoredFacet(
+  _type: string,
+  facet: string | undefined,
+): StoredMemory["facet"] {
+  return isMemoryFacet(facet) ? facet : undefined;
+}
+
+function parseMemoryType(value: string): StoredMemory["type"] | undefined {
+  if (value === "semantic" || value === "episodic" || value === "procedural") {
+    return value;
+  }
+  return undefined;
+}
+
+function isMemoryFacet(value: unknown): value is NonNullable<StoredMemory["facet"]> {
+  return value === "identity" || value === "preference" || value === "strategic" || value === "domain";
 }
 
 function escapeScanPattern(value: string): string {

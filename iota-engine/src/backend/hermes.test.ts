@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { prepareHermesBackendConfig } from "./hermes.js";
+import { prepareHermesBackendConfig } from "./hermes-config.js";
 import type { BackendConfig } from "./interface.js";
 
 describe("HermesAdapter distributed config", () => {

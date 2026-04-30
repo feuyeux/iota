@@ -10,6 +10,7 @@ import type {
 } from "../event/types.js";
 
 /**
+ * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * CodexAdapter — Section 7.3
  * Uses codex exec command for per-execution mode.
  * Reads distributed backend config and only passes non-secret settings as -c flags.

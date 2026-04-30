@@ -319,7 +319,7 @@ curl http://localhost:9666/api/v1/executions/$EXEC_ID/visibility
 **步骤**:
 
 1. 点击 Header 头部中的后端选择器
-2. 选择不同的后端（claude-code、gemini、hermes、codex）
+2. 选择不同的后端（claude-code、codex、gemini、hermes、opencode）
 3. 新执行使用选定的后端
 
 **验证**:
@@ -832,7 +832,7 @@ App 应用的状态模型（`useSessionStore`）一次维护一个 `activeExecut
 
 ### 审批 UI 限制
 
-`ChatTimeline` 中的 `ApprovalCard` 组件通过 WebSocket 发送 `approval_decision` 消息。这要求 Agent 服务使用 `DeferredApprovalHook` 启动（Agent 模式的默认设置）。审批流程是功能性的，但尚未在多用户或多实例场景中进行广泛测试。
+`ChatTimeline` 中的 `ApprovalCard` 组件会发送 `approval_decision` 消息，但当前 Agent WebSocket 入站 schema 尚未把该消息路由到 `engine.resolveApproval()`。因此 App 审批 UI 只能视为前端展示/待接线能力，不能作为已完成的 App -> Agent -> Engine 审批闭环。
 
 ### 多实例实时一致性
 

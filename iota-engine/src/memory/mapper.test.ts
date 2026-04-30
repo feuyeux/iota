@@ -34,7 +34,7 @@ describe("MemoryMapper", () => {
       expect(result.ttlDays).toBe(30);
     });
 
-    it("maps Claude Code user_preferences to factual", () => {
+    it("maps Claude Code user_preferences to semantic preference", () => {
       const event: BackendMemoryEvent = {
         backend: "claude-code",
         nativeType: "user_preferences",
@@ -42,13 +42,13 @@ describe("MemoryMapper", () => {
         timestamp: Date.now(),
       };
       const result = memoryMapper.map(event, "exec_3");
-      expect(result.type).toBe("factual");
+      expect(result.type).toBe("semantic");
       expect(result.scope).toBe("user");
       expect(result.confidence).toBe(0.95);
-      expect(result.ttlDays).toBe(180);
+      expect(result.ttlDays).toBe(365);
     });
 
-    it("maps Claude Code project_context to strategic", () => {
+    it("maps Claude Code project_context to semantic strategic", () => {
       const event: BackendMemoryEvent = {
         backend: "claude-code",
         nativeType: "project_context",
@@ -56,7 +56,7 @@ describe("MemoryMapper", () => {
         timestamp: Date.now(),
       };
       const result = memoryMapper.map(event, "exec_4");
-      expect(result.type).toBe("strategic");
+      expect(result.type).toBe("semantic");
       expect(result.scope).toBe("project");
       expect(result.confidence).toBe(0.9);
       expect(result.ttlDays).toBe(180);
@@ -187,8 +187,7 @@ describe("MemoryMapper", () => {
       expect(result.missing).toEqual([
         "episodic",
         "procedural",
-        "factual",
-        "strategic",
+        "semantic",
       ]);
     });
   });
@@ -207,8 +206,8 @@ describe("MemoryMapper", () => {
             scope: "session",
           },
           { native: "code_context", unified: "procedural", scope: "project" },
-          { native: "user_preferences", unified: "factual", scope: "user" },
-          { native: "project_context", unified: "strategic", scope: "project" },
+          { native: "user_preferences", unified: "semantic", scope: "user" },
+          { native: "project_context", unified: "semantic", scope: "project" },
         ],
       },
       {
@@ -216,8 +215,8 @@ describe("MemoryMapper", () => {
         types: [
           { native: "session_history", unified: "episodic", scope: "session" },
           { native: "tool_usage", unified: "procedural", scope: "project" },
-          { native: "codebase_facts", unified: "factual", scope: "user" },
-          { native: "task_planning", unified: "strategic", scope: "project" },
+          { native: "codebase_facts", unified: "semantic", scope: "project" },
+          { native: "task_planning", unified: "semantic", scope: "project" },
         ],
       },
       {
@@ -229,8 +228,8 @@ describe("MemoryMapper", () => {
             unified: "procedural",
             scope: "project",
           },
-          { native: "entity_knowledge", unified: "factual", scope: "user" },
-          { native: "goal_tracking", unified: "strategic", scope: "project" },
+          { native: "entity_knowledge", unified: "semantic", scope: "project" },
+          { native: "goal_tracking", unified: "semantic", scope: "project" },
         ],
       },
       {
@@ -238,10 +237,10 @@ describe("MemoryMapper", () => {
         types: [
           { native: "dialogue_memory", unified: "episodic", scope: "session" },
           { native: "skill_memory", unified: "procedural", scope: "project" },
-          { native: "profile_memory", unified: "factual", scope: "user" },
+          { native: "profile_memory", unified: "semantic", scope: "user" },
           {
             native: "intention_memory",
-            unified: "strategic",
+            unified: "semantic",
             scope: "project",
           },
         ],

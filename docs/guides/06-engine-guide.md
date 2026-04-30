@@ -58,10 +58,12 @@ graph TB
     end
 
     subgraph "Backend 适配器"
-        ClaudeAdapter[Claude Code Adapter<br/>src/backend/claude-code.ts]
-        CodexAdapter[Codex Adapter<br/>src/backend/codex.ts]
-        GeminiAdapter[Gemini Adapter<br/>src/backend/gemini.ts]
-        HermesAdapter[Hermes Adapter<br/>src/backend/hermes.ts]
+        AcpBase[AcpBackendAdapter<br/>src/backend/acp-backend-adapter.ts]
+        ClaudeAdapter[Claude ACP + native fallback<br/>claude-acp.ts / claude-code.ts]
+        CodexAdapter[Codex ACP + native fallback<br/>codex-acp.ts / codex.ts]
+        GeminiAdapter[Gemini ACP + native fallback<br/>gemini-acp.ts / gemini.ts]
+        HermesAdapter[Hermes ACP<br/>hermes.ts]
+        OpenCodeAdapter[OpenCode ACP<br/>opencode-acp.ts]
     end
 
     subgraph "存储"
@@ -73,18 +75,21 @@ graph TB
     Engine --> Storage
     Engine --> Visibility
     Engine --> Memory
-    Engine --> ClaudeAdapter
-    Engine --> CodexAdapter
-    Engine --> GeminiAdapter
-    Engine --> HermesAdapter
+    Engine --> AcpBase
+    AcpBase --> ClaudeAdapter
+    AcpBase --> CodexAdapter
+    AcpBase --> GeminiAdapter
+    AcpBase --> HermesAdapter
+    AcpBase --> OpenCodeAdapter
     ConfigStore --> Redis
     Storage --> Redis
     Visibility --> Redis
     Memory --> Redis
-    ClaudeAdapter -->|NDJSON| Claude[Claude Code CLI]
-    CodexAdapter -->|NDJSON| Codex[Codex CLI]
-    GeminiAdapter -->|NDJSON| Gemini[Gemini CLI]
-    HermesAdapter -->|JSON-RPC 2.0| Hermes[Hermes CLI]
+    ClaudeAdapter -->|ACP / legacy NDJSON| Claude[Claude Code CLI or ACP shim]
+    CodexAdapter -->|ACP / legacy NDJSON| Codex[Codex CLI or ACP shim]
+    GeminiAdapter -->|ACP / legacy NDJSON| Gemini[Gemini CLI]
+    HermesAdapter -->|ACP JSON-RPC 2.0| Hermes[Hermes CLI]
+    OpenCodeAdapter -->|ACP JSON-RPC 2.0| OpenCode[OpenCode CLI]
 ```
 
 ### 依赖项
@@ -93,12 +98,12 @@ graph TB
 |--------|------|---------|
 | Redis | 主存储 | Redis 协议/TCP :6379 |
 | MinIO | 对象存储（可选） | S3 API :9000 |
-| Backend 可执行文件 | AI 编码助手 | 子进程 stdio |
+| Backend 可执行文件 | AI 编码助手；ACP 模式还可能需要 adapter shim | 子进程 stdio |
 
 ### 通信协议
 
 - **Engine → Redis**：TCP 上的 Redis 协议
-- **Engine → Backend**：子进程 stdio — NDJSON（Claude/Codex/Gemini）或 JSON-RPC 2.0（Hermes）
+- **Engine → Backend**：子进程 stdio — 首选 ACP JSON-RPC 2.0；Claude/Codex/Gemini 保留 legacy NDJSON fallback
 - **Engine → MinIO**：S3 兼容 HTTP API
 
 **参考**：见 [00-architecture-overview.md](./00-architecture-overview.md)
@@ -113,15 +118,13 @@ graph TB
 |------|------|
 | Bun | TypeScript 运行时 |
 | Redis | 主存储 |
-| Backend 可执行文件 | AI 编码助手 |
+| Backend 可执行文件 | AI 编码助手；ACP 模式还可能需要 adapter shim |
 
 ### Backend 可执行文件
 
 ```bash
-which claude    # Claude Code
-which codex     # Codex
-which gemini    # Gemini CLI
-which hermes    # Hermes Agent
+bash deployment/scripts/ensure-backends.sh --check-only
+# 统一检查 claude / codex / gemini / hermes / opencode
 ```
 
 ### 环境变量
@@ -206,25 +209,47 @@ hermes config show
 
 ### Backend 适配器概览
 
-所有 Backend 适配器均实现 `RuntimeBackend` 接口（`src/backend/interface.ts`），共享以下模式：
-
-1. **子进程启动（spawn）**：适配器将 Backend CLI 作为子进程启动
-2. **协议解析**：将 stdout 解析为 NDJSON 或 JSON-RPC
-3. **事件映射**：将原生事件映射为 `RuntimeEvent` 类型
-4. **可见性记录**：记录 span、token 和事件
+所有 Backend 适配器均实现 `RuntimeBackend` 接口（`src/backend/interface.ts`）。当前首选路径是 `AcpBackendAdapter`：统一 `initialize -> session/new -> session/prompt` 生命周期、ACP notification 到 `RuntimeEvent` 的映射，以及 approval/tool result 回写。Claude Code、Codex、Gemini 的旧 native adapter 已标记 deprecated，仅作为 `protocol: native` 或 ACP 早期失败 fallback 保留。
 
 ---
 
+### ACP 统一接入层
+
+**核心文件**：
+- `src/backend/acp-backend-adapter.ts` — ACP 生命周期、session 映射、双向 response 写回
+- `src/backend/acp-event-mapper.ts` — `session/update`、`session/complete`、`session/request_permission`、`session/memory`、`session/file_delta` 到 `RuntimeEvent`
+- `src/protocol/acp.ts` — ACP 方法常量与消息类型
+
+**配置字段**（backend scope）：
+```bash
+iota config set protocol acp --scope backend --scope-id gemini
+iota config set protocol native --scope backend --scope-id gemini
+iota config set acpAdapter "@anthropic-ai/claude-code-acp" --scope backend --scope-id claude-code
+iota config set acpAdapterArgs "--verbose" --scope backend --scope-id claude-code
+```
+
+`BackendPool` 在 `protocol: acp` 时优先创建 ACP adapter。Claude/Codex/Gemini 若 ACP adapter 在发出任何事件前失败，会自动回退到 legacy native adapter；默认不打印降级提醒，只有 `IOTA_DEBUG_ACP=true` 时输出 legacy native 使用日志。
+
+实现差异与验证状态：Hermes 没有新增 `hermes-acp.ts`，而是在 `hermes.ts` 原地重构为继承/复用 `AcpBackendAdapter`，Hermes 配置生成拆到 `hermes-config.ts`。默认配置仍保守：Hermes/OpenCode 默认 `protocol: acp`，Claude/Codex/Gemini 默认 native，只有显式设置 `protocol=acp` 才启用 ACP adapter。Gemini `--acp`、Claude/Codex adapter shim 包、OpenCode `opencode acp` 都需要在目标机器上跑真实 traced request 后才算验证完成。
+
+| Backend | ACP 命令 | Legacy fallback |
+|---|---|---|
+| Claude Code | `npx @anthropic-ai/claude-code-acp` | `claude --print --output-format stream-json ...` |
+| Codex | `npx @openai/codex-acp` | `codex exec --json ...` |
+| Gemini CLI | `gemini --acp` | `gemini --output-format stream-json ...` |
+| Hermes Agent | `hermes acp` | n/a |
+| OpenCode | `opencode acp` | n/a |
+
 ### Claude Code 适配器
 
-**文件**：`src/backend/claude-code.ts`
+**文件**：`src/backend/claude-acp.ts`（首选 ACP），`src/backend/claude-code.ts`（deprecated native fallback）
 
 **子进程命令**：
 ```
 claude --print --output-format stream-json --verbose --permission-mode auto <prompt>
 ```
 
-**协议**：stdout 上的 NDJSON（每行一个 JSON 对象）
+**协议**：ACP JSON-RPC 2.0；native fallback 为 stdout 上的 NDJSON（每行一个 JSON 对象）
 
 **事件类型映射**：
 | 原生事件 | RuntimeEvent 类型 |
@@ -288,14 +313,14 @@ iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id cl
 
 ### Codex 适配器
 
-**文件**：`src/backend/codex.ts`
+**文件**：`src/backend/codex-acp.ts`（首选 ACP），`src/backend/codex.ts`（deprecated native fallback）
 
 **子进程命令**：
 ```
 codex exec <prompt>
 ```
 
-**协议**：stdout 上的 NDJSON
+**协议**：ACP JSON-RPC 2.0；native fallback 为 stdout 上的 NDJSON
 
 **事件类型映射**：
 | 原生事件 | RuntimeEvent 类型 |
@@ -327,14 +352,14 @@ iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
 
 ### Gemini CLI 适配器
 
-**文件**：`src/backend/gemini.ts`
+**文件**：`src/backend/gemini-acp.ts`（首选 ACP），`src/backend/gemini.ts`（deprecated native fallback）
 
 **子进程命令**：
 ```
 gemini --output-format stream-json --skip-trust --prompt <prompt>
 ```
 
-**协议**：stdout 上的 NDJSON
+**协议**：ACP JSON-RPC 2.0；native fallback 为 stdout 上的 NDJSON
 
 **事件类型映射**：
 | 原生事件 | RuntimeEvent 类型 |
@@ -373,14 +398,14 @@ iota config set env.GEMINI_MODEL "auto-gemini-3" --scope backend --scope-id gemi
 
 ### Hermes Agent 适配器
 
-**文件**：`src/backend/hermes.ts`
+**文件**：`src/backend/hermes.ts`；Hermes 配置生成在 `src/backend/hermes-config.ts`
 
 **子进程命令**：
 ```
 hermes acp
 ```
 
-**协议**：stdio 上的 ACP JSON-RPC 2.0
+**协议**：stdio 上的 ACP JSON-RPC 2.0；复用 `AcpBackendAdapter` 通用生命周期
 
 **消息格式（请求）**：
 ```json
@@ -467,7 +492,7 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 
 ### 协议解析细节
 
-**NDJSON 解析**（Claude、Codex、Gemini）：
+**Legacy NDJSON 解析**（Claude、Codex、Gemini native fallback）：
 ```typescript
 // 按换行符分割 stdout
 // 将每行解析为 JSON
@@ -475,7 +500,7 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 // 处理格式错误的 JSON（错误处理）
 ```
 
-**JSON-RPC 2.0 解析**（Hermes）：
+**ACP JSON-RPC 2.0 解析**（Gemini ACP、Hermes、OpenCode、Claude/Codex adapter-backed）：
 ```typescript
 // 从 stdout 读取完整 JSON 对象
 // 将请求 ID 与响应 ID 匹配
@@ -497,7 +522,8 @@ iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id herm
 | Claude Code | `iota:config:backend:claude-code` | `env.ANTHROPIC_AUTH_TOKEN`、`env.ANTHROPIC_BASE_URL`、`env.ANTHROPIC_MODEL` |
 | Codex | `iota:config:backend:codex` | `env.OPENAI_MODEL=gpt-5.5` |
 | Gemini CLI | `iota:config:backend:gemini` | `env.GEMINI_MODEL=auto-gemini-3` |
-| Hermes Agent | `iota:config:backend:hermes` | `env.HERMES_API_KEY`、`env.HERMES_BASE_URL`、`env.HERMES_MODEL`、`env.HERMES_PROVIDER` |
+| Hermes Agent | `iota:config:backend:hermes` | `protocol=acp`、`env.HERMES_API_KEY`、`env.HERMES_BASE_URL`、`env.HERMES_MODEL`、`env.HERMES_PROVIDER` |
+| OpenCode | `iota:config:backend:opencode` | `protocol=acp`，以及 OpenCode 所需模型/凭证字段 |
 
 **验证分布式配置**：
 ```bash
@@ -516,7 +542,7 @@ Memory 系统包含三个层次：
 
 1. **对话历史**（`DialogueMemory`）：进程内存中的多轮对话 `Map<sessionId, Message[]>`。**不持久化**——进程重启后丢失。仅用于同一进程中连续执行的上下文传递。
 2. **工作记忆**（`WorkingMemory`）：进程内存中的活跃文件集 `Map<sessionId, Map<path, ActiveFile>>`。**不持久化**——进程重启后丢失。
-3. **统一记忆**（Unified Memory）：持久化到 Redis 的四类长期记忆（episodic/procedural/factual/strategic），跨进程重启存活。
+3. **统一记忆**（Unified Memory）：持久化到 Redis 的三类长期记忆（semantic/episodic/procedural），其中 semantic 通过 facet 区分 identity/preference/strategic/domain，跨进程重启存活。
 
 > **⚠️ 重要**：Session 记录（`iota:session:{id}`）和统一记忆（`iota:memory:*`）持久化在 Redis 中，但对话历史和工作记忆仅存在于进程内存。Agent/CLI 进程重启后，对话上下文清零，需要依赖统一记忆恢复部分语境。
 
@@ -531,6 +557,7 @@ Memory 系统实现自动记忆循环：
 **文件**：
 - `src/memory/mapper.ts`
 - `src/memory/storage.ts`
+- `src/memory/extractor.ts`
 - `src/engine.ts`
 
 **触发方式**：
@@ -538,14 +565,17 @@ Memory 系统实现自动记忆循环：
 2. 回退路径：Engine 从 prompt 加最终输出合成记忆
 
 **流程**：
-1. 将 Backend 原生记忆类型映射为统一类型（`episodic`、`procedural`、`factual`、`strategic`）
+1. 将 Backend 原生记忆类型映射为统一 type（`semantic`、`episodic`、`procedural`）和可选 facet（`identity`、`preference`、`strategic`、`domain`）
 2. 解析作用域（`session`、`project`、`user`）和 TTL
 3. 执行置信度阈值检验
 4. 按类型和作用域索引写入 Redis
 
 **Redis 键**：
 - `iota:memory:{type}:{memoryId}`
-- `iota:memories:{type}:{scopeId}`
+- `iota:memories:{type}:{scopeId}`（episodic/procedural）
+- `iota:memories:semantic:{scopeId}:{facet}`（semantic facets）
+- `iota:memory:hashes:{type}:{scopeId}[:facet]:{contentHash}`
+- `iota:memory:history:{memoryId}`
 - `iota:memory:by-backend:{backend}`
 - `iota:memory:by-tag:{tag}`
 
@@ -572,13 +602,18 @@ redis-cli ZREVRANGE "iota:memories:episodic:$SESSION_ID" 0 -1
 ```typescript
 interface StoredMemory {
   id: string;
-  type: "episodic" | "procedural" | "factual" | "strategic";
+  type: "semantic" | "episodic" | "procedural";
+  facet?: "identity" | "preference" | "strategic" | "domain";
   scope: "session" | "project" | "user";
   scopeId: string;
   content: string;
+  contentHash: string;
+  embeddingJson?: string;
   source: { backend: BackendName; nativeType: string; executionId: string };
+  metadata: Record<string, unknown>;
   confidence: number;
   timestamp: number;
+  ttlDays: number;
   createdAt: number;
   lastAccessedAt: number;
   accessCount: number;
@@ -593,10 +628,10 @@ interface StoredMemory {
 **文件**：`src/memory/injector.ts`
 
 **流程**：
-1. 执行开始时从四个桶加载记忆
+1. 执行开始时从六个召回桶加载记忆
 2. 从 session 作用域取情节记忆（episodic）
-3. 从 project 作用域取程序记忆（procedural）和战略记忆（strategic）
-4. 从 user 作用域取事实记忆（factual）
+3. 从 project 作用域取程序记忆（procedural）、战略语义记忆（semantic+strategic）和领域语义记忆（semantic+domain）
+4. 从 user 作用域取身份/偏好语义记忆（semantic+identity / semantic+preference）
 5. 注入时执行置信度和 token 预算约束
 
 ---
@@ -607,7 +642,7 @@ interface StoredMemory {
 
 **流程**：
 1. 从 session / project / user 作用域构建结构化记忆上下文
-2. 格式化为 factual / strategic / procedural / episodic 各节
+2. 按 identity / preference / strategic / domain / procedural / episodic 顺序选择并注入结构化记忆
 3. 在调用 Backend 前注入 prompt 上下文
 
 **验证**：
@@ -952,7 +987,10 @@ redis-cli KEYS "iota:visibility:*:$EXEC_ID"
 
 **模式**：
 - `iota:memory:{type}:{memoryId}` — 单条记忆（Hash）
-- `iota:memories:{type}:{scopeId}` — 按类型/作用域索引（Sorted Set）
+- `iota:memories:{type}:{scopeId}`（episodic/procedural）
+- `iota:memories:semantic:{scopeId}:{facet}`（semantic facets）
+- `iota:memory:hashes:{type}:{scopeId}[:facet]:{contentHash}`
+- `iota:memory:history:{memoryId}` — 按类型/作用域索引（Sorted Set）
 - `iota:memory:by-backend:{backend}` — 按 Backend 索引（Set）
 - `iota:memory:by-tag:{tag}` — 按标签索引（Set）
 
@@ -1013,7 +1051,7 @@ redis-cli XRANGE "iota:audit" - + COUNT 10
 | `iota:visibility:session:{sessionId}` | Sorted Set | Session visibility 索引 |
 | `iota:fencing:execution:{executionId}` | String | 分布式执行锁 |
 | `iota:memory:{type}:{memoryId}` | Hash | 统一记忆对象 |
-| `iota:memories:{type}:{scopeId}` | Sorted Set | 按类型+作用域的记忆索引 |
+| `iota:memories:{type}:{scopeId}[:facet]` | Sorted Set | 按 type+scope+facet 的记忆索引 |
 | `iota:memory:by-backend:{backend}` | Set | 按 Backend 的记忆 ID |
 | `iota:memory:by-tag:{tag}` | Set | 按标签的记忆 ID |
 | `iota:config:global` | Hash | 全局配置 |
@@ -1896,10 +1934,15 @@ redis-cli DEL "iota:session:$SESSION_ID" "iota:memories:$SESSION_ID" "iota:sessi
 |------|------|
 | Engine 核心 | `iota-engine/src/engine.ts` |
 | Backend 接口 | `iota-engine/src/backend/interface.ts` |
-| Claude 适配器 | `iota-engine/src/backend/claude-code.ts` |
-| Codex 适配器 | `iota-engine/src/backend/codex.ts` |
-| Gemini 适配器 | `iota-engine/src/backend/gemini.ts` |
-| Hermes 适配器 | `iota-engine/src/backend/hermes.ts` |
+| Claude ACP 适配器 | `iota-engine/src/backend/claude-acp.ts` |
+| Claude native fallback | `iota-engine/src/backend/claude-code.ts` |
+| Codex ACP 适配器 | `iota-engine/src/backend/codex-acp.ts` |
+| Codex native fallback | `iota-engine/src/backend/codex.ts` |
+| Gemini ACP 适配器 | `iota-engine/src/backend/gemini-acp.ts` |
+| Gemini native fallback | `iota-engine/src/backend/gemini.ts` |
+| Hermes ACP 适配器（原地重构） | `iota-engine/src/backend/hermes.ts` |
+| OpenCode ACP 适配器 | `iota-engine/src/backend/opencode-acp.ts` |
+| ACP 基类与事件映射 | `iota-engine/src/backend/acp-backend-adapter.ts`、`iota-engine/src/backend/acp-event-mapper.ts` |
 | RedisConfigStore | `iota-engine/src/config/redis-store.ts` |
 | Memory mapper | `iota-engine/src/memory/mapper.ts` |
 | Memory storage | `iota-engine/src/memory/storage.ts` |

@@ -77,6 +77,8 @@ const STDERR_ERROR_PATTERNS: Array<{ pattern: RegExp; code: ErrorCode }> = [
 
 export type ProcessMode = "long-lived" | "per-execution";
 
+type NativeMappedEvent = RuntimeEvent | RuntimeEvent[] | null;
+
 export interface SubprocessAdapterOptions {
   name: BackendName;
   capabilities: RuntimeBackend["capabilities"];
@@ -100,7 +102,7 @@ export interface SubprocessAdapterOptions {
     backend: BackendName,
     request: RuntimeRequest,
     value: Record<string, unknown>,
-  ): RuntimeEvent | null;
+  ): NativeMappedEvent;
   /** Optional initialization message to send after warm process starts */
   initMessage?(): string | undefined;
 }
@@ -587,10 +589,11 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     // Register per-execution line callback
     this.warmLineCallbacks.set(request.executionId, (line: string) => {
       if (done) return;
-      const event = this.mapLine(line, request);
-      if (event) {
-        queue.push(event);
-        if (isTerminalEvent(event)) {
+      const mapped = this.mapLine(line, request);
+      const events = normalizeMappedEvents(mapped);
+      if (events.length > 0) {
+        queue.push(...events);
+        if (events.some(isTerminalEvent)) {
           finish();
         }
         wake?.();
@@ -766,8 +769,8 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       let lineCount = 0;
       for await (const line of rl) {
         lineCount++;
-        const event = this.mapLine(String(line), request);
-        if (event) {
+        const mapped = this.mapLine(String(line), request);
+        for (const event of normalizeMappedEvents(mapped)) {
           yield event;
         }
       }
@@ -866,7 +869,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
   protected mapLine(
     line: string,
     request: RuntimeRequest,
-  ): RuntimeEvent | null {
+  ): NativeMappedEvent {
     const trimmed = line.trim();
     if (!trimmed) {
       return null;
@@ -900,7 +903,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       vc.appendNativeEventRef(nativeRef);
     }
 
-    let event: RuntimeEvent | null = null;
+    let mapped: NativeMappedEvent = null;
     let mappingRule = "generic";
     let parsedAs: NativeEventRef["parsedAs"] = "ignored";
 
@@ -913,7 +916,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       // If parsed value is a JSON primitive (string, number, boolean, null),
       // treat it as plain text output rather than a structured event.
       if (typeof value !== "object" || value === null) {
-        event = {
+        mapped = {
           type: "output",
           sessionId: request.sessionId,
           executionId: request.executionId,
@@ -930,21 +933,25 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       } else {
         // Use backend-specific mapper if provided, otherwise fall back to generic
         if (this.options.mapNativeEvent) {
-          event = this.options.mapNativeEvent(this.name, request, value);
+          mapped = this.options.mapNativeEvent(this.name, request, value);
           mappingRule = `${this.name}_native_mapper`;
         } else {
-          event = mapNativeJsonToEvent(this.name, request, value);
+          mapped = mapNativeJsonToEvent(this.name, request, value);
           mappingRule = "generic_json_mapper";
         }
       }
-      parsedAs = event?.type ?? "ignored";
+      const events = normalizeMappedEvents(mapped);
+      parsedAs = events[0]?.type ?? "ignored";
       if (parseSpanId) {
         vc!.endSpan(parseSpanId, {
-          attributes: { mappingRule, eventType: event?.type ?? "ignored" },
+          attributes: {
+            mappingRule,
+            eventType: events.length === 0 ? "ignored" : events.map((event) => event.type).join(","),
+          },
         });
       }
     } catch {
-      event = {
+      mapped = {
         type: "output",
         sessionId: request.sessionId,
         executionId: request.executionId,
@@ -966,38 +973,45 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     // Forward native usage from output events to visibility collector (Fix #1)
     // This ensures adapters don't need to call setNativeUsage() directly —
     // any event with a .data.usage field gets forwarded automatically.
-    if (vc && event?.type === "output" && event.data.usage) {
-      const u = event.data.usage as Record<string, unknown>;
-      vc.setNativeUsage({
-        backend: this.name,
-        inputTokens:
-          typeof u.inputTokens === "number" ? u.inputTokens : undefined,
-        outputTokens:
-          typeof u.outputTokens === "number" ? u.outputTokens : undefined,
-        totalTokens:
-          typeof u.totalTokens === "number" ? u.totalTokens : undefined,
-        cacheReadTokens:
-          typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : undefined,
-        cacheWriteTokens:
-          typeof u.cacheWriteTokens === "number"
-            ? u.cacheWriteTokens
-            : undefined,
-      });
+    const events = normalizeMappedEvents(mapped);
+    if (vc) {
+      for (const event of events) {
+        if (event.type !== "output" || !event.data.usage) continue;
+        const u = event.data.usage as Record<string, unknown>;
+        vc.setNativeUsage({
+          backend: this.name,
+          inputTokens:
+            typeof u.inputTokens === "number" ? u.inputTokens : undefined,
+          outputTokens:
+            typeof u.outputTokens === "number" ? u.outputTokens : undefined,
+          totalTokens:
+            typeof u.totalTokens === "number" ? u.totalTokens : undefined,
+          cacheReadTokens:
+            typeof u.cacheReadTokens === "number" ? u.cacheReadTokens : undefined,
+          cacheWriteTokens:
+            typeof u.cacheWriteTokens === "number"
+              ? u.cacheWriteTokens
+              : undefined,
+        });
+      }
     }
 
     // Record EventMappingVisibility
     if (vc && nativeRefId) {
       const info = vc.getExecutionInfo();
-      const mapping: EventMappingVisibility = {
-        sessionId: info.sessionId,
-        executionId: info.executionId,
-        backend: info.backend,
-        nativeRefId,
-        runtimeEventType: event?.type ?? "ignored",
-        mappingRule,
-        lossy: event === null || mappingRule === "parse_error_to_text",
-      };
-      vc.appendEventMapping(mapping);
+      const mappingEvents = events.length > 0 ? events : [undefined];
+      for (const event of mappingEvents) {
+        const mapping: EventMappingVisibility = {
+          sessionId: info.sessionId,
+          executionId: info.executionId,
+          backend: info.backend,
+          nativeRefId,
+          runtimeEventType: event?.type ?? "ignored",
+          mappingRule,
+          lossy: events.length === 0 || mappingRule === "parse_error_to_text",
+        };
+        vc.appendEventMapping(mapping);
+      }
 
       // Backfill parsedAs on the NativeEventRef (P0-4)
       if (nativeRef) {
@@ -1005,7 +1019,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       }
     }
 
-    return event;
+    return mapped;
   }
 
   protected errorEvent(
@@ -1034,6 +1048,11 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────
+
+function normalizeMappedEvents(mapped: NativeMappedEvent): RuntimeEvent[] {
+  if (!mapped) return [];
+  return Array.isArray(mapped) ? mapped : [mapped];
+}
 
 function isTerminalEvent(event: RuntimeEvent): boolean {
   if (event.type === "state") {

@@ -13,6 +13,7 @@ import type {
 } from "../event/types.js";
 
 /**
+ * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * GeminiAdapter — Section 7.4
  * Per-execution subprocess, stdout NDJSON, headless prompt mode.
  * Maps init, message, tool_use, tool_result, result to RuntimeEvent.

@@ -1,4 +1,4 @@
-export type BackendName = 'claude-code' | 'codex' | 'gemini' | 'hermes';
+export type BackendName = 'claude-code' | 'codex' | 'gemini' | 'hermes' | 'opencode';
 
 export interface ConversationListItem {
   sessionId: string;

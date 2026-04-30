@@ -13,6 +13,7 @@ import type {
 } from "../event/types.js";
 
 /**
+ * @deprecated Legacy native fallback. Prefer `protocol: acp` once the ACP adapter is available.
  * ClaudeCodeAdapter — Section 7.2
  * Per-execution mode: spawns `claude --print` for each execution.
  * --print mode exits after completion, so long-lived is not supported.
@@ -239,44 +240,8 @@ function mapClaudeEvent(
 
   if (type === "result") {
     const text = extractClaudeText(value);
-    const events: RuntimeEvent[] = [];
-
-    // Extract native usage from result event (Section 5.3)
     const usage = value.usage as Record<string, unknown> | undefined;
-    if (usage && typeof usage === "object") {
-      events.push({
-        type: "extension",
-        sessionId: request.sessionId,
-        executionId: request.executionId,
-        backend,
-        sequence: 0,
-        timestamp: Date.now(),
-        data: {
-          name: "native_usage",
-          payload: {
-            inputTokens:
-              typeof usage.input_tokens === "number"
-                ? usage.input_tokens
-                : undefined,
-            outputTokens:
-              typeof usage.output_tokens === "number"
-                ? usage.output_tokens
-                : undefined,
-            cacheReadTokens:
-              typeof usage.cache_read_input_tokens === "number"
-                ? usage.cache_read_input_tokens
-                : undefined,
-            cacheWriteTokens:
-              typeof usage.cache_creation_input_tokens === "number"
-                ? usage.cache_creation_input_tokens
-                : undefined,
-          },
-        },
-      });
-    }
 
-    // Return final output — note: we can only return one event from mapNativeEvent
-    // so we attach usage as metadata on the output event
     return {
       type: "output",
       sessionId: request.sessionId,

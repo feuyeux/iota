@@ -44,7 +44,7 @@ graph LR
     TUI -->|TypeScript 调用| Engine[Engine 库<br/>iota-engine]
     Engine -->|Redis 协议| Redis[(Redis<br/>:6379)]
     Engine -->|生成子进程| Backend[后端子进程]
-    Backend -->|stdout/NDJSON| Engine
+    Backend -->|ACP JSON-RPC / legacy NDJSON| Engine
     Engine -->|运行时事件| TUI
     TUI -->|ANSI 渲染| User
 ```
@@ -65,8 +65,8 @@ graph LR
 - **TUI → Engine**：通过 `engine.stream()` 异步迭代器直接调用 TypeScript 函数
 - **TUI → Redis**：通过 Engine 的存储层访问会话状态
 - **TUI → 用户**：终端 stdio，使用 ANSI 格式化（chalk 用于颜色）
-- **Engine → 后端**：子进程 stdio（NDJSON 或 JSON-RPC 2.0）
-- **后端 → Engine**：stdout/stderr 管道发出 NDJSON 事件
+- **Engine → 后端**：子进程 stdio（首选 ACP JSON-RPC 2.0；Claude/Codex/Gemini 可降级 legacy NDJSON）
+- **后端 → Engine**：stdout/stderr 管道发出 ACP JSON-RPC notification/response 或 legacy NDJSON 事件
 
 ---
 
@@ -78,7 +78,7 @@ graph LR
 |----------|---------|
 | Bun | TypeScript 执行运行时 |
 | Redis | 会话和事件持久化 |
-| 后端 CLI | AI 后端（claude、codex、gemini、hermes） |
+| 后端 CLI | AI 后端（claude、codex、gemini、hermes、opencode；Claude/Codex ACP adapter 可通过 npx shim 启动） |
 
 ### 终端要求
 
@@ -222,7 +222,7 @@ redis-cli HGETALL "iota:session:$(redis-cli KEYS 'iota:session:*' | head -1 | cu
 iota> switch <backend>
 ```
 
-**可用后端**：`claude-code`、`codex`、`gemini`、`hermes`
+**可用后端**：`claude-code`、`codex`、`gemini`、`hermes`、`opencode`
 
 **示例**：
 ```
@@ -236,7 +236,7 @@ iota> What can you do?
 **错误处理**：
 ```
 iota> switch invalid-backend
-# 错误："Unknown backend: invalid-backend. Available: claude-code, codex, gemini, hermes"
+# 错误："Unknown backend: invalid-backend. Available: claude-code, codex, gemini, hermes, opencode"
 ```
 
 ---

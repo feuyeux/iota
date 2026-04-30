@@ -5,6 +5,7 @@ import type { MemoryQuery, StoredMemory, UnifiedMemory } from "./types.js";
 class MockMemoryStorageBackend implements MemoryStorageBackend {
   private memories = new Map<string, StoredMemory>();
   private accessCounts = new Map<string, number>();
+  readonly history: Array<{ memoryId: string; event: string; oldContent: string | null; newContent: string }> = [];
 
   async init(): Promise<void> {}
   async close(): Promise<void> {}
@@ -55,6 +56,35 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
     }
   }
 
+
+  async findUnifiedMemoryByHash(
+    type: StoredMemory["type"],
+    scopeId: string,
+    contentHash: string,
+    facet?: StoredMemory["facet"],
+  ): Promise<StoredMemory | null> {
+    for (const memory of this.memories.values()) {
+      if (
+        memory.type === type &&
+        memory.scopeId === scopeId &&
+        memory.contentHash === contentHash &&
+        (facet === undefined || memory.facet === facet)
+      ) {
+        return memory;
+      }
+    }
+    return null;
+  }
+
+  async addHistory(
+    memoryId: string,
+    event: string,
+    oldContent: string | null,
+    newContent: string,
+  ): Promise<void> {
+    this.history.push({ memoryId, event, oldContent, newContent });
+  }
+
   async searchUnifiedMemories(
     query: string,
     limit = 10,
@@ -81,6 +111,7 @@ class MockMemoryStorageBackend implements MemoryStorageBackend {
   clear(): void {
     this.memories.clear();
     this.accessCounts.clear();
+    this.history.length = 0;
   }
 }
 
@@ -141,6 +172,59 @@ describe("MemoryStorage", () => {
       const expectedExpiry = now + 7 * 24 * 60 * 60 * 1000;
       expect(stored.expiresAt).toBeGreaterThanOrEqual(expectedExpiry - 1000);
       expect(stored.expiresAt).toBeLessThanOrEqual(expectedExpiry + 1000);
+    });
+
+    it("records ADD history on new memory", async () => {
+      const stored = await storage.store(
+        {
+          type: "episodic",
+          scope: "session",
+          content: "Remember this",
+          source: {
+            backend: "claude-code",
+            nativeType: "conversation_context",
+            executionId: "exec_history",
+          },
+          metadata: {},
+          confidence: 0.9,
+          timestamp: Date.now(),
+          ttlDays: 7,
+        },
+        "session_1",
+      );
+
+      expect(backend.history).toEqual([
+        {
+          memoryId: stored.id,
+          event: "ADD",
+          oldContent: null,
+          newContent: "Remember this",
+        },
+      ]);
+    });
+
+    it("deduplicates by content hash and records UPDATE history", async () => {
+      const memory: UnifiedMemory = {
+        type: "episodic",
+        scope: "session",
+        content: "Same content",
+        source: {
+          backend: "claude-code",
+          nativeType: "conversation_context",
+          executionId: "exec_dupe",
+        },
+        metadata: {},
+        confidence: 0.9,
+        timestamp: Date.now(),
+        ttlDays: 7,
+      };
+
+      const first = await storage.store(memory, "session_1");
+      const second = await storage.store(memory, "session_1");
+
+      expect(second.id).toBe(first.id);
+      expect(backend.getAccessCount(first.id)).toBe(1);
+      expect(backend.history.map((entry) => entry.event)).toEqual(["ADD", "UPDATE"]);
     });
   });
 

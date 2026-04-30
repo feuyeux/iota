@@ -1,24 +1,21 @@
-import type { BackendName, MemoryKind } from "../event/types.js";
+import type { BackendName } from "../event/types.js";
 import type {
   BackendMemoryEvent,
+  MemoryFacet,
   MemoryScope,
+  MemoryType,
   UnifiedMemory,
 } from "./types.js";
 
 interface MappingRule {
-  unifiedType: MemoryKind;
+  unifiedType: MemoryType;
+  facet?: MemoryFacet;
   defaultConfidence: number;
   scope: MemoryScope;
   ttlDays: number;
 }
 
-const ALL_MEMORY_TYPES: MemoryKind[] = [
-  "episodic",
-  "procedural",
-  "factual",
-  "strategic",
-];
-
+const ALL_MEMORY_TYPES: MemoryType[] = ["episodic", "procedural", "semantic"];
 export class MemoryMapper {
   private readonly mappingRules: Map<BackendName, Map<string, MappingRule>>;
 
@@ -27,165 +24,37 @@ export class MemoryMapper {
       [
         "claude-code",
         new Map([
-          [
-            "conversation_context",
-            {
-              unifiedType: "episodic",
-              defaultConfidence: 0.95,
-              scope: "session",
-              ttlDays: 7,
-            },
-          ],
-          [
-            "code_context",
-            {
-              unifiedType: "procedural",
-              defaultConfidence: 0.9,
-              scope: "project",
-              ttlDays: 30,
-            },
-          ],
-          [
-            "user_preferences",
-            {
-              unifiedType: "factual",
-              defaultConfidence: 0.95,
-              scope: "user",
-              ttlDays: 180,
-            },
-          ],
-          [
-            "project_context",
-            {
-              unifiedType: "strategic",
-              defaultConfidence: 0.9,
-              scope: "project",
-              ttlDays: 180,
-            },
-          ],
+          ["conversation_context", episodic(0.95)],
+          ["code_context", procedural(0.9)],
+          ["user_preferences", semantic("preference", 0.95, "user", 365)],
+          ["project_context", semantic("strategic", 0.9, "project", 180)],
         ]),
       ],
       [
         "codex",
         new Map([
-          [
-            "session_history",
-            {
-              unifiedType: "episodic",
-              defaultConfidence: 0.9,
-              scope: "session",
-              ttlDays: 7,
-            },
-          ],
-          [
-            "tool_usage",
-            {
-              unifiedType: "procedural",
-              defaultConfidence: 0.88,
-              scope: "project",
-              ttlDays: 30,
-            },
-          ],
-          [
-            "codebase_facts",
-            {
-              unifiedType: "factual",
-              defaultConfidence: 0.92,
-              scope: "user",
-              ttlDays: 180,
-            },
-          ],
-          [
-            "task_planning",
-            {
-              unifiedType: "strategic",
-              defaultConfidence: 0.85,
-              scope: "project",
-              ttlDays: 180,
-            },
-          ],
+          ["session_history", episodic(0.9)],
+          ["tool_usage", procedural(0.88)],
+          ["codebase_facts", semantic("domain", 0.92, "project", 90)],
+          ["task_planning", semantic("strategic", 0.85, "project", 180)],
         ]),
       ],
       [
         "gemini",
         new Map([
-          [
-            "interaction_log",
-            {
-              unifiedType: "episodic",
-              defaultConfidence: 0.88,
-              scope: "session",
-              ttlDays: 7,
-            },
-          ],
-          [
-            "execution_patterns",
-            {
-              unifiedType: "procedural",
-              defaultConfidence: 0.85,
-              scope: "project",
-              ttlDays: 30,
-            },
-          ],
-          [
-            "entity_knowledge",
-            {
-              unifiedType: "factual",
-              defaultConfidence: 0.9,
-              scope: "user",
-              ttlDays: 180,
-            },
-          ],
-          [
-            "goal_tracking",
-            {
-              unifiedType: "strategic",
-              defaultConfidence: 0.85,
-              scope: "project",
-              ttlDays: 180,
-            },
-          ],
+          ["interaction_log", episodic(0.88)],
+          ["execution_patterns", procedural(0.85)],
+          ["entity_knowledge", semantic("domain", 0.9, "project", 90)],
+          ["goal_tracking", semantic("strategic", 0.85, "project", 180)],
         ]),
       ],
       [
         "hermes",
         new Map([
-          [
-            "dialogue_memory",
-            {
-              unifiedType: "episodic",
-              defaultConfidence: 0.92,
-              scope: "session",
-              ttlDays: 7,
-            },
-          ],
-          [
-            "skill_memory",
-            {
-              unifiedType: "procedural",
-              defaultConfidence: 0.88,
-              scope: "project",
-              ttlDays: 30,
-            },
-          ],
-          [
-            "profile_memory",
-            {
-              unifiedType: "factual",
-              defaultConfidence: 0.93,
-              scope: "user",
-              ttlDays: 180,
-            },
-          ],
-          [
-            "intention_memory",
-            {
-              unifiedType: "strategic",
-              defaultConfidence: 0.87,
-              scope: "project",
-              ttlDays: 180,
-            },
-          ],
+          ["dialogue_memory", episodic(0.92)],
+          ["skill_memory", procedural(0.88)],
+          ["profile_memory", semantic("identity", 0.93, "user", 365)],
+          ["intention_memory", semantic("strategic", 0.87, "project", 180)],
         ]),
       ],
     ]);
@@ -220,6 +89,7 @@ export class MemoryMapper {
 
     return {
       type: rule.unifiedType,
+      facet: rule.facet,
       scope: rule.scope,
       content: event.content,
       source: {
@@ -238,14 +108,14 @@ export class MemoryMapper {
 
   validateCoverage(backend: BackendName): {
     complete: boolean;
-    missing: MemoryKind[];
+    missing: MemoryType[];
   } {
     const rules = this.mappingRules.get(backend);
     if (!rules) {
       return { complete: false, missing: [...ALL_MEMORY_TYPES] };
     }
 
-    const covered = new Set<MemoryKind>();
+    const covered = new Set<MemoryType>();
     for (const rule of rules.values()) {
       covered.add(rule.unifiedType);
     }
@@ -256,6 +126,39 @@ export class MemoryMapper {
       missing,
     };
   }
+}
+
+function episodic(defaultConfidence: number): MappingRule {
+  return {
+    unifiedType: "episodic",
+    defaultConfidence,
+    scope: "session",
+    ttlDays: 7,
+  };
+}
+
+function procedural(defaultConfidence: number): MappingRule {
+  return {
+    unifiedType: "procedural",
+    defaultConfidence,
+    scope: "project",
+    ttlDays: 30,
+  };
+}
+
+function semantic(
+  facet: MemoryFacet,
+  defaultConfidence: number,
+  scope: MemoryScope,
+  ttlDays: number,
+): MappingRule {
+  return {
+    unifiedType: "semantic",
+    facet,
+    defaultConfidence,
+    scope,
+    ttlDays,
+  };
 }
 
 export const memoryMapper = new MemoryMapper();

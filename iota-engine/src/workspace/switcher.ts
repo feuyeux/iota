@@ -15,6 +15,7 @@ const BACKEND_CONTEXT_LIMITS: Record<BackendName, number> = {
   codex: 200_000,
   gemini: 1_000_000,
   hermes: 128_000,
+  opencode: 200_000,
 };
 
 /** Rough token estimation: ~4 chars per token */

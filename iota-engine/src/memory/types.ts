@@ -1,5 +1,7 @@
-import type { BackendName, MemoryKind } from "../event/types.js";
+import type { BackendName } from "../event/types.js";
 
+export type MemoryType = "semantic" | "episodic" | "procedural";
+export type MemoryFacet = "identity" | "preference" | "strategic" | "domain";
 export type MemoryScope = "session" | "project" | "user";
 
 export interface BackendMemoryEvent {
@@ -18,7 +20,8 @@ export interface MemorySource {
 }
 
 export interface UnifiedMemory {
-  type: MemoryKind;
+  type: MemoryType;
+  facet?: MemoryFacet;
   scope: MemoryScope;
   content: string;
   source: MemorySource;
@@ -31,6 +34,8 @@ export interface UnifiedMemory {
 export interface StoredMemory extends UnifiedMemory {
   id: string;
   scopeId: string;
+  contentHash: string;
+  embeddingJson?: string;
   createdAt: number;
   lastAccessedAt: number;
   accessCount: number;
@@ -38,12 +43,14 @@ export interface StoredMemory extends UnifiedMemory {
 }
 
 export interface MemoryQuery {
-  type: MemoryKind;
+  type: MemoryType;
+  facet?: MemoryFacet;
   scope: MemoryScope;
   scopeId: string;
   limit?: number;
   minConfidence?: number;
   tags?: string[];
+  vector?: number[];
 }
 
 export interface MemorySearchResult extends StoredMemory {
@@ -55,11 +62,14 @@ export interface MemoryScopeContext {
   projectId?: string;
   userId?: string;
   workingDirectory: string;
+  prompt?: string;
 }
 
 export interface MemoryContext {
   episodic: StoredMemory[];
   procedural: StoredMemory[];
-  factual: StoredMemory[];
+  identity: StoredMemory[];
+  preference: StoredMemory[];
+  domain: StoredMemory[];
   strategic: StoredMemory[];
 }

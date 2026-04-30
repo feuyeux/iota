@@ -8,7 +8,6 @@ export interface GcResult {
   removedMemories: number;
   removedEvents: number;
   removedAuditEntries: number;
-  removedLocks: number;
   removedSnapshots: number;
 }
 
@@ -43,7 +42,6 @@ export async function runMemoryGc(
       removedMemories: removed.removedMemories,
       removedEvents: removed.removedEvents,
       removedAuditEntries: removed.removedAuditEntries,
-      removedLocks: removed.removedLocks,
       removedSnapshots,
     };
   } finally {

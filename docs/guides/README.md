@@ -76,6 +76,7 @@ bash deployment/scripts/ensure-backends.sh
 - `codex` -> `npm install -g @openai/codex`
 - `gemini` -> `npm install -g @google/gemini-cli`
 - `hermes` -> `curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`（仅 Linux / macOS / WSL2；Hermes 不在 PyPI，不能 `pip install`）
+- `opencode` -> 按 OpenCode 官方安装说明安装，并验证 `opencode acp`
 
 规则：
 
@@ -245,7 +246,7 @@ bash deployment/scripts/ensure-backends.sh
 
 **涵盖主题：**
 
-- Backend Adapter 后端适配器实现详情（Claude Code、Codex、 Gemini CLI、Hermes Agent）
+- Backend Adapter 后端适配器实现详情（ACP 双栈、Claude Code、Codex、Gemini CLI、Hermes Agent、OpenCode）
 - Memory System 记忆系统流程（提取、存储、检索、注入）
 - Visibility Plane 可见性平面数据结构（tokens、spans、memory、context）
 - 配置管理内部（RedisConfigStore）
@@ -360,7 +361,7 @@ redis-cli HGETALL "iota:exec:{executionId}"
 redis-cli XRANGE "iota:events:{execId}" - +
 
 # 检查记忆数量
-redis-cli ZCARD "iota:memories:{sessionId}"
+redis-cli ZCARD "iota:memories:episodic:{sessionId}"
 
 # 查看可见性数据
 redis-cli GET "iota:visibility:tokens:{execId}"
@@ -401,7 +402,7 @@ lsof -i :9888
 lsof -i :6379
 
 # 列出后端进程
-ps aux | grep -E "claude|codex|gemini|hermes"
+ps aux | grep -E "claude|codex|gemini|hermes|opencode"
 ```
 
 ## 问题排查快速参考

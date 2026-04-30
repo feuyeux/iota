@@ -9,6 +9,10 @@ export interface BackendSection {
   executable: string;
   timeoutMs: number;
   env: Record<string, string>;
+  protocol?: "native" | "acp";
+  acpAdapter?: string;
+  acpAdapterArgs?: string[];
+  processMode?: "per-execution" | "long-lived";
 }
 
 export interface IotaConfig {
@@ -27,6 +31,7 @@ export interface IotaConfig {
     codex: BackendSection;
     gemini: BackendSection;
     hermes: BackendSection;
+    opencode: BackendSection;
   };
   approval: Required<ApprovalPolicy>;
   visibility: VisibilityPolicy;
@@ -73,6 +78,7 @@ export const BACKEND_NAMES: BackendName[] = [
   "codex",
   "gemini",
   "hermes",
+  "opencode",
 ];
 
 export const DEFAULT_CONFIG: IotaConfig = {
@@ -90,7 +96,8 @@ export const DEFAULT_CONFIG: IotaConfig = {
     claudeCode: { executable: "claude", timeoutMs: 600_000, env: {} },
     codex: { executable: "codex", timeoutMs: 600_000, env: {} },
     gemini: { executable: "gemini", timeoutMs: 600_000, env: {} },
-    hermes: { executable: "hermes", timeoutMs: 600_000, env: {} },
+    hermes: { executable: "hermes", timeoutMs: 600_000, env: {}, protocol: "acp", processMode: "long-lived" },
+    opencode: { executable: "opencode", timeoutMs: 600_000, env: {}, protocol: "acp", processMode: "long-lived" },
   },
   approval: {
     shell: "auto",

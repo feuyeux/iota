@@ -174,7 +174,7 @@ interface EventMappingVisibility {
   nativeEventId: string;
   runtimeEventType: RuntimeEventType;
   sequence: number;
-  mappingRule: string;   // e.g., "claude-code_native_mapper"
+  mappingRule: string;   // e.g., "gemini_native_mapper" or "hermes_native_mapper"; ACP adapters share the ACP event mapper
   lossy: boolean;        // Whether information was lost in mapping
 }
 ```
@@ -196,8 +196,8 @@ iota trace <executionId>
 Trace: 48524ae7-1e59-4235-a621-791374e2f301
 Execution: fe43a03e-b344-4504-a922-8dc1832cfca9
 Backend: claude-code
-Command: C:\Users\feuye\.local\bin\claude.EXE --print --output-format stream-json --verbose --bare --permission-mode auto
-Protocol: stream-json
+Command: legacy native example: claude --print --output-format stream-json --verbose --bare --permission-mode auto; ACP examples use gemini --acp / hermes acp / opencode acp or adapter-backed npx shims
+Protocol: stream-json (legacy native fallback; ACP executions show protocol=acp)
 Process: pid=38172 exit=0
 Tokens: input=4,220 output=39 total=4,259 confidence=native
 
@@ -547,14 +547,14 @@ class TraceRecorder {
 | `engine.request` | 顶层执行请求 | （根） |
 | `engine.context.build` | 构建执行上下文 | `engine.request` |
 | `workspace.scan` | 扫描工作目录 | `engine.request` |
-| `backend.spawn` | 生成后端子进程 | `engine.request` |
+| `backend.spawn` | 生成 per-execution 后端子进程（legacy native） | `engine.request` |
 | `backend.stdin.write` | 写入提示词到标准输入 | `engine.request` |
 | `backend.stdout.read` | 从后端读取标准输出 | `engine.request` |
 | `backend.stderr.read` | 从后端读取标准错误 | `engine.request` |
 | `adapter.parse` | 解析原生事件到运行时事件 | `engine.request` |
 | `memory.extract` | 从输出提取记忆 | `engine.request` |
 | `event.persist` | 持久化事件到 Redis | `engine.request` |
-| `backend.resolve` | 从池中解析后端 | `engine.request` |
+| `backend.resolve` | 从池中解析后端；长运行 ACP 进程也使用该 span 标记 warm process 状态 | `engine.request` |
 
 ---
 
@@ -567,10 +567,11 @@ class TraceRecorder {
 | `estimated` | 引擎使用启发式方法估算令牌（例如字符数 / 4） |
 
 **Backend 后端 Token 令牌支持**：
-- **Claude Code**：`native`（在 `result` 事件中的使用情况）
-- **Hermes**：`native`（在 JSON-RPC 响应中的使用情况）
-- **Codex**：`native`（在 turn.completed 事件中的使用情况）
-- **Gemini**：`native`（在 result 事件中的使用情况）
+- **ACP 后端**：优先读取 `session/complete.usage` 或 ACP response usage 字段
+- **Claude Code native fallback**：`native`（在 `result` 事件中的 usage）
+- **Codex native fallback**：`native`（在 `turn.completed` / result usage）
+- **Gemini native fallback**：`native`（在 result/stats usage）
+- **Hermes/OpenCode ACP**：通过 ACP usage 字段或启发式估算补齐
 
 ---
 
@@ -679,12 +680,13 @@ class TraceRecorder {
 
 ## 15. 附录：示例 Trace 追踪文件
 
-以下追踪文件展示了所有四个后端的真实执行追踪：
+以下追踪文件展示了当前已验证后端的真实执行追踪；ACP OpenCode 需要安装后补充：
 
 - `iota-cli/claude-code.trace` — Claude Code 执行，使用 MiniMax-M2.7
 - `iota-cli/codex.trace` — Codex 执行，使用 9Router
 - `iota-cli/gemini.trace` — Gemini 执行，具有广泛的工具使用
 - `iota-cli/hermes.trace` — Hermes 执行，使用 MiniMax 提供者
+- `iota-cli/opencode.trace` — OpenCode ACP 执行（待真实后端验证）
 
 这些文件使用以下命令生成：
 ```bash

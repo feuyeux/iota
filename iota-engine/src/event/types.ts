@@ -1,6 +1,6 @@
 import type { RuntimeError } from "../error/codes.js";
 
-export type BackendName = "claude-code" | "codex" | "gemini" | "hermes";
+export type BackendName = "claude-code" | "codex" | "gemini" | "hermes" | "opencode";
 
 export interface TokenUsage {
   inputTokens?: number;
@@ -16,7 +16,8 @@ export interface Message {
   timestamp?: number;
 }
 
-export type MemoryKind = "episodic" | "procedural" | "factual" | "strategic";
+/** @deprecated Use MemoryType from memory/types.js for new memory APIs. */
+export type MemoryKind = "semantic" | "episodic" | "procedural";
 
 export interface MemoryBlock {
   id: string;
@@ -24,6 +25,13 @@ export interface MemoryBlock {
   content: string;
   score?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface InjectedMemory extends MemoryBlock {
+  facet?: "identity" | "preference" | "strategic" | "domain";
+  scope?: "session" | "project" | "user";
+  scopeId?: string;
+  confidence?: number;
 }
 
 export interface McpServerDescriptor {
@@ -50,7 +58,7 @@ export interface ApprovalPolicy {
 
 export interface RuntimeContext {
   conversation: Message[];
-  injectedMemory: MemoryBlock[];
+  injectedMemory: InjectedMemory[];
   workspaceSummary?: string;
   activeFiles?: string[];
   mcpServers?: McpServerDescriptor[];

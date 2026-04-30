@@ -233,7 +233,7 @@ function buildMemoryPanel(visibility: ExecutionVisibility): MemoryPanelView {
   });
 
   for (const sel of visibility.memory?.selected ?? []) {
-    if (sel.type === "factual" || sel.type === "strategic") {
+    if (sel.type === "semantic") {
       knowledge.push(toCard(sel));
     } else if (sel.source === "dialogue") {
       session.push(toCard(sel));

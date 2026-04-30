@@ -12,6 +12,7 @@ export interface BackendCapabilities {
   /** Whether backend can receive MCP tool_result responses mid-execution via stdin. */
   mcpResponseChannel: boolean;
   acp: boolean;
+  acpMode?: "native" | "adapter";
   streaming: boolean;
   thinking: boolean;
   multimodal: boolean;
@@ -25,6 +26,10 @@ export interface BackendConfig {
   workingDirectory: string;
   timeoutMs: number;
   env?: Record<string, string>;
+  protocol?: "native" | "acp";
+  acpAdapter?: string;
+  acpAdapterArgs?: string[];
+  processMode?: "per-execution" | "long-lived";
   resourceLimits?: {
     maxMemoryMb?: number;
     maxCpuPercent?: number;

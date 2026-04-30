@@ -72,6 +72,7 @@ graph TB
         Codex[Codex]
         Gemini[Gemini CLI]
         Hermes[Hermes Agent]
+        OpenCode[OpenCode]
     end
 
     Browser -->|HTTP REST| Agent
@@ -85,6 +86,7 @@ graph TB
     Engine -->|stdio| Codex
     Engine -->|stdio| Gemini
     Engine -->|stdio| Hermes
+    Engine -->|stdio| OpenCode
 ```
 
 ### 依赖项
@@ -100,7 +102,7 @@ graph TB
 
 - **客户端 → Agent 服务**: 通过 TCP :9666 的 HTTP REST JSON
 - **客户端 → Agent 服务**: 通过 TCP :9666 的 WebSocket
-- **Agent 服务 → Engine**: 直接 TypeScript 调用（进程内）
+- **Agent 服务 → Engine**: 直接 TypeScript 调用（进程内）；Engine 再通过 ACP JSON-RPC 2.0 或 legacy NDJSON fallback 对接后端
 - **Agent 服务 → Redis**: 通过 TCP :6379 的 Redis 协议
 - **Agent 服务 → MinIO**: 通过 HTTP :9000 的 S3 API（如果配置）
 
@@ -116,7 +118,7 @@ graph TB
 |----------|--------------|
 | Redis | `redis-cli ping` → `PONG` |
 | Bun | `bun --version` |
-| Backend 后端可执行文件 | `which claude`, `which codex`, `which gemini`, `which hermes` |
+| Backend 后端可执行文件 | `deployment/scripts/ensure-backends.sh --check-only`；覆盖 claude、codex、gemini、hermes、opencode |
 
 ### 端口要求
 
@@ -909,17 +911,9 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**行为**：Agent 服务将决策转发到 Engine 的 `DeferredApprovalHook`，该钩子解除等待执行的阻塞。成功时响应 `approval_ack`，如果请求已过期或未知则响应 `error`。
+**当前限制**：App UI 会发送 `approval_decision`，但 Agent WebSocket 入站 schema 当前没有把该消息路由到 `engine.resolveApproval()`。因此不要把 App approval decision 描述为完整的 WebSocket 闭环；CLI/TUI approval hook 和 Engine 内部 approval policy 是当前可靠路径。
 
-**响应**（成功）：
-```json
-{
-  "type": "approval_ack",
-  "requestId": "exec_a1b2c3d4-1714067200000"
-}
-```
-
-> **前提条件**：Agent 服务必须使用 `DeferredApprovalHook` 启动（通过 `iota-agent` 运行时的默认设置）。
+> 后续若实现该入站路由，需要同步更新 `iota-agent/src/routes/websocket.ts`、App 指南和架构图。
 
 ---
 
@@ -938,7 +932,7 @@ wscat -c ws://localhost:9666/api/v1/stream
 }
 ```
 
-**事件类型**：与 REST API 相同 — `output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`
+**事件类型**：与 REST API 相同 — `output`、`state`、`tool_call`、`tool_result`、`file_delta`、`error`、`extension`、`memory`
 
 ---
 
@@ -1398,7 +1392,7 @@ curl http://localhost:9666/api/v1/status
 **解决方案**：
 - 检查请求体是否为有效 JSON
 - 验证必需字段是否存在
-- 验证枚举值是否与允许的值匹配（例如，Backend 后端名称）
+- 验证枚举值是否与允许的值匹配（例如，Backend 后端名称：`claude-code`、`codex`、`gemini`、`hermes`、`opencode`）
 
 ---
 

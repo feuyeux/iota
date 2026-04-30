@@ -21,7 +21,6 @@ export type {
   FileDeltaEvent,
   MemoryEvent,
   McpServerDescriptor,
-  MemoryKind,
   Message,
   OutputEvent,
   RuntimeContext,
@@ -99,7 +98,9 @@ export {
 } from "./memory/embedding.js";
 export type { EmbeddingProvider } from "./memory/embedding.js";
 export { memoryMapper, MemoryMapper } from "./memory/mapper.js";
-export { MemoryStorage } from "./memory/storage.js";
+export { MemoryExtractor } from "./memory/extractor.js";
+export type { MemoryExtractionInput, MemoryExtractionResult } from "./memory/extractor.js";
+export { MemoryStorage, getUserProfile } from "./memory/storage.js";
 export type { MemoryStorageBackend } from "./memory/storage.js";
 export {
   MemoryInjector,
