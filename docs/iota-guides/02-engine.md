@@ -110,13 +110,7 @@ interface IotaConfig {
 | session | `iota:config:session:{id}` | session override |
 | user | `iota:config:user:{id}` | user preference |
 
-配置操作：
-
-```bash
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id claude-code
-iota config set protocol acp --scope backend --scope-id gemini
-```
+配置操作：全部 5 后端的 `iota config set` 完整参考见 [00-setup.md](./00-setup.md#3-后端-redis-配置)。
 
 ---
 

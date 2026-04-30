@@ -75,8 +75,44 @@ export class HermesAdapter extends AcpBackendAdapter {
 
   private cleanupGeneratedHermesHome(): void {
     if (!this.generatedHermesHome) return;
-    fs.rmSync(this.generatedHermesHome, { recursive: true, force: true });
+    const target = this.generatedHermesHome;
     this.generatedHermesHome = undefined;
+    // On Windows the hermes subprocess may briefly retain handles to its
+    // HERMES_HOME (config.yaml, log files) after we send SIGINT, producing
+    // EPERM/EBUSY when we try to remove the directory. Use the Node built-in
+    // retry options and swallow any residual error so destroy() never throws.
+    try {
+      fs.rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    } catch (error) {
+      // Schedule a best-effort async retry; do not propagate. The directory
+      // lives under the OS temp folder and will eventually be cleaned by the
+      // OS even if this attempt fails.
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === "EPERM" || code === "EBUSY" || code === "ENOTEMPTY") {
+        setTimeout(() => {
+          try {
+            fs.rmSync(target, {
+              recursive: true,
+              force: true,
+              maxRetries: 5,
+              retryDelay: 200,
+            });
+          } catch {
+            // Ignore; OS temp cleanup will reclaim it.
+          }
+        }, 500).unref?.();
+        return;
+      }
+      // Unknown error: log via stderr but do not throw.
+      process.stderr.write(
+        `[hermes] failed to clean up ${target}: ${(error as Error).message}\n`,
+      );
+    }
   }
 }
 

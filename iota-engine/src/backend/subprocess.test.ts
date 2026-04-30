@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SubprocessBackendAdapter } from "./subprocess.js";
+import { ErrorCode } from "../error/codes.js";
 import type {
   BackendName,
   RuntimeEvent,
@@ -51,7 +52,56 @@ describe("SubprocessBackendAdapter", () => {
     expect(events[0]?.type).toBe("output");
     expect(events[0]?.data.content).toBe("pong");
   });
+
+  it("emits a quota-exceeded error event with hint when the child writes a 429 to stderr", async () => {
+    const adapter = new QuotaStderrAdapter();
+    await adapter.init({ workingDirectory: process.cwd(), timeoutMs: 5000 });
+
+    const request: RuntimeRequest = {
+      sessionId: "s1",
+      executionId: "quota-1",
+      backend: "gemini",
+      prompt: "ping",
+      workingDirectory: process.cwd(),
+    };
+
+    const events = await collectWithTimeout(adapter.stream(request), 5000);
+    await adapter.destroy();
+
+    const error = events.find((e) => e.type === "error");
+    expect(error).toBeDefined();
+    expect(error?.data.code).toBe(ErrorCode.BACKEND_QUOTA_EXCEEDED);
+    expect(error?.data.message).toMatch(/quota-exceeded/);
+    expect(error?.data.details?.hint).toMatch(/GEMINI_MODEL/);
+  });
 });
+
+class QuotaStderrAdapter extends SubprocessBackendAdapter {
+  constructor() {
+    super({
+      name: "gemini",
+      defaultExecutable: process.execPath,
+      processMode: "per-execution",
+      capabilities: {
+        sandbox: false,
+        mcp: false,
+        mcpResponseChannel: false,
+        acp: false,
+        streaming: true,
+        thinking: false,
+        multimodal: false,
+        maxContextTokens: 1000,
+      },
+      buildArgs: () => [
+        "-e",
+        // Print a Gemini-style 429 to stderr and then sit idle so the live
+        // stderr matcher in subprocess.ts must terminate us.
+        'process.stderr.write("Attempt 1 failed with status 429. Retrying with backoff... RESOURCE_EXHAUSTED MODEL_CAPACITY_EXHAUSTED\\n");setInterval(()=>{},1000);',
+      ],
+      mapNativeEvent: () => null,
+    });
+  }
+}
 
 function mapFastExitEvent(
   backend: BackendName,

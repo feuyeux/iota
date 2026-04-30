@@ -75,6 +75,8 @@ iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id cl
 iota config list --scope global
 ```
 
+全部 5 后端的完整配置值参考见 [00-setup.md](./00-setup.md#3-后端-redis-配置)。
+
 ### `iota gc`
 
 ```bash

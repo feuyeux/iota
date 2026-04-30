@@ -9,6 +9,7 @@
 
 | 文档 | 主题 |
 |------|------|
+| [00-setup.md](./00-setup.md) | **后端初始化与环境配置（5 后端安装、Redis 配置、验证）** |
 | [01-architecture.md](./01-architecture.md) | 架构概览、组件边界、通信协议、实现成熟度 |
 | [02-engine.md](./02-engine.md) | Engine 核心运行时：执行流、内部结构、配置、Redis 数据结构 |
 | [03-backend-adapters.md](./03-backend-adapters.md) | Backend 适配器、ACP 双栈、legacy fallback、进程模型 |
@@ -41,6 +42,11 @@ cd ../iota-cli && bun install && bun run build
 cd ../iota-agent && bun install && bun run build
 cd ../iota-app && bun install && bun run build
 
-# 3) 验证后端（可替换为 codex / gemini / hermes / opencode）
+# 3) 配置后端凭证和模型（详见 00-setup.md）
+iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
+
+# 4) 验证后端（可替换为 codex / gemini / hermes / opencode）
 cd ../iota-cli && node dist/index.js run --backend claude-code --trace "ping"
 ```
+
+> 全部 5 后端的安装、Redis 配置和验证步骤见 [00-setup.md](./00-setup.md)。

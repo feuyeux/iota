@@ -1,9 +1,10 @@
 import { AcpBackendAdapter } from "./acp-backend-adapter.js";
 import type { BackendConfig } from "./interface.js";
-import type { McpServerDescriptor } from "../event/types.js";
+import type { McpServerDescriptor, RuntimeRequest } from "../event/types.js";
 
 export class OpenCodeAcpAdapter extends AcpBackendAdapter {
   private configuredModel?: string;
+  private readonly opencodeMcpServers: McpServerDescriptor[];
 
   constructor(mcpServers: McpServerDescriptor[] = []) {
     super({
@@ -24,6 +25,7 @@ export class OpenCodeAcpAdapter extends AcpBackendAdapter {
         promptOnlyInput: true,
       },
     });
+    this.opencodeMcpServers = mcpServers;
   }
 
   async init(config: BackendConfig): Promise<void> {
@@ -35,4 +37,21 @@ export class OpenCodeAcpAdapter extends AcpBackendAdapter {
   getModel(): string | undefined {
     return this.configuredModel;
   }
+
+  /**
+   * OpenCode's ACP `session/new` schema requires `mcpServers` to always be
+   * present as an array (empty arrays are accepted, but an omitted field
+   * triggers `Invalid input: expected array, received undefined`). The base
+   * adapter omits the field when no servers are configured, so we override
+   * here to always emit it.
+   */
+  protected buildSessionNewParams(
+    request: RuntimeRequest,
+  ): Record<string, unknown> {
+    return {
+      cwd: request.workingDirectory || process.cwd(),
+      mcpServers: this.opencodeMcpServers,
+    };
+  }
 }
+

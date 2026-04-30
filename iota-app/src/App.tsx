@@ -1,24 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { useSessionStore } from './store/useSessionStore'
 import { api } from './lib/api'
 import { useWebSocket } from './hooks/useWebSocket'
 import { Header } from './components/layout/Header'
-import { Sidebar } from './components/layout/Sidebar'
 import { ChatTimeline } from './components/chat/ChatTimeline'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
-import { ExecutionReplayModal } from './components/inspector/ExecutionReplayModal'
-import { OperationsDrawer } from './components/admin/OperationsDrawer'
-import { WorkspaceExplorer } from './components/workspace/WorkspaceExplorer'
 import { IotaLogo } from './components/brand/IotaLogo'
 
 function App() {
   const { sessionId, setSessionId, updateSnapshot } = useSessionStore();
   const storeError = useSessionStore(s => s.error);
-
-  const [showOpsDrawer, setShowOpsDrawer] = useState(false);
-  const [replayExecId, setReplayExecId] = useState<string | null>(null);
 
   // 1. Initialize centralized WebSocket logic
   useWebSocket();
@@ -99,12 +92,10 @@ function App() {
   return (
     <>
       <div className="flex h-screen w-full bg-iota-bg text-iota-text overflow-hidden selection:bg-iota-accent/20">
-        <Sidebar onOpenOperations={() => setShowOpsDrawer(true)} onOpenReplay={(id) => setReplayExecId(id)} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
 
           <div className="flex-1 flex overflow-hidden">
-            <WorkspaceExplorer />
             <div className="flex-1 min-w-0 overflow-hidden">
               <ChatTimeline />
             </div>
@@ -113,9 +104,7 @@ function App() {
             </div>
           </div>
         </div>
-        <OperationsDrawer open={showOpsDrawer} onClose={() => setShowOpsDrawer(false)} />
       </div>
-      {replayExecId && <ExecutionReplayModal executionId={replayExecId} onClose={() => setReplayExecId(null)} />}
       {storeError && (
         <div className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center space-x-2 z-50">
           <span>{storeError}</span>

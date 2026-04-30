@@ -2,8 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSessionStore } from '../../store/useSessionStore';
 import { 
   Terminal, User, Bot, Wrench, Send, ShieldCheck, 
-  XCircle, CheckCircle, AlertCircle, StopCircle, 
-  Settings2, ChevronDown 
+  XCircle, CheckCircle, AlertCircle, StopCircle
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -60,7 +59,6 @@ export const ChatTimeline: React.FC = () => {
   }, [activeExecution]);
   const parentRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
-  const [approvalPolicy, setApprovalPolicy] = useState<'ask' | 'auto' | 'deny'>('ask');
 
   // eslint-disable-next-line react-hooks/incompatible-library
   // Virtualizer for high-performance long lists
@@ -111,7 +109,7 @@ export const ChatTimeline: React.FC = () => {
       prompt: input,
       backend: activeBackend,
       workingDirectory: workingDirectory || undefined,
-      approvals: { shell: approvalPolicy, fileOutside: approvalPolicy, network: approvalPolicy }
+      approvals: { shell: 'ask', fileOutside: 'ask', network: 'ask' }
     });
     
     setInput('');
@@ -202,42 +200,7 @@ export const ChatTimeline: React.FC = () => {
           </div>
         )}
         
-        <div className="max-w-4xl mx-auto flex items-center space-x-2 mb-1">
-          <div className="relative group">
-            <button className="flex items-center space-x-1.5 px-2 py-1 bg-white border border-iota-border rounded text-[10px] font-bold text-iota-text/60 hover:text-iota-accent transition-colors">
-              <Settings2 size={12} />
-              <span className="uppercase">{approvalPolicy === 'ask' ? 'Ask Always' : approvalPolicy === 'auto' ? 'Auto-Approve' : 'Deny Always'}</span>
-              <ChevronDown size={10} />
-            </button>
-            <div className="absolute bottom-full left-0 mb-2 w-32 bg-white border border-iota-border shadow-xl rounded-lg hidden group-hover:block z-20">
-               {['ask', 'auto', 'deny'].map(p => (
-                 <button 
-                  key={p} 
-                  onClick={() => setApprovalPolicy(p as 'ask' | 'auto' | 'deny')}
-                  className="w-full text-left px-3 py-1.5 text-[10px] font-bold uppercase hover:bg-iota-accent/5 hover:text-iota-accent border-b border-gray-50 last:border-0"
-                 >
-                   {p}
-                 </button>
-               ))}
-            </div>
-          </div>
-          <div className="h-3 w-[1px] bg-iota-border mx-1" />
-          <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar">
-             {backends.map(b => (
-               <button 
-                key={b.backend}
-                onClick={() => setActiveBackend(b.backend)}
-                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border transition-all ${
-                  activeBackend === b.backend 
-                    ? 'bg-iota-accent/10 border-iota-accent text-iota-accent' 
-                    : 'bg-white border-iota-border text-iota-text/40 hover:border-iota-text/60'
-                }`}
-               >
-                 {b.label}
-               </button>
-             ))}
-          </div>
-        </div>
+
 
         <div className="max-w-4xl mx-auto relative group">
           <textarea 

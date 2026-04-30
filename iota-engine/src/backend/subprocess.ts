@@ -27,6 +27,11 @@ import {
   summarizeEnv,
   redactArgs,
 } from "../visibility/redaction.js";
+import {
+  detectBackendIssue,
+  formatBackendIssueMessage,
+  type BackendIssue,
+} from "./error-hints.js";
 import type {
   NativeEventRef,
   EventMappingVisibility,
@@ -146,6 +151,13 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
    * activeWarmExecution tracks which one currently receives stdout lines.
    */
   private warmLineCallbacks = new Map<string, (line: string) => void>();
+  /**
+   * Per-execution callbacks for backend issues (auth/quota) detected by the
+   * shared warm-process stderr watcher. Allows long-lived adapters (ACP) to
+   * surface actionable hints without waiting for the warm process to exit.
+   */
+  private warmIssueCallbacks = new Map<string, (issue: BackendIssue) => void>();
+  private warmIssueDetected = false;
   private activeWarmExecution?: string;
   /** Resolvers waiting for the warm process to become available. */
   private warmReleaseResolvers: (() => void)[] = [];
@@ -298,9 +310,38 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
   }
 
   async destroy(): Promise<void> {
+    const exits: Array<Promise<void>> = [];
+    const waitExit = (
+      child: ChildProcessWithoutNullStreams | undefined,
+    ): Promise<void> =>
+      new Promise<void>((resolve) => {
+        if (!child || child.exitCode !== null || child.signalCode !== null) {
+          resolve();
+          return;
+        }
+        const onExit = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        child.once("exit", onExit);
+        // Hard fallback so destroy never blocks indefinitely.
+        const timer = setTimeout(() => {
+          child.removeListener("exit", onExit);
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // Ignore.
+          }
+          resolve();
+        }, 1500);
+        timer.unref?.();
+      });
+
     // Kill warm process
     if (this.warmProcess) {
-      this.warmProcess.kill("SIGINT");
+      const warm = this.warmProcess;
+      warm.kill("SIGINT");
+      exits.push(waitExit(warm));
       this.warmProcess = undefined;
       this.warmProcessReady = false;
     }
@@ -311,8 +352,15 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
     // Kill active per-execution processes
     for (const child of this.active.values()) {
       child.kill("SIGINT");
+      exits.push(waitExit(child));
     }
     this.active.clear();
+    // Wait for subprocesses to fully exit so subclasses can safely clean up
+    // resources (e.g. generated config dirs) without hitting EPERM/EBUSY on
+    // Windows due to lingering handles.
+    if (exits.length > 0) {
+      await Promise.all(exits);
+    }
   }
 
   /**
@@ -403,12 +451,27 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       if (this.warmStderrBuffer.length > STDERR_MAX_BYTES) {
         this.warmStderrBuffer = this.warmStderrBuffer.slice(-STDERR_MAX_BYTES);
       }
+      if (!this.warmIssueDetected) {
+        const issue = detectBackendIssue(this.name, this.warmStderrBuffer);
+        if (issue) {
+          this.warmIssueDetected = true;
+          // Notify whoever is currently driving the warm process so they can
+          // surface a helpful error without waiting for the timeout.
+          const execId = this.activeWarmExecution;
+          if (execId) {
+            const cb = this.warmIssueCallbacks.get(execId);
+            cb?.(issue);
+          }
+        }
+      }
     });
 
     child.once("error", (error) => {
       this.lastError = error.message;
       this.warmProcess = undefined;
       this.warmProcessReady = false;
+      this.warmIssueDetected = false;
+      this.warmStderrBuffer = "";
     });
 
     child.once("close", (code, _signal) => {
@@ -419,12 +482,28 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       }
       this.warmProcess = undefined;
       this.warmProcessReady = false;
+      this.warmIssueDetected = false;
+      this.warmStderrBuffer = "";
     });
 
     const rl = readline.createInterface({ input: child.stdout });
     rl.on("line", (line) => {
       if (process.env.IOTA_DEBUG_ACP === "true") {
         process.stderr.write(`[acp:stdout] ${line}\n`);
+      }
+      // Inspect stdout for backend issues (e.g. ACP `error` responses with
+      // auth-required hints) so we can produce an actionable error event for
+      // the active execution even when the backend continues running.
+      if (!this.warmIssueDetected) {
+        const issue = detectBackendIssue(this.name, line);
+        if (issue) {
+          this.warmIssueDetected = true;
+          const execId = this.activeWarmExecution;
+          if (execId) {
+            const cb = this.warmIssueCallbacks.get(execId);
+            cb?.(issue);
+          }
+        }
       }
       // Dispatch only to the execution that currently owns stdin
       const execId = this.activeWarmExecution;
@@ -567,6 +646,7 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       if (!done) {
         done = true;
         this.warmLineCallbacks.delete(request.executionId);
+        this.warmIssueCallbacks.delete(request.executionId);
         if (this.activeWarmExecution === request.executionId) {
           this.activeWarmExecution = undefined;
           // Wake the next queued execution.
@@ -614,6 +694,32 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
         }
         wake?.();
       }
+    });
+
+    // Surface backend issues (auth/quota) detected on the shared warm-process
+    // stderr as an actionable error event for the active execution.
+    this.warmIssueCallbacks.set(request.executionId, (issue) => {
+      if (done) return;
+      const message = formatBackendIssueMessage(this.name, issue);
+      this.lastError = message;
+      queue.push(
+        this.errorEvent(request, issue.code, message, {
+          reason: issue.reason,
+          hint: issue.hint,
+          matchedPattern: issue.matchedPattern,
+          stderrTail: this.warmStderrBuffer.slice(-512),
+        }),
+      );
+      // Tear down the warm process; ACP backends often hang indefinitely
+      // after auth/quota failures.
+      try {
+        this.warmProcess?.kill(
+          process.platform === "win32" ? "SIGKILL" : "SIGINT",
+        );
+      } catch {
+        // Ignore.
+      }
+      finish();
     });
 
     // Handle process crash
@@ -772,11 +878,27 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
 
       // stderr handling per Section 7.6
       let stderrBuffer = "";
+      let detectedIssue: ReturnType<typeof detectBackendIssue> | undefined;
       const stderrSpanId = vc?.startSpan("backend.stderr.read", {});
       child.stderr.on("data", (chunk: Buffer) => {
         stderrBuffer += chunk.toString("utf8");
         if (stderrBuffer.length > STDERR_MAX_BYTES) {
           stderrBuffer = stderrBuffer.slice(-STDERR_MAX_BYTES);
+        }
+        if (!detectedIssue) {
+          const issue = detectBackendIssue(this.name, stderrBuffer);
+          if (issue) {
+            detectedIssue = issue;
+            // Eagerly terminate so backends that retry internally (e.g. gemini-cli
+            // exponential backoff on 429) do not hang the user-visible request.
+            try {
+              child.kill(
+                process.platform === "win32" ? "SIGKILL" : "SIGINT",
+              );
+            } catch {
+              // Ignore — process may already be exiting.
+            }
+          }
         }
       });
 
@@ -785,7 +907,23 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
       let lineCount = 0;
       for await (const line of rl) {
         lineCount++;
-        const mapped = this.mapLine(String(line), request);
+        const lineStr = String(line);
+        // Inspect stdout for backend issues (e.g. Gemini stream-json error
+        // events) so we can short-circuit retry loops with a hint.
+        if (!detectedIssue) {
+          const issue = detectBackendIssue(this.name, lineStr);
+          if (issue) {
+            detectedIssue = issue;
+            try {
+              child.kill(
+                process.platform === "win32" ? "SIGKILL" : "SIGINT",
+              );
+            } catch {
+              // Ignore.
+            }
+          }
+        }
+        const mapped = this.mapLine(lineStr, request);
         for (const event of normalizeMappedEvents(mapped)) {
           yield event;
         }
@@ -843,15 +981,30 @@ export class SubprocessBackendAdapter implements RuntimeBackend {
           });
       }
 
-      if (code !== 0) {
-        // Check stderr for known patterns
-        const stderrError = matchStderrPattern(stderrBuffer);
-        const errorCode = stderrError?.code ?? ErrorCode.BACKEND_CRASHED;
-        const message =
-          stderrBuffer.trim() ||
-          `Backend exited with code ${code ?? signal ?? "unknown"}`;
-        this.lastError = message;
-        yield this.errorEvent(request, errorCode, message);
+      if (code !== 0 || detectedIssue) {
+        // Prefer a structured backend-issue (auth / quota) over the generic
+        // "process crashed" message. These hints are actionable.
+        if (detectedIssue) {
+          const message = formatBackendIssueMessage(this.name, detectedIssue);
+          this.lastError = message;
+          yield this.errorEvent(request, detectedIssue.code, message, {
+            reason: detectedIssue.reason,
+            hint: detectedIssue.hint,
+            matchedPattern: detectedIssue.matchedPattern,
+            stderrTail: stderrBuffer.slice(-512),
+            exitCode: code,
+            signal,
+          });
+        } else if (code !== 0) {
+          // Check stderr for known patterns
+          const stderrError = matchStderrPattern(stderrBuffer);
+          const errorCode = stderrError?.code ?? ErrorCode.BACKEND_CRASHED;
+          const message =
+            stderrBuffer.trim() ||
+            `Backend exited with code ${code ?? signal ?? "unknown"}`;
+          this.lastError = message;
+          yield this.errorEvent(request, errorCode, message);
+        }
       }
     } catch (error) {
       const nodeError = error as NodeJS.ErrnoException;

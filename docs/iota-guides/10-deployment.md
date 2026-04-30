@@ -141,47 +141,19 @@ storage:
 
 ## 5. 后端安装与验证
 
-### 发现已安装后端
+后端安装命令、Redis 配置、ACP 协议切换和 traced request 验证的完整参考见 [00-setup.md](./00-setup.md)。
+
+发现已安装后端：
 
 ```bash
 bash deployment/scripts/ensure-backends.sh --check-only
-```
-
-### 安装命令
-
-| Backend | 安装 | 平台 |
-|---------|------|------|
-| Claude Code | `npm i -g @anthropic-ai/claude-code` | 全平台 |
-| Codex | `npm i -g @openai/codex` | 全平台 |
-| Gemini CLI | `npm i -g @google/gemini-cli` | 全平台 |
-| Hermes | curl 安装脚本 (见官方文档) | Linux/macOS/WSL2 |
-| OpenCode | 按官方说明安装 | 依上游支持 |
-
-### 真实运行验证
-
-> 验证不能停在可执行文件发现或 `iota status`。必须跑一个真实 traced request。
-
-```bash
-cd iota-cli
-node dist/index.js run --backend claude-code --trace "ping"
-node dist/index.js run --backend codex --trace "ping"
-node dist/index.js run --backend gemini --trace "ping"
 ```
 
 ---
 
 ## 6. Redis 分布式配置
 
-共享部署中把 backend 凭证存 Redis，不写本地 `.env` 文件：
-
-```bash
-# 设置 backend 凭证
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_MODEL "claude-sonnet-4-20250514" --scope backend --scope-id claude-code
-
-# 查看已存配置
-docker exec iota-redis redis-cli HGETALL iota:config:backend:claude-code
-```
+共享部署中把 backend 凭证存 Redis，不写本地 `.env` 文件。全部 5 后端的 `iota config set` 命令和查询方式见 [00-setup.md](./00-setup.md#3-后端-redis-配置)。
 
 ---
 

@@ -67,24 +67,9 @@ Convention: use `bun` for install, build, typecheck, test, lint, format, and dev
 
 ## Configuration
 
-Backend credentials, model settings, and endpoints are stored in Redis distributed config, not backend-local env files:
+Backend credentials, model settings, and endpoints are stored in Redis distributed config, not backend-local env files.
 
-```bash
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_MODEL "MiniMax-M2.7" --scope backend --scope-id claude-code
-
-iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
-
-iota config set env.GEMINI_MODEL "auto-gemini-3" --scope backend --scope-id gemini
-
-iota config set env.HERMES_API_KEY "<redacted>" --scope backend --scope-id hermes
-iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
-iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id hermes
-iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
-
-iota config set env.OPENCODE_MODEL "anthropic/claude-sonnet-4-6" --scope backend --scope-id opencode
-```
+全部 5 后端（Claude Code、Codex、Gemini CLI、Hermes、OpenCode）的安装、Redis 配置和验证步骤见 [`docs/iota-guides/00-setup.md`](../docs/iota-guides/00-setup.md)。
 
 ## Verification
 

@@ -38,7 +38,15 @@ export async function runCommand(
         process.stdout.write(event.data.content);
       } else if (event.type === "error") {
         failed = true;
-        console.error(chalk.red(`\n${event.data.code}: ${event.data.message}`));
+        const code = event.data.code;
+        const hint =
+          typeof event.data.details?.hint === "string"
+            ? event.data.details.hint
+            : undefined;
+        console.error(chalk.red(`\n${code}: ${event.data.message}`));
+        if (hint) {
+          console.error(chalk.yellow(`Hint: ${hint}`));
+        }
       } else if (event.type === "state" && event.data.state === "failed") {
         failed = true;
         console.error(chalk.red("\nExecution failed"));

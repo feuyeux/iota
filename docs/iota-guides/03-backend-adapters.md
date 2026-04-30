@@ -142,12 +142,7 @@ Legacy native adapter 继续负责各自原生 NDJSON/stream-json 映射。
 
 Backend 凭证、模型、endpoint 通过 layered config + Redis distributed config overlay 解析。共享部署中建议把敏感配置放 Redis scope，不提交 `.env` 或 backend-local env 文件。
 
-```bash
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.HERMES_API_KEY "<redacted>" --scope backend --scope-id hermes
-iota config set protocol acp --scope backend --scope-id gemini
-iota config set protocol acp --scope backend --scope-id claude-code
-```
+全部 5 后端的 Redis 配置命令和 ACP 协议切换见 [00-setup.md](./00-setup.md#3-后端-redis-配置)。
 
 ---
 

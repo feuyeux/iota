@@ -24,7 +24,9 @@ flowchart TD
 
 ---
 
-## 2. 分类模型
+## 2. 分类模型与 Redis 存储
+
+### 类型定义
 
 ```typescript
 type MemoryType = "semantic" | "episodic" | "procedural";
@@ -34,12 +36,212 @@ type MemoryScope = "session" | "project" | "user";
 
 | type | facet | 含义 | 默认 scope | 典型 TTL |
 |---|---|---|---|---|
-| semantic | identity | 用户身份、角色 | user | 长期 |
-| semantic | preference | 偏好、习惯 | user | 长期 |
-| semantic | strategic | 项目目标、决策 | project | 中期 |
-| semantic | domain | 领域事实 | project/user | 中期 |
-| procedural | — | 操作步骤、命令 | project | 短中期 |
-| episodic | — | 经历叙事、复盘 | session | 短期 |
+| semantic | identity | 用户身份、角色 | user | 365 天 |
+| semantic | preference | 偏好、习惯 | user | 365 天 |
+| semantic | strategic | 项目目标、决策 | project | 90 天 |
+| semantic | domain | 领域事实 | project/user | 90 天 |
+| procedural | — | 操作步骤、命令 | project | 30 天 |
+| episodic | — | 经历叙事、复盘 | session | 7 天 |
+
+### Redis Key 总览
+
+当前实现在 `iota-engine/src/storage/redis.ts`：
+
+| 数据 | Key 模式 | Redis 类型 | 说明 |
+|---|---|---|---|
+| Memory 实体 | `iota:memory:{type}:{memoryId}` | Hash | 全部 StoredMemory 字段，带 TTL |
+| 类型/作用域索引 | `iota:memories:{type}:{scopeId}[:facet]` | Sorted Set | recall 时按 score 排序读取 |
+| 内容哈希去重 | `iota:memory:hashes:{type}:{scopeId}[:facet]:{hash}` | Set | 防止相同内容重复写入 |
+| Backend 索引 | `iota:memory:by-backend:{backend}` | Set | 按来源 backend 索引 |
+| Tag 索引 | `iota:memory:by-tag:{tag}` | Set | 按标签索引 |
+| 变更历史 | `iota:memory:history:{memoryId}` | Sorted Set | ADD/UPDATE 事件记录 |
+
+索引 score 计算：
+- episodic: `score = timestamp`（按时间排序）
+- 其他: `score = typeWeight + confidence × 1000 + timestamp / 1e6`
+
+### 2.1 semantic / identity — 用户身份
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "semantic", facet: "identity", scope: "user",
+  content: "我叫张明，是高级架构师，负责微服务平台",
+  confidence: 0.95, ttlDays: 365, timestamp: Date.now(),
+  source: { backend: "claude-code", nativeType: "memory", executionId: "exec-001" },
+  metadata: { tags: ["profile"] },
+}, "user-zhang");
+```
+
+**召回：**
+
+```typescript
+const memories = await memoryStorage.retrieve({
+  type: "semantic", facet: "identity", scope: "user",
+  scopeId: "user-zhang", limit: 20, minConfidence: 0.85,
+});
+```
+
+**Redis 存储格式（所有类型共享此 Hash 字段结构）：**
+
+```bash
+HGETALL iota:memory:semantic:a1b2c3d4-...
+# id               "a1b2c3d4-..."
+# type             "semantic"
+# facet            "identity"
+# scope            "user"
+# scopeId          "user-zhang"
+# content          "我叫张明，是高级架构师，负责微服务平台"
+# contentHash      "e4d7f1a2..."
+# embeddingJson    "[0.012, -0.034, ...]"
+# confidence       "0.95"
+# sourceBackend    "claude-code"
+# sourceNativeType "memory"
+# sourceExecutionId "exec-001"
+# metadataJson     "{\"tags\":[\"profile\"]}"
+# tagsJson         "[\"profile\"]"
+# timestamp        "1714492800000"
+# ttlDays          "365"
+# createdAt        "1714492800000"
+# lastAccessedAt   "1714492800000"
+# accessCount      "0"
+# expiresAt        "1746028800000"
+
+# 索引
+ZREVRANGE iota:memories:semantic:user-zhang:identity 0 -1 WITHSCORES
+# 去重
+SMEMBERS iota:memory:hashes:semantic:user-zhang:identity:e4d7f1a2...
+```
+
+### 2.2 semantic / preference — 偏好习惯
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "semantic", facet: "preference", scope: "user",
+  content: "偏好中文回答，代码注释用英文，缩进 2 空格",
+  confidence: 0.9, ttlDays: 365, timestamp: Date.now(),
+  source: { backend: "gemini", nativeType: "memory", executionId: "exec-002" },
+  metadata: {},
+}, "user-zhang");
+```
+
+**召回：**
+
+```typescript
+const prefs = await memoryStorage.retrieve({
+  type: "semantic", facet: "preference", scope: "user",
+  scopeId: "user-zhang", limit: 30, minConfidence: 0.8,
+});
+```
+
+**Redis key：**`iota:memory:semantic:<uuid>` / `iota:memories:semantic:user-zhang:preference`
+
+### 2.3 semantic / strategic — 项目战略
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "semantic", facet: "strategic", scope: "project",
+  content: "项目目标：Q3 将单体架构拆分为 4 个微服务，优先拆分 auth 和 billing",
+  confidence: 0.9, ttlDays: 90, timestamp: Date.now(),
+  source: { backend: "claude-code", nativeType: "memory", executionId: "exec-003" },
+  metadata: { tags: ["architecture"] },
+}, "/home/user/project-alpha");
+```
+
+**召回：**
+
+```typescript
+const strategies = await memoryStorage.retrieve({
+  type: "semantic", facet: "strategic", scope: "project",
+  scopeId: "/home/user/project-alpha", limit: 30, minConfidence: 0.8,
+});
+```
+
+**Redis key：**`iota:memory:semantic:<uuid>` / `iota:memories:semantic:/home/user/project-alpha:strategic`
+
+### 2.4 semantic / domain — 领域知识
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "semantic", facet: "domain", scope: "project",
+  content: "系统使用 PostgreSQL 15 + Redis 7 作为数据层，API 网关为 Kong",
+  confidence: 0.88, ttlDays: 90, timestamp: Date.now(),
+  source: { backend: "codex", nativeType: "memory", executionId: "exec-004" },
+  metadata: { tags: ["tech-stack"] },
+}, "/home/user/project-alpha");
+```
+
+**召回：**
+
+```typescript
+const domain = await memoryStorage.retrieve({
+  type: "semantic", facet: "domain", scope: "project",
+  scopeId: "/home/user/project-alpha", limit: 50, minConfidence: 0.8,
+});
+```
+
+**Redis key：**`iota:memory:semantic:<uuid>` / `iota:memories:semantic:/home/user/project-alpha:domain`
+
+### 2.5 procedural — 操作步骤
+
+> procedural 无 facet，Redis key 中省略 facet 段。
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "procedural", scope: "project",
+  content: "部署步骤：1) bun run build  2) docker compose up -d  3) 等待 health check",
+  confidence: 0.85, ttlDays: 30, timestamp: Date.now(),
+  source: { backend: "hermes", nativeType: "memory", executionId: "exec-005" },
+  metadata: { tags: ["deploy"] },
+}, "/home/user/project-alpha");
+```
+
+**召回：**
+
+```typescript
+const procedures = await memoryStorage.retrieve({
+  type: "procedural", scope: "project",
+  scopeId: "/home/user/project-alpha", limit: 10, minConfidence: 0.75,
+});
+```
+
+**Redis key：**`iota:memory:procedural:<uuid>` / `iota:memories:procedural:/home/user/project-alpha`
+
+### 2.6 episodic — 经历叙事
+
+> episodic 无 facet；索引 score 直接使用 timestamp（按时间排序），与 semantic/procedural 的加权公式不同。
+
+**存入：**
+
+```typescript
+await memoryStorage.store({
+  type: "episodic", scope: "session",
+  content: "用户在第 3 轮对话中修复了 auth 模块的内存泄漏，根因是未关闭的 Redis 连接",
+  confidence: 0.8, ttlDays: 7, timestamp: Date.now(),
+  source: { backend: "opencode", nativeType: "memory", executionId: "exec-006" },
+  metadata: {},
+}, "session-abc123");
+```
+
+**召回：**
+
+```typescript
+const episodes = await memoryStorage.retrieve({
+  type: "episodic", scope: "session",
+  scopeId: "session-abc123", limit: 20, minConfidence: 0.7,
+});
+```
+
+**Redis key：**`iota:memory:episodic:<uuid>` / `iota:memories:episodic:session-abc123`
 
 ---
 
@@ -69,22 +271,7 @@ interface StoredMemory {
 
 ---
 
-## 4. Redis 存储布局
-
-当前实现主要在 `iota-engine/src/storage/redis.ts`：
-
-| 数据 | Key | 类型 |
-|---|---|---|
-| Memory entity | `iota:memory:{type}:{memoryId}` | Hash |
-| Type/scope/facet index | `iota:memories:{type}:{scopeId}[:facet]` | Sorted Set |
-| Backend index | `iota:memory:by-backend:{backend}` | Set |
-| Tag index | `iota:memory:by-tag:{tag}` | Set |
-| Hash dedup | `iota:memory:hashes:{type}:{scopeId}[:facet]:{contentHash}` | Set |
-| History | `iota:memory:history:{memoryId}` | Sorted Set |
-
----
-
-## 5. 写入：Store / Extract
+## 4. 写入：Store / Extract
 
 `MemoryStorage.store()` 当前行为：
 
@@ -98,7 +285,7 @@ interface StoredMemory {
 
 ---
 
-## 6. 读取：Recall + Inject
+## 5. 读取：Recall + Inject
 
 `MemoryInjector.buildContext()` 当前固定查询 6 个桶，并为每个查询生成 prompt embedding：
 
@@ -121,7 +308,7 @@ interface StoredMemory {
 
 ---
 
-## 7. Embedding 支持
+## 6. Embedding 支持
 
 | Provider | 文件 | 说明 |
 |---|---|---|
@@ -134,7 +321,7 @@ interface StoredMemory {
 
 ---
 
-## 8. Memory Visibility
+## 7. Memory Visibility
 
 每次记忆注入都产生 visibility 记录，存储在 `iota:visibility:memory:{executionId}`：
 
@@ -145,7 +332,7 @@ interface StoredMemory {
 
 ---
 
-## 9. 已实现与待完善
+## 8. 已实现与待完善
 
 ### 已实现
 
@@ -169,7 +356,7 @@ interface StoredMemory {
 
 ---
 
-## 10. 跨后端延续验证
+## 9. 跨后端延续验证
 
 ```bash
 cd iota-cli
