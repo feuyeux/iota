@@ -35,6 +35,8 @@ iota/
 
 ### Memory 系统
 
+<https://zhuanlan.zhihu.com/p/2032843921303319581>
+
 <p align="center">
   <img src="images/iota-memory.png" alt="iota Memory System" width="700" />
 </p>
@@ -45,11 +47,17 @@ Embedding 降级链：`HashEmbedding` → `Ollama` → `OpenAI`
 
 ### Skill & MCP 执行
 
+<https://zhuanlan.zhihu.com/p/2032653897177768268>
+
 <p align="center">
   <img src="images/iota-skill-mcp-fn.png" alt="iota Skill MCP Function Execution" width="700" />
 </p>
 
 `SkillRunner` → `McpRouter` → 配置的 MCP server。函数源码位于 `iota-skill/pet-generator/iota-fun/`，编译产物缓存在 `~/.iota/iota-fun`。
+
+#### 生成宠物
+
+![gen_pet](images/gen_pet.png)
 
 ## 快速开始
 
@@ -137,23 +145,17 @@ gemini>
 
 Agent（Fastify HTTP / WebSocket，默认端口 `9666`）：
 
-```bash
-cd iota-agent
-bun run build
-bun run start            # 或开发模式：bun run dev
+```powershell
+cd iota-agent ; bun run build ; bun run start
 ```
 
 Vite 前端（默认端口 `9888`，已配置 `/api` 与 `/ws` 代理到 `localhost:9666`）：
 
+<http://localhost:9888>
+
 ```bash
-cd iota-app
-bun run dev              # http://localhost:9888
-
-# 生产构建
-bun run build && bun run preview
+cd iota-app ; bun run dev
 ```
-
-> Agent 端口可通过 `PORT` 环境变量覆盖；如改了 Agent 端口，需要同步修改 [iota-app/vite.config.ts](iota-app/vite.config.ts) 里的 `proxy.target`。
 
 #### claude code
 
