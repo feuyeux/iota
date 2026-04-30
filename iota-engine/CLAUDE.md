@@ -10,10 +10,8 @@ Shared design documents live at the workspace root in `../docs/`.
 
 ## Design Authority
 
-- `../docs/guides/05-engine-guide.md`
-- `../docs/guides/03-agent-guide.md`
-- `../docs/requirement/4.iota_engine_design_0425.md`
-- `../docs/requirement/5.iota_app_design.md`
+- `../docs/iota-guides/02-engine.md`
+- `../docs/iota-guides/05-agent.md`
 
 If code and docs conflict, prefer the current implementation and then update docs.
 
@@ -22,7 +20,6 @@ If code and docs conflict, prefer the current implementation and then update doc
 - TypeScript / Bun runtime
 - Engine-internal adapters in `src/backend/`
 - ACP JSON-RPC 2.0 is the preferred backend protocol; legacy native CLI subprocess protocols remain as fallback for Claude Code, Codex, and Gemini
-- No vendor internal SDK imports
 - No vendor internal SDK imports; adapter-backed ACP shims must remain external executables configured through backend protocol settings
 - Redact secret-like values in visibility, audit, snapshots, replay, logs, and examples
 
@@ -38,10 +35,10 @@ If code and docs conflict, prefer the current implementation and then update doc
 
 ## Current Implementation Notes
 
-- Approval enforcement is currently implemented in `src/engine.ts`; avoid treating `src/approval/guard.ts` as the active execution path unless wiring changes
-- Backend credentials, models, and endpoints come from Redis distributed config
-- Do not reintroduce backend-local env files as the main configuration path
-- Keep Engine output aligned with Agent App Read Model expectations: snapshots and deltas are shaped above Engine, but Engine remains the source for visibility, trace, replay, and runtime events
+- Approval enforcement is implemented in `src/engine.ts` through approval policy and hooks. CLI uses `CliApprovalHook`; Agent uses `DeferredApprovalHook` and routes `approval_decision` into `IotaEngine.resolveApproval()`.
+- Backend credentials, models, and endpoints are resolved through layered config plus Redis distributed config overlays. Do not reintroduce backend-local env files as the main configuration path.
+- ACP adapters expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini expose `mcpResponseChannel: false`. Keep Agent/App backend capability views aligned when this changes.
+- Keep Engine output aligned with Agent App Read Model expectations: snapshots and deltas are shaped above Engine, but Engine remains the source for visibility, trace, replay, and runtime events.
 
 ## Commands
 
@@ -66,7 +63,7 @@ cd ../iota-cli
 node dist/index.js run --backend <name> --trace "ping"
 ```
 
-For Hermes, inspect `hermes config show`; reject dead `model.provider: custom` / local `model.base_url` configurations unless the local gateway is actually running.
+For Hermes, inspect `hermes config show`; reject dead `model.provider: custom` / local `model.base_url` configurations unless the local gateway is actually running. For OpenCode, verify provider login/config and run a real traced request.
 
 ## Commit Identity & Co-Authorship Rules
 

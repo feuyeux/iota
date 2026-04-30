@@ -1,11 +1,14 @@
 # CLI 与 TUI 指南
 
-**版本:** 2.1  
+**版本:** 3.0
 **最后更新:** 2026-04-30
 
 ## 1. 概述
 
-`iota-cli` 提供命令行接口和交互式 TUI 模式。CLI 直接导入 `@iota/engine`，不经过 Agent 服务。
+`iota-cli` 提供两种平级的一等接口，均直接导入 `@iota/engine`，不经过 Agent 服务：
+
+- **CLI 模式**：单次命令执行（`iota run`、`iota status`、`iota logs` 等）
+- **TUI 模式**：持久交互式 REPL 会话，CLI 全部能力均可作为会话内命令使用
 
 ```mermaid
 graph LR
@@ -42,10 +45,10 @@ iota run --backend codex --trace-json "ping"
 
 选项：
 
-- `--backend <name>`: 指定 backend（`claude-code`、`codex`、`gemini`、`hermes`、`opencode`）
-- `--cwd <dir>`: 工作目录，默认当前目录
-- `--trace`: 执行后打印 visibility/trace 摘要
-- `--trace-json`: 执行后以 JSON 输出 visibility
+- `--backend <name>`：指定 backend（`claude-code`、`codex`、`gemini`、`hermes`、`opencode`）
+- `--cwd <dir>`：工作目录，默认当前目录
+- `--trace`：执行后打印 visibility/trace 摘要
+- `--trace-json`：执行后以 JSON 输出 visibility
 
 ### `iota status`
 
@@ -113,7 +116,7 @@ iota visibility search --session <sessionId> --prompt "keyword"
 iota visibility interactive --execution <executionId> --interval 1000
 ```
 
-`visibility` 使用 `--memory/--tokens/--chain/--trace` 选择视图；当前代码没有 `--kind` 参数。
+`visibility` 使用 `--memory/--tokens/--chain/--trace` 选择视图。
 
 ---
 
@@ -126,48 +129,56 @@ iota interactive
 iota i
 ```
 
-### 功能
+### 能力
 
-- REPL 风格多轮对话
-- 同一 Engine session 内共享 context/memory
-- 流式输出
-- CLI 审批工作流（`CliApprovalHook`）
-- 运行中输入 `switch <backend>` 切换后端
-- 输入 `status` 查看 backend 状态
-- 输入 `exit` 或 `quit` 退出
+TUI 是 CLI 的完全平级接口。CLI 命令的所有能力均可在持久 Engine session 内作为会话命令使用：
 
-当前交互命令是 `switch <backend>` 和 `status`，不是 slash command。
+| TUI 命令 | CLI 等价命令 | 说明 |
+|---|---|---|
+| `<prompt>` | `iota run "<prompt>"` | 执行 prompt |
+| `run <prompt>` | `iota run "<prompt>"` | 显式执行 prompt |
+| `switch <backend>` | `iota switch <backend>` | 切换 backend |
+| `status` | `iota status` | backend 健康状态 |
+| `metrics` | （Engine 内部） | Engine 指标 |
+| `session` | （TUI 独有） | 当前 session 信息 |
+| `logs [--limit N]` | `iota logs --limit N` | 执行日志 |
+| `trace [execId]` | `iota trace --execution <id>` | 执行 trace |
+| `visibility [execId]` | `iota visibility --execution <id>` | 执行 visibility |
+| `gc` | `iota gc` | Memory GC |
+| `config list` | `iota config get` | 显示完整解析配置 |
+| `config get <key>` | `iota config get <path>` | 按路径查询配置值 |
+| `help` | `iota --help` | 显示 TUI 命令 |
+| `clear` | — | 清屏 |
+| `exit` / `quit` | — | 退出 TUI |
+
+### 会话持久化
+
+- 所有执行共享同一 Engine session（上下文/记忆跨轮次保持）
+- 默认启用 visibility（chain: full, rawProtocol: preview）
+- `trace` 和 `visibility` 省略 ID 时默认使用最后一次执行
+- 单条命令错误不会中断 session
+
+### 审批工作流
+
+当 Engine policy 为 `ask` 或 backend 请求权限时，TUI 使用 `CliApprovalHook` 交互式询问，与 CLI 模式一致。
+
+支持的 operation type：`shell`、`fileOutside`、`network`、`container`、`mcpExternal`、`privilegeEscalation`。
 
 ---
 
-## 5. 审批工作流（CLI）
-
-当 Engine policy 为 `ask`，或 backend 请求权限时，CLI 使用 `CliApprovalHook` 交互式询问。
-
-支持的 operation type：
-
-- `shell`
-- `fileOutside`
-- `network`
-- `container`
-- `mcpExternal`
-- `privilegeEscalation`
-
----
-
-## 6. 分布式特性
+## 5. 分布式特性
 
 - Session、execution、event、logs、visibility、memory 数据持久化到 Redis
-- 多个 CLI 实例可共享同一 Redis，查询彼此的 logs/traces
+- 多个 CLI/TUI 实例可共享同一 Redis，查询彼此的 logs/traces
 - 后端凭证、模型、endpoint 通过 layered config + Redis overlay 解析
 
 ---
 
-## 7. 故障排查
+## 6. 故障排查
 
 | 现象 | 修复 |
 |------|------|
 | `Cannot find module` | `cd iota-engine && bun run build`，再 `cd iota-cli && bun run build` |
-| `ECONNREFUSED :6379` | 启动 Redis: `bash deployment/scripts/start-storage.sh` |
+| `ECONNREFUSED :6379` | 启动 Redis：`bash deployment/scripts/start-storage.sh` |
 | Backend not found | `bash deployment/scripts/ensure-backends.sh --check-only` |
-| 401/认证失败 | 检查配置: `iota config get --scope backend --scope-id <name>` |
+| 401/认证失败 | 检查配置：`iota config get --scope backend --scope-id <name>` |

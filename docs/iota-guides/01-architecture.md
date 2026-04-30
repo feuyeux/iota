@@ -140,7 +140,7 @@ graph TB
 | 包 | 职责 | 不负责 |
 |---|---|---|
 | `iota-engine` | Runtime API、backend pool、adapter、RuntimeEvent、storage、visibility、memory、approval、audit、metrics、workspace、MCP、skill | HTTP server、React UI |
-| `iota-cli` | CLI 命令、interactive TUI、CLI approval hook、调用 Engine | 远程 Agent API |
+| `iota-cli` | CLI 命令、交互式 TUI（与 CLI 平级的完整能力）、CLI approval hook、调用 Engine | 远程 Agent API |
 | `iota-agent` | Fastify REST/WS、请求校验、App snapshot/delta 推送、跨实例 pub/sub bridge | Backend 协议解析 |
 | `iota-app` | React UI、Zustand session store、WebSocket 连接、snapshot/delta 合并 | 直接访问 Redis |
 | `iota-skill` | 结构化 skill 声明 + iota-fun 函数源码 | 运行时编排逻辑 |
@@ -265,8 +265,8 @@ RuntimeEvent + ExecutionRecord + ExecutionVisibility
 
 当前状态：
 
-- CLI 审批路径完全可用
-- Agent WebSocket 已路由 `approval_decision` 到 `engine.resolveApproval()`；Engine deferred approval request 会通过 `app_delta` 推送给订阅 App
+- CLI/TUI 审批路径完全可用
+- Agent WebSocket 已路由 `approval_decision` 到 `engine.resolveApproval()`；App-to-Agent-to-Engine 审批环路完整实现并有测试覆盖
 - 文档、日志、visibility、snapshot 都必须保持 secret redaction
 
 ---

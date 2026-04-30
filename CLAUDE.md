@@ -57,7 +57,9 @@ All five backends are handled by engine-internal adapters:
 | Hermes Agent | `hermes acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 | OpenCode | `opencode acp` | long-running subprocess | ACP JSON-RPC 2.0 |
 
-Keep secrets out of argv. Pass credentials through environment or backend-native config files resolved by Engine config.
+Keep secrets out of argv. Pass credentials through environment or backend-native config files resolved by Engine config. Keep subprocess env cleanup lists aligned with every backend-specific credential/model variable, including OpenCode.
+
+ACP backends expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini do not support Engine mid-execution MCP result writes.
 
 ## Current Implementation Notes
 
@@ -88,6 +90,7 @@ Notes:
 - `iota-app` has no standalone `typecheck` script; `bun run build` runs `tsc -b && vite build`.
 - `iota-agent` tests currently use `vitest run --passWithNoTests`.
 - `iota-skill` has no package-level build; validate through Engine skill/iota-fun tests and the relevant runtime guide.
+- Docker storage defaults to Redis only. Use `deployment/scripts/start-storage.sh --full` for Redis + MinIO + Milvus and `--ha` for Redis Sentinel.
 
 ## Backend Verification Rule
 

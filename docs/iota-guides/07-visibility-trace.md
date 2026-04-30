@@ -149,6 +149,17 @@ iota visibility list --session <sessionId>
 iota visibility search --session <sessionId> --prompt "keyword"
 ```
 
+### TUI（交互模式）
+
+TUI 默认启用 visibility（chain: full, rawProtocol: preview），省略 executionId 时自动使用最后一次执行：
+
+```
+iota> trace
+iota> trace <executionId>
+iota> visibility
+iota> visibility <executionId>
+```
+
 ### Agent REST
 
 ```bash
