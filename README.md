@@ -53,89 +53,6 @@ Embedding 降级链：`HashEmbedding` → `Ollama` → `OpenAI`
 
 ## 快速开始
 
-### 1. 基础设施
-
-```bash
-# 确保 Docker Desktop 运行
-docker ps
-
-# 启动 Redis
-cd deployment/scripts && bash start-storage.sh
-redis-cli ping
-```
-
-完整存储（Redis + MinIO + Milvus）：`bash start-storage.sh --full`
-
-### 2. 构建
-
-```bash
-cd iota-engine && bun install && bun run build
-cd ../iota-cli   && bun install && bun run build
-cd ../iota-agent && bun install
-cd ../iota-app   && bun install
-```
-
-### 3. 后端配置
-
-各后端凭证、模型、endpoint 通过 Redis scope `backend:<id>` 管理。ACP 子进程读取的是 **process env**，所以必须把变量写到 Redis（Claude Code 自身 `settings.json` 里的 `env` 块对 ACP 子进程无效）。
-
-```bash
-# Claude Code（默认走 Anthropic；要走兼容供应商如 MiniMax，覆盖 BASE_URL + MODEL）
-iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_BASE_URL  "https://api.minimaxi.com/anthropic" --scope backend --scope-id claude-code
-iota config set env.ANTHROPIC_MODEL     "MiniMax-M2.7" --scope backend --scope-id claude-code
-
-# Codex
-iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
-
-# Gemini（OAuth 登录态由 gemini auth login 写入，仅需指定模型）
-iota config set env.GEMINI_MODEL "gemini-2.5-flash" --scope backend --scope-id gemini
-
-# Hermes
-iota config set env.HERMES_API_KEY  "<redacted>" --scope backend --scope-id hermes
-iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
-iota config set env.HERMES_MODEL    "MiniMax-M2.7" --scope backend --scope-id hermes
-iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
-
-# OpenCode（model 在 ~/.config/opencode/opencode.json，OPENCODE_MODEL 不被 acp 读，仅作冗余）
-iota config set env.OPENCODE_MODEL "MiniMax-M2.7" --scope backend --scope-id opencode
-```
-
-> **原则**：密钥不入仓库；详细分项配置见 [00-setup.md §4](docs/iota-guides/00-setup.md)。
-
-### 4. 检测后端 CLI
-
-```bash
-bash deployment/scripts/ensure-backends.sh          # 检测 + 安装
-bash deployment/scripts/ensure-backends.sh --check-only  # 仅检测
-```
-
-### 5. 验证
-
-```bash
-cd iota-cli
-node dist/index.js status                           # 检查健康状态
-node dist/index.js run --backend claude-code --trace "ping"  # 真实请求验证
-```
-
-每个后端都必须通过 traced request 验证，不能仅依赖 `status`。
-
-### 6. 运行
-
-```bash
-# CLI
-cd iota-cli && node dist/index.js run "What is 2+2?"
-
-cd iota-cli
-node dist/index.js run --backend claude-code "What is 2+2?"
-node dist/index.js run --backend codex "What is 2+2?"
-node dist/index.js run --backend gemini "What is 2+2?"
-node dist/index.js run --backend hermes "What is 2+2?"
-node dist/index.js run --backend opencode "What is 2+2?"
-```
-
-## 文档
-
 完整指南：[docs/iota-guides/README.md](docs/iota-guides/README.md)
 
 | 主题 | 链接 |
@@ -151,3 +68,109 @@ node dist/index.js run --backend opencode "What is 2+2?"
 | Memory | [08-memory](docs/iota-guides/08-memory.md) |
 | Skill & iota-fun | [09-skill-fun](docs/iota-guides/09-skill-fun.md) |
 | 部署 | [10-deployment](docs/iota-guides/10-deployment.md) |
+
+### 1. CLI
+
+```bash
+cd iota-cli
+node dist/index.js run --backend claude-code "What is 2+2?"
+node dist/index.js run --backend codex "What is 2+2?"
+node dist/index.js run --backend gemini "What is 2+2?"
+node dist/index.js run --backend hermes "What is 2+2?"
+node dist/index.js run --backend opencode "What is 2+2?"
+```
+
+### 2. TUI
+
+```bash
+$ iota i
+
+      o
+   .--|--.
+o-- IOTA --o
+   '--|--'
+      o
+iota TUI session e1e7b3ee
+Backend: claude-code
+Type "help" for commands, "exit" to quit.
+
+claude-code> 天王盖地虎
+宝塔镇河妖。😊
+
+这是一个经典的中文暗号，来自梁羽生的武侠小说《七剑下天山》。看来您是在测试我的中文反应能力？
+
+如果您有任何实际的技术问题或需要帮助，请随时告诉我！
+
+claude-code> switch codex
+Switched to codex
+
+codex> 江山父老能容我
+卷土重来未可知。
+
+codex> switch opencode
+Switched to opencode
+
+opencode> 采菊东篱下
+悠然见南山。
+
+opencode> switch hermes
+Switched to hermes
+
+hermes> 挖掘机哪家强
+山东找蓝翔！🏗️
+
+不过说真的，您还有什么技术问题需要我帮忙吗？比如 iota 项目相关的问题？
+
+hermes> switch gemini
+Switched to gemini
+
+gemini> 宫廷玉液酒
+> 一百八一杯。🥂
+
+看起来你今天心情不错！还有什么关于 iota-cli 的技术问题需要我帮忙吗？
+gemini> 
+```
+
+> **原则**：密钥不入仓库；详细分项配置见 [00-setup.md §4](docs/iota-guides/00-setup.md)。
+
+### 3. APP
+
+Agent（Fastify HTTP / WebSocket，默认端口 `9666`）：
+
+```bash
+cd iota-agent
+bun run build
+bun run start            # 或开发模式：bun run dev
+```
+
+Vite 前端（默认端口 `9888`，已配置 `/api` 与 `/ws` 代理到 `localhost:9666`）：
+
+```bash
+cd iota-app
+bun run dev              # http://localhost:9888
+
+# 生产构建
+bun run build && bun run preview
+```
+
+> Agent 端口可通过 `PORT` 环境变量覆盖；如改了 Agent 端口，需要同步修改 [iota-app/vite.config.ts](iota-app/vite.config.ts) 里的 `proxy.target`。
+
+#### claude code
+
+![app_claudecode](images/app_claudecode.png)
+
+#### codex cli
+
+![app_codex](images/app_codex.png)
+
+#### gemini cli
+
+![app_gemini](images/app_gemini.png)
+
+#### opencode
+
+![app_opencode](images/app_opencode.png)
+
+#### hermes agent
+
+![app_hermes](images/app_hermes.png)
