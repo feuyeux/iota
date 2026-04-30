@@ -85,5 +85,5 @@ For Hermes, inspect `hermes config show` and reject dead local-gateway configs.
 ## Documentation
 
 - [`../docs/iota-guides/02-engine.md`](../docs/iota-guides/02-engine.md)
-- [`../docs/iota-guides/03-backend-adapters.md`](../docs/iota-guides/03-backend-adapters.md)
+- [`../docs/iota-guides/03-backend.md`](../docs/iota-guides/03-backend.md)
 - [`../docs/iota-guides/05-agent.md`](../docs/iota-guides/05-agent.md)

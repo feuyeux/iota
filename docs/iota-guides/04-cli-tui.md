@@ -27,6 +27,11 @@ cd iota-engine && bun install && bun run build
 cd ../iota-cli && bun install && bun run build
 ```
 
+```cmd
+cd iota-engine ; bun install ; bun run build
+cd ../iota-cli ; bun install ; bun run build
+```
+
 CLI 的实际入口是 `iota-cli/dist/index.js`，通过 Node.js 直接调用：
 
 ```bash

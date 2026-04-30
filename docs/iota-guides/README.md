@@ -12,7 +12,7 @@
 | [00-setup.md](./00-setup.md) | **后端初始化与环境配置（5 后端安装、Redis 配置、验证）** |
 | [01-architecture.md](./01-architecture.md) | 架构概览、组件边界、通信协议、实现成熟度 |
 | [02-engine.md](./02-engine.md) | Engine 核心运行时：执行流、内部结构、配置、Redis 数据结构 |
-| [03-backend-adapters.md](./03-backend-adapters.md) | Backend 适配器、ACP-only 路径、进程模型 |
+| [03-backend.md](./03-backend.md) | Backend 适配器、ACP-only 路径、进程模型 |
 | [04-cli-tui.md](./04-cli-tui.md) | CLI 命令与 TUI 交互模式（两者平级，能力对等） |
 | [05-agent.md](./05-agent.md) | Agent HTTP/WebSocket 服务、App snapshot/delta、审批流 |
 | [06-app.md](./06-app.md) | App Web 前端：React UI、状态管理、读取模型 |

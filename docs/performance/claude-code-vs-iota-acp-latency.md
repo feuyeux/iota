@@ -12,7 +12,7 @@
 | 路径 | 说明 | 入口命令 |
 |---|---|---|
 | Claude Code native | 直接启动 Claude Code CLI，绕过 iota Engine / ACP adapter | `claude --print ...` |
-| iota + ACP + Claude | `iota-cli -> IotaEngine -> ClaudeCodeAcpAdapter -> @anthropic-ai/claude-code-acp -> Claude Code` | `node dist/index.js run --backend claude-code --trace ...` |
+| iota + ACP + Claude | `iota-cli -> IotaEngine -> ClaudeCodeAcpAdapter -> @zed-industries/claude-code-acp -> Claude Code` | `node dist/index.js run --backend claude-code --trace ...` |
 
 本实验只回答延迟问题，不评价回答质量。回答质量只作为剔除异常样本的依据，例如空响应、认证失败、限流、工具调用失败。
 

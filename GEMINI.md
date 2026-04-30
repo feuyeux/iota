@@ -87,7 +87,7 @@ Primary docs are consolidated under `docs/iota-guides/`:
 - `docs/iota-guides/00-setup.md`
 - `docs/iota-guides/01-architecture.md`
 - `docs/iota-guides/02-engine.md`
-- `docs/iota-guides/03-backend-adapters.md`
+- `docs/iota-guides/03-backend.md`
 - `docs/iota-guides/04-cli-tui.md`
 - `docs/iota-guides/05-agent.md`
 - `docs/iota-guides/06-app.md`

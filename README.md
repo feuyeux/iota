@@ -77,35 +77,31 @@ cd ../iota-app   && bun install
 
 ### 3. 后端配置
 
-各后端通过 Redis 统一管理配置路径和凭证：
+各后端凭证、模型、endpoint 通过 Redis scope `backend:<id>` 管理。ACP 子进程读取的是 **process env**，所以必须把变量写到 Redis（Claude Code 自身 `settings.json` 里的 `env` 块对 ACP 子进程无效）。
 
 ```bash
-# Claude Code
-iota config set env.CLAUDE_SETTINGS_PATH "$HOME/.claude/settings.json" \
-  --scope backend --scope-id claude-code
+# Claude Code（默认走 Anthropic；要走兼容供应商如 MiniMax，覆盖 BASE_URL + MODEL）
+iota config set env.ANTHROPIC_AUTH_TOKEN "<redacted>" --scope backend --scope-id claude-code
+iota config set env.ANTHROPIC_BASE_URL  "https://api.minimaxi.com/anthropic" --scope backend --scope-id claude-code
+iota config set env.ANTHROPIC_MODEL     "MiniMax-M2.7" --scope backend --scope-id claude-code
 
 # Codex
-iota config set env.CODEX_HOME "$HOME/.codex-iota" \
-  --scope backend --scope-id codex
-iota config set env.ROUTER_API_KEY "sk_xxx" \
-  --scope backend --scope-id codex
+iota config set env.OPENAI_MODEL "gpt-5.5" --scope backend --scope-id codex
 
-# Gemini（OAuth 登录态 + 模型名）
-iota config set env.GEMINI_MODEL "auto-gemini-3" \
-  --scope backend --scope-id gemini
+# Gemini（OAuth 登录态由 gemini auth login 写入，仅需指定模型）
+iota config set env.GEMINI_MODEL "gemini-2.5-flash" --scope backend --scope-id gemini
 
 # Hermes
-iota config set env.HERMES_API_KEY "<redacted>" \
-  --scope backend --scope-id hermes
-iota config set env.HERMES_MODEL "MiniMax-M2.7" \
-  --scope backend --scope-id hermes
+iota config set env.HERMES_API_KEY  "<redacted>" --scope backend --scope-id hermes
+iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
+iota config set env.HERMES_MODEL    "MiniMax-M2.7" --scope backend --scope-id hermes
+iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
 
-# OpenCode（使用自身 provider 系统）
-iota config set env.OPENCODE_MODEL "anthropic/claude-sonnet-4-6" \
-  --scope backend --scope-id opencode
+# OpenCode（model 在 ~/.config/opencode/opencode.json，OPENCODE_MODEL 不被 acp 读，仅作冗余）
+iota config set env.OPENCODE_MODEL "MiniMax-M2.7" --scope backend --scope-id opencode
 ```
 
-> **原则**：密钥不入仓库，配置路径写 Redis，后端进程自行读取凭证文件。
+> **原则**：密钥不入仓库；详细分项配置见 [00-setup.md §4](docs/iota-guides/00-setup.md)。
 
 ### 4. 检测后端 CLI
 
@@ -147,7 +143,7 @@ node dist/index.js run --backend opencode "What is 2+2?"
 | 环境配置 | [00-setup](docs/iota-guides/00-setup.md) |
 | 架构概览 | [01-architecture](docs/iota-guides/01-architecture.md) |
 | Engine | [02-engine](docs/iota-guides/02-engine.md) |
-| Backend 适配器 | [03-backend-adapters](docs/iota-guides/03-backend-adapters.md) |
+| Backend 适配器 | [03-backend](docs/iota-guides/03-backend.md) |
 | CLI / TUI | [04-cli-tui](docs/iota-guides/04-cli-tui.md) |
 | Agent 服务 | [05-agent](docs/iota-guides/05-agent.md) |
 | App 前端 | [06-app](docs/iota-guides/06-app.md) |
