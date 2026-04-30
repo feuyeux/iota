@@ -190,7 +190,6 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
       },
     );
 
-
     // Bridge Redis pub/sub to WebSocket for multi-instance event distribution (Section 4.3)
     const pubsubUnsubscribers: Array<() => Promise<void>> = [];
     const pubsub = fastify.engine.getPubSub?.();
@@ -204,7 +203,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             // Only forward if client is subscribed to this session
             for (const [_sessionId, include] of appSessionSubscriptions) {
               if (include.size > 0) {
-                safeSend(ws, 
+                safeSend(
+                  ws,
                   JSON.stringify({
                     type: "pubsub_event",
                     channel: "iota:execution:events",
@@ -224,7 +224,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             if (message.type !== "session_update") return;
             // Forward session updates if client subscribes to this session
             if (appSessionSubscriptions.has(message.sessionId)) {
-              safeSend(ws, 
+              safeSend(
+                ws,
                 JSON.stringify({
                   type: "pubsub_event",
                   channel: "iota:session:updates",
@@ -239,7 +240,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
         const unsubConfig = await pubsub.subscribe(
           "iota:config:changes",
           (message) => {
-            safeSend(ws, 
+            safeSend(
+              ws,
               JSON.stringify({
                 type: "pubsub_event",
                 channel: "iota:config:changes",
@@ -273,7 +275,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             ],
           );
           appSessionSubscriptions.set(message.sessionId, include);
-          safeSend(ws, 
+          safeSend(
+            ws,
             JSON.stringify({
               type: "subscribed",
               sessionId: message.sessionId,
@@ -290,7 +293,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             message.kinds ?? ["memory", "tokens", "chain", "summary"],
           );
           visibilitySubscriptions.set(execId, kinds);
-          safeSend(ws, 
+          safeSend(
+            ws,
             JSON.stringify({
               type: "subscribed_visibility",
               executionId: execId,
@@ -339,7 +343,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
                   for (const delta of deltas) {
                     if (!shouldSendVisibilityDelta(delta, kinds)) continue;
                     deltaRevision++;
-                    safeSend(ws, 
+                    safeSend(
+                      ws,
                       JSON.stringify({
                         type: "app_delta",
                         sessionId: sid,
@@ -373,7 +378,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
 
         if (message.type === "interrupt") {
           await fastify.engine.interrupt(message.executionId);
-          safeSend(ws,
+          safeSend(
+            ws,
             JSON.stringify({
               type: "complete",
               executionId: message.executionId,
@@ -404,7 +410,8 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             message.requestId,
             decision,
           );
-          safeSend(ws,
+          safeSend(
+            ws,
             JSON.stringify({
               type: "approval_result",
               requestId: message.requestId,
@@ -422,7 +429,9 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
           let workingDir = message.workingDirectory ?? process.cwd();
           if (message.workingDirectory) {
             const { validateWorkingDirectory } = await import("./session.js");
-            const result = await validateWorkingDirectory(message.workingDirectory);
+            const result = await validateWorkingDirectory(
+              message.workingDirectory,
+            );
             if (!result.valid) {
               const errorMsg: StreamResponseMessage = {
                 type: "error",
@@ -746,8 +755,10 @@ function computeVisibilityHash(
 
   if (kinds.has("tokens")) {
     const tokens = visibility.tokens;
-    const input = tokens?.input?.totalTokens ?? tokens?.input?.estimatedTokens ?? 0;
-    const output = tokens?.output?.totalTokens ?? tokens?.output?.estimatedTokens ?? 0;
+    const input =
+      tokens?.input?.totalTokens ?? tokens?.input?.estimatedTokens ?? 0;
+    const output =
+      tokens?.output?.totalTokens ?? tokens?.output?.estimatedTokens ?? 0;
     parts.push(`t:${input},${output}`);
   }
 
@@ -777,7 +788,8 @@ function sendDelta(
   kinds: Set<VisibilitySubscriptionKind>,
 ): void {
   if (!shouldSendVisibilityDelta(delta, kinds)) return;
-  safeSend(ws, 
+  safeSend(
+    ws,
     JSON.stringify({
       type: "app_delta",
       sessionId,
@@ -827,6 +839,11 @@ function shouldSendVisibilityDelta(
   }
 }
 
+function shouldShowToolCall(event: RuntimeEvent): boolean {
+  if (event.type !== "tool_call") return false;
+  if (event.data.toolName !== "unknown") return true;
+  return Object.keys(event.data.arguments).length > 0;
+}
 function mergeSubscriptionKinds(
   include: Set<AppDeltaKind> | undefined,
   kinds: Set<VisibilitySubscriptionKind> | undefined,
@@ -860,7 +877,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** Convert a RuntimeEvent to zero or more AppVisibilityDelta messages. */
-function eventToAppDeltas(
+export function eventToAppDeltas(
   executionId: string,
   event: RuntimeEvent,
 ): AppVisibilityDelta[] {
@@ -1039,33 +1056,35 @@ function eventToAppDeltas(
 
   // Trace step deltas for MCP tool calls
   if (event.type === "tool_call") {
-    deltas.push({
-      type: "conversation_delta",
-      executionId,
-      item: {
-        id: `${executionId}-tc-${event.sequence}`,
-        role: "tool",
-        content: `Tool: ${event.data.toolName}`,
-        timestamp: event.timestamp,
+    if (shouldShowToolCall(event)) {
+      deltas.push({
+        type: "conversation_delta",
         executionId,
-        eventSequence: event.sequence,
-        metadata: {
-          toolCall: {
-            name: event.data.toolName,
-            arguments: event.data.arguments,
+        item: {
+          id: `${executionId}-tc-${event.sequence}`,
+          role: "tool",
+          content: `Tool: ${event.data.toolName}`,
+          timestamp: event.timestamp,
+          executionId,
+          eventSequence: event.sequence,
+          metadata: {
+            toolCall: {
+              name: event.data.toolName,
+              arguments: event.data.arguments,
+            },
           },
         },
-      },
-    });
-    deltas.push({
-      type: "trace_step_delta",
-      executionId,
-      step: {
-        key: "mcp",
-        label: `Tool: ${event.data.toolName}`,
-        status: "running",
-      },
-    });
+      });
+      deltas.push({
+        type: "trace_step_delta",
+        executionId,
+        step: {
+          key: "mcp",
+          label: `Tool: ${event.data.toolName}`,
+          status: "running",
+        },
+      });
+    }
   }
 
   if (event.type === "tool_result") {

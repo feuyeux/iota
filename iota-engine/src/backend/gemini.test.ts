@@ -120,6 +120,33 @@ describe("GeminiAdapter", () => {
     expect(event?.data.toolCallId).toBe("call-1");
   });
 
+  it("should map nested function_call events correctly", () => {
+    const adapter = new GeminiAdapter();
+    // @ts-expect-error - accessing protected options for testing
+    const mapper = adapter.options.mapNativeEvent;
+    const nativeEvent = {
+      type: "function_call",
+      functionCall: {
+        name: "search",
+        args: { query: "weather" },
+      },
+      id: "call-2",
+    };
+    const event = mapper("gemini", mockRequest, nativeEvent);
+    expect(event?.type).toBe("tool_call");
+    expect(event?.data.toolName).toBe("search");
+    expect(event?.data.arguments).toEqual({ query: "weather" });
+    expect(event?.data.toolCallId).toBe("call-2");
+  });
+
+  it("should not emit empty unknown tool calls", () => {
+    const adapter = new GeminiAdapter();
+    // @ts-expect-error - accessing protected options for testing
+    const mapper = adapter.options.mapNativeEvent;
+    const event = mapper("gemini", mockRequest, { type: "tool_use" });
+    expect(event?.type).toBe("extension");
+    expect(event?.data.name).toBe("native_event");
+  });
   it("should support visibility collector for tracing", async () => {
     const adapter = new GeminiAdapter();
     const mockVc = {

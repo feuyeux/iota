@@ -9,6 +9,7 @@ import {
   runMemoryGc,
   type BackendName,
   type LogQueryOptions,
+  type RuntimeEvent,
 } from "@iota/engine";
 import { formatTraceVisibility } from "./commands/visibility.js";
 
@@ -30,11 +31,11 @@ const LOGO_LINES = [
 
 const HELP_TEXT = [
   "",
-  chalk.bold("Iota TUI Commands"),
+  chalk.bold("iota TUI Commands"),
   "",
   chalk.cyan("Execution:"),
   "  <prompt>                   Execute a prompt against the current backend",
-  '  run <prompt>               Alias for direct prompt execution',
+  "  run <prompt>               Alias for direct prompt execution",
   "",
   chalk.cyan("Session:"),
   "  switch <backend>           Switch to a different backend",
@@ -256,35 +257,7 @@ export async function interactiveCommand(): Promise<void> {
           executionId,
           prompt: executionPrompt,
         })) {
-          if (event.type === "output") {
-            process.stdout.write(event.data.content);
-          } else if (event.type === "error") {
-            console.error(
-              chalk.red(`\n${event.data.code}: ${event.data.message}`),
-            );
-          } else if (event.type === "state") {
-            if (event.data.state === "waiting_approval") {
-              console.log(chalk.yellow("\n⏳ Waiting for approval..."));
-            } else if (event.data.state === "failed") {
-              console.error(
-                chalk.red(
-                  `\n❌ Execution failed${event.data.message ? `: ${event.data.message}` : ""}`,
-                ),
-              );
-            }
-          } else if (event.type === "tool_call") {
-            console.log(
-              chalk.dim(
-                `\n🔧 ${event.data.toolName}(${JSON.stringify(event.data.arguments).slice(0, 100)})`,
-              ),
-            );
-          } else if (event.type === "file_delta") {
-            console.log(
-              chalk.dim(
-                `\n📁 ${event.data.operation}: ${event.data.path}`,
-              ),
-            );
-          }
+          writeTuiEvent(event);
         }
         process.stdout.write("\n");
       } catch (error) {
@@ -301,6 +274,75 @@ export async function interactiveCommand(): Promise<void> {
   }
 }
 
+export function writeTuiEvent(event: RuntimeEvent): void {
+  const rendered = formatTuiEvent(event);
+  if (!rendered) return;
+  if (rendered.stream === "stderr") {
+    console.error(rendered.text);
+  } else if (rendered.newline) {
+    console.log(rendered.text);
+  } else {
+    process.stdout.write(rendered.text);
+  }
+}
+
+export function formatTuiEvent(
+  event: RuntimeEvent,
+): { stream: "stdout" | "stderr"; text: string; newline: boolean } | undefined {
+  if (event.type === "output") {
+    return { stream: "stdout", text: event.data.content, newline: false };
+  }
+  if (event.type === "error") {
+    return {
+      stream: "stderr",
+      text: chalk.red(`\n${event.data.code}: ${event.data.message}`),
+      newline: true,
+    };
+  }
+  if (event.type === "state") {
+    if (event.data.state === "waiting_approval") {
+      return {
+        stream: "stdout",
+        text: chalk.yellow("\n⏳ Waiting for approval..."),
+        newline: true,
+      };
+    }
+    if (event.data.state === "failed") {
+      return {
+        stream: "stderr",
+        text: chalk.red(
+          `\n❌ Execution failed${event.data.message ? `: ${event.data.message}` : ""}`,
+        ),
+        newline: true,
+      };
+    }
+    return undefined;
+  }
+  if (event.type === "tool_call") {
+    if (!shouldShowToolCall(event)) return undefined;
+    return {
+      stream: "stdout",
+      text: chalk.dim(
+        `\n🔧 ${event.data.toolName}(${JSON.stringify(event.data.arguments).slice(0, 100)})`,
+      ),
+      newline: true,
+    };
+  }
+  if (event.type === "file_delta") {
+    return {
+      stream: "stdout",
+      text: chalk.dim(`\n📁 ${event.data.operation}: ${event.data.path}`),
+      newline: true,
+    };
+  }
+  return undefined;
+}
+
+function shouldShowToolCall(event: RuntimeEvent): boolean {
+  if (event.type !== "tool_call") return false;
+  if (event.data.toolName !== "unknown") return true;
+  return Object.keys(event.data.arguments).length > 0;
+}
 function parseRunCommand(prompt: string): string | undefined {
   if (!prompt.startsWith("run ")) return undefined;
   const value = prompt.slice(4).trim();
@@ -333,7 +375,7 @@ function formatIotaBanner(sessionId: string): string {
 
   return [
     mark,
-    `${chalk.bold("Iota TUI")} ${chalk.dim(`session ${sessionId.slice(0, 8)}`)}`,
+    `${chalk.bold("iota TUI")} ${chalk.dim(`session ${sessionId.slice(0, 8)}`)}`,
     chalk.dim('Type "help" for commands, "exit" to quit.'),
   ].join("\n");
 }
@@ -376,10 +418,7 @@ function formatExecutionTrace(trace: {
   return lines.join("\n");
 }
 
-function getNestedValue(
-  obj: Record<string, unknown>,
-  path: string,
-): unknown {
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split(".");
   let current: unknown = obj;
   for (const part of parts) {

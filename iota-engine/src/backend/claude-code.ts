@@ -224,6 +224,20 @@ function mapClaudeEvent(
 
   if (type === "tool_use") {
     const toolName = typeof value.name === "string" ? value.name : "unknown";
+    const toolInput = (
+      typeof value.input === "object" && value.input !== null ? value.input : {}
+    ) as ToolInput;
+    if (toolName === "unknown" && Object.keys(toolInput).length === 0) {
+      return {
+        type: "extension",
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend,
+        sequence: 0,
+        timestamp: Date.now(),
+        data: { name: "native_event", payload: value },
+      };
+    }
     return {
       type: "tool_call",
       sessionId: request.sessionId,
@@ -238,9 +252,7 @@ function mapClaudeEvent(
             : `${request.executionId}:${Date.now()}`,
         toolName,
         rawToolName: toolName,
-        arguments: (typeof value.input === "object" && value.input !== null
-          ? value.input
-          : {}) as ToolInput,
+        arguments: toolInput,
         approvalRequired: false,
       },
     };

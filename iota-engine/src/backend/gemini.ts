@@ -172,7 +172,56 @@ function mapGeminiEvent(
   }
 
   if (type === "tool_use" || type === "function_call") {
-    const toolName = typeof value.name === "string" ? value.name : "unknown";
+    let toolName = "unknown";
+    if (typeof value.name === "string") {
+      toolName = value.name;
+    } else if (
+      typeof value.functionCall === "object" &&
+      value.functionCall !== null
+    ) {
+      const fc = value.functionCall as Record<string, unknown>;
+      if (typeof fc.name === "string") toolName = fc.name;
+    } else if (
+      typeof value.function_call === "object" &&
+      value.function_call !== null
+    ) {
+      const fc = value.function_call as Record<string, unknown>;
+      if (typeof fc.name === "string") toolName = fc.name;
+    }
+
+    let toolArgs: GeminiToolInput = {};
+    if (typeof value.input === "object" && value.input !== null) {
+      toolArgs = value.input as GeminiToolInput;
+    } else if (typeof value.args === "object" && value.args !== null) {
+      toolArgs = value.args as GeminiToolInput;
+    } else if (
+      typeof value.functionCall === "object" &&
+      value.functionCall !== null
+    ) {
+      const fc = value.functionCall as Record<string, unknown>;
+      if (typeof fc.args === "object" && fc.args !== null)
+        toolArgs = fc.args as GeminiToolInput;
+    } else if (
+      typeof value.function_call === "object" &&
+      value.function_call !== null
+    ) {
+      const fc = value.function_call as Record<string, unknown>;
+      if (typeof fc.args === "object" && fc.args !== null)
+        toolArgs = fc.args as GeminiToolInput;
+    }
+
+    if (toolName === "unknown" && Object.keys(toolArgs).length === 0) {
+      return {
+        type: "extension",
+        sessionId: request.sessionId,
+        executionId: request.executionId,
+        backend,
+        sequence: 0,
+        timestamp: Date.now(),
+        data: { name: "native_event", payload: value },
+      };
+    }
+
     return {
       type: "tool_call",
       sessionId: request.sessionId,
@@ -187,11 +236,7 @@ function mapGeminiEvent(
             : `${request.executionId}:${Date.now()}`,
         toolName,
         rawToolName: toolName,
-        arguments: (typeof value.input === "object" && value.input !== null
-          ? value.input
-          : typeof value.args === "object" && value.args !== null
-            ? value.args
-            : {}) as GeminiToolInput,
+        arguments: toolArgs,
         approvalRequired: false,
       },
     };

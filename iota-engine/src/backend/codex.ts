@@ -226,6 +226,29 @@ function mapCodexEvent(
         ? (value.item as CodexItem)
         : ({} as CodexItem);
     if (item.type === "mcp_tool_call") {
+      const toolName =
+        stringProp(item as Record<string, unknown>, "tool") ?? "unknown";
+      const serverName =
+        stringProp(item as Record<string, unknown>, "server") ?? "unknown";
+      const toolArguments =
+        typeof item.arguments === "object" && item.arguments !== null
+          ? (item.arguments as Record<string, unknown>)
+          : {};
+      if (
+        toolName === "unknown" &&
+        serverName === "unknown" &&
+        Object.keys(toolArguments).length === 0
+      ) {
+        return {
+          type: "extension",
+          sessionId: request.sessionId,
+          executionId: request.executionId,
+          backend,
+          sequence: 0,
+          timestamp: Date.now(),
+          data: { name: "codex_item", payload: value },
+        };
+      }
       return {
         type: "tool_call",
         sessionId: request.sessionId,
@@ -234,13 +257,12 @@ function mapCodexEvent(
         sequence: 0,
         timestamp: Date.now(),
         data: {
-          toolCallId: stringProp(item as Record<string, unknown>, "id") ?? `${request.executionId}:mcp`,
-          toolName: stringProp(item as Record<string, unknown>, "tool") ?? "unknown",
-          rawToolName: `${stringProp(item as Record<string, unknown>, "server") ?? "unknown"}/${stringProp(item as Record<string, unknown>, "tool") ?? "unknown"}`,
-          arguments:
-            typeof item.arguments === "object" && item.arguments !== null
-              ? (item.arguments as Record<string, unknown>)
-              : {},
+          toolCallId:
+            stringProp(item as Record<string, unknown>, "id") ??
+            `${request.executionId}:mcp`,
+          toolName,
+          rawToolName: `${serverName}/${toolName}`,
+          arguments: toolArguments,
           approvalRequired: false,
         },
       };
@@ -368,7 +390,9 @@ function mapCodexMcpToolCall(
     sequence: 0,
     timestamp: Date.now(),
     data: {
-      toolCallId: stringProp(item as Record<string, unknown>, "id") ?? `${request.executionId}:mcp`,
+      toolCallId:
+        stringProp(item as Record<string, unknown>, "id") ??
+        `${request.executionId}:mcp`,
       status: error ? "error" : "success",
       output: extractCodexMcpResultText(item.result),
       error: error ?? undefined,
@@ -376,7 +400,9 @@ function mapCodexMcpToolCall(
   };
 }
 
-function extractCodexMcpResultText(result: CodexMcpResult | undefined): string | undefined {
+function extractCodexMcpResultText(
+  result: CodexMcpResult | undefined,
+): string | undefined {
   if (!result) return undefined;
   const content = result.content;
   if (!Array.isArray(content)) return undefined;

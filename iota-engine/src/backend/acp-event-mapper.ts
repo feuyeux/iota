@@ -6,14 +6,20 @@ import {
   type AcpSessionComplete,
   type AcpSessionUpdate,
 } from "../protocol/acp.js";
-import type { BackendName, RuntimeEvent, RuntimeRequest, TokenUsage } from "../event/types.js";
+import type {
+  BackendName,
+  RuntimeEvent,
+  RuntimeRequest,
+  TokenUsage,
+} from "../event/types.js";
 
 export function mapAcpNotificationToEvent(
   backend: BackendName,
   request: RuntimeRequest,
   message: AcpMessage,
 ): RuntimeEvent | RuntimeEvent[] | null {
-  const method = typeof message.method === "string" ? message.method : undefined;
+  const method =
+    typeof message.method === "string" ? message.method : undefined;
   const params = asRecord(message.params) ?? {};
 
   switch (method) {
@@ -46,22 +52,37 @@ function mapSessionUpdate(
   const update = (asRecord(params.update) ?? params) as Partial<
     AcpSessionUpdate & { sessionUpdate: string }
   >;
-  const sessionUpdate = stringValue(update.sessionUpdate) ?? stringValue(update.type);
+  const sessionUpdate =
+    stringValue(update.sessionUpdate) ?? stringValue(update.type);
   const content = normalizeContent(update.content ?? params.content);
-  const text = extractText(update) ?? extractText(params) ?? content.map((block) => block.text ?? "").join("");
+  const text =
+    extractText(update) ??
+    extractText(params) ??
+    content.map((block) => block.text ?? "").join("");
 
-  if (sessionUpdate === "agent_message" || sessionUpdate === "agent_message_chunk") {
+  if (
+    sessionUpdate === "agent_message" ||
+    sessionUpdate === "agent_message_chunk"
+  ) {
     if (!text) return null;
     return outputEvent(backend, request, text, false);
   }
 
-  if (sessionUpdate === "agent_thought" || sessionUpdate === "agent_thought_chunk") {
+  if (
+    sessionUpdate === "agent_thought" ||
+    sessionUpdate === "agent_thought_chunk"
+  ) {
     return extensionEvent(backend, request, "thinking", { text });
   }
 
-  const toolCall = content.find((block) => block.type === "tool_use") ?? (sessionUpdate === "tool_call" ? asRecord(update) : undefined);
+  const toolCall = findToolCall(update, content, sessionUpdate);
   if (toolCall) {
-    const toolName = stringValue(toolCall.toolName) ?? stringValue(toolCall.name) ?? "unknown";
+    const toolName = extractToolName(toolCall);
+    if (!toolName) {
+      return extensionEvent(backend, request, "acp_session_update", {
+        ...params,
+      });
+    }
     return {
       type: "tool_call",
       sessionId: request.sessionId,
@@ -70,16 +91,19 @@ function mapSessionUpdate(
       sequence: 0,
       timestamp: Date.now(),
       data: {
-        toolCallId: stringValue(toolCall.toolCallId) ?? stringValue(toolCall.id) ?? idFromMessage(message, request),
+        toolCallId:
+          extractToolCallId(toolCall) ?? idFromMessage(message, request),
         toolName,
         rawToolName: toolName,
-        arguments: asRecord(toolCall.arguments) ?? asRecord(toolCall.input) ?? {},
+        arguments: extractToolArguments(toolCall),
         approvalRequired: Boolean(toolCall.approvalRequired),
       },
     };
   }
 
-  const toolResult = content.find((block) => block.type === "tool_result") ?? (sessionUpdate === "tool_result" ? asRecord(update) : undefined);
+  const toolResult =
+    content.find((block) => block.type === "tool_result") ??
+    (sessionUpdate === "tool_result" ? asRecord(update) : undefined);
   if (toolResult) {
     const error = stringValue(toolResult.error);
     return {
@@ -90,7 +114,10 @@ function mapSessionUpdate(
       sequence: 0,
       timestamp: Date.now(),
       data: {
-        toolCallId: stringValue(toolResult.toolCallId) ?? stringValue(toolResult.id) ?? idFromMessage(message, request),
+        toolCallId:
+          stringValue(toolResult.toolCallId) ??
+          stringValue(toolResult.id) ??
+          idFromMessage(message, request),
         status: error ? "error" : "success",
         output: stringValue(toolResult.output) ?? stringValue(toolResult.text),
         error,
@@ -115,7 +142,12 @@ function mapSessionComplete(
   const usage = extractUsage(asRecord(complete.usage));
   const stopReason = stringValue(complete.stopReason);
   if (stopReason === "interrupted") {
-    return stateEvent(backend, request, "interrupted", "ACP session interrupted");
+    return stateEvent(
+      backend,
+      request,
+      "interrupted",
+      "ACP session interrupted",
+    );
   }
   if (stopReason === "error") {
     return {
@@ -150,7 +182,8 @@ function mapPermissionRequest(
     operationType: stringValue(permission.type) ?? "shell",
     requestId: permission.requestId ?? message.id ?? null,
     toolName: stringValue(permission.toolName) ?? stringValue(permission.name),
-    arguments: asRecord(permission.arguments) ?? asRecord(permission.input) ?? {},
+    arguments:
+      asRecord(permission.arguments) ?? asRecord(permission.input) ?? {},
     description: stringValue(permission.description),
     ...params,
   };
@@ -169,7 +202,8 @@ function mapMemoryEvent(
     executionId: request.executionId,
     backend,
     sequence: 0,
-    timestamp: typeof memory.timestamp === "number" ? memory.timestamp : Date.now(),
+    timestamp:
+      typeof memory.timestamp === "number" ? memory.timestamp : Date.now(),
     data: {
       nativeType: stringValue(memory.nativeType) ?? "dialogue_memory",
       content: stringValue(memory.content) ?? stringValue(memory.text) ?? "",
@@ -192,11 +226,14 @@ function mapFileDelta(
     timestamp: Date.now(),
     data: {
       path: stringValue(params.path) ?? "",
-      operation: normalizeFileOperation(stringValue(params.operation) ?? stringValue(params.type)),
+      operation: normalizeFileOperation(
+        stringValue(params.operation) ?? stringValue(params.type),
+      ),
       oldPath: stringValue(params.oldPath),
       hashBefore: stringValue(params.hashBefore),
       hashAfter: stringValue(params.hashAfter),
-      sizeBytes: typeof params.sizeBytes === "number" ? params.sizeBytes : undefined,
+      sizeBytes:
+        typeof params.sizeBytes === "number" ? params.sizeBytes : undefined,
     },
   };
 }
@@ -224,15 +261,31 @@ function mapAcpResponseOrExtension(
 
   if (message.result !== undefined && message.id !== undefined) {
     const result = asRecord(message.result);
-    const text = typeof message.result === "string" ? message.result : result ? extractText(result) : undefined;
+    const text =
+      typeof message.result === "string"
+        ? message.result
+        : result
+          ? extractText(result)
+          : undefined;
     const stopReason = result ? stringValue(result.stopReason) : undefined;
     if (stopReason || text) {
-      return outputEvent(backend, request, text ?? "", true, extractUsage(asRecord(result?.usage)));
+      return outputEvent(
+        backend,
+        request,
+        text ?? "",
+        true,
+        extractUsage(asRecord(result?.usage)),
+      );
     }
     return null;
   }
 
-  return extensionEvent(backend, request, "native_event", message as unknown as Record<string, unknown>);
+  return extensionEvent(
+    backend,
+    request,
+    "native_event",
+    message as unknown as Record<string, unknown>,
+  );
 }
 
 function outputEvent(
@@ -293,42 +346,154 @@ function extensionEvent(
   };
 }
 
+function findToolCall(
+  update: Partial<AcpSessionUpdate & { sessionUpdate: string }>,
+  content: Array<Record<string, unknown>>,
+  sessionUpdate: string | undefined,
+): Record<string, unknown> | undefined {
+  const contentTool = content.find(
+    (block) => block.type === "tool_use" || block.type === "tool_call",
+  );
+  if (contentTool) return contentTool;
+
+  const updateRecord = update as Record<string, unknown>;
+  const nested =
+    asRecord(updateRecord.toolCall) ??
+    asRecord(updateRecord.tool_call) ??
+    asRecord(updateRecord.call) ??
+    asRecord(updateRecord.invocation);
+  if (nested) return nested;
+
+  return sessionUpdate === "tool_call" ? asRecord(update) : undefined;
+}
+
+function extractToolName(
+  toolCall: Record<string, unknown>,
+): string | undefined {
+  const direct =
+    stringValue(toolCall.toolName) ??
+    stringValue(toolCall.name) ??
+    stringValue(toolCall.tool) ??
+    stringValue(toolCall.functionName);
+  if (direct) return direct;
+
+  const tool = asRecord(toolCall.tool);
+  const fn = asRecord(toolCall.function);
+  return stringValue(tool?.name) ?? stringValue(fn?.name);
+}
+
+function extractToolCallId(
+  toolCall: Record<string, unknown>,
+): string | undefined {
+  const direct =
+    stringValue(toolCall.toolCallId) ??
+    stringValue(toolCall.id) ??
+    stringValue(toolCall.callId) ??
+    stringValue(toolCall.toolUseId);
+  if (direct) return direct;
+
+  const tool = asRecord(toolCall.tool);
+  const fn = asRecord(toolCall.function);
+  return stringValue(tool?.id) ?? stringValue(fn?.id);
+}
+
+function extractToolArguments(
+  toolCall: Record<string, unknown>,
+): Record<string, unknown> {
+  const direct =
+    recordFromValue(toolCall.arguments) ??
+    recordFromValue(toolCall.input) ??
+    recordFromValue(toolCall.params);
+  if (direct) return direct;
+
+  const tool = asRecord(toolCall.tool);
+  const fn = asRecord(toolCall.function);
+  return (
+    recordFromValue(tool?.arguments) ??
+    recordFromValue(tool?.input) ??
+    recordFromValue(fn?.arguments) ??
+    {}
+  );
+}
+
+function recordFromValue(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value);
+  if (record) return record;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
 function normalizeContent(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) {
-    return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item));
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null && !Array.isArray(item),
+    );
   }
   const record = asRecord(value);
   return record ? [record] : [];
 }
 
-function normalizeFileOperation(value: string | undefined): "created" | "modified" | "deleted" | "renamed" {
-  if (value === "created" || value === "deleted" || value === "renamed") return value;
+function normalizeFileOperation(
+  value: string | undefined,
+): "created" | "modified" | "deleted" | "renamed" {
+  if (value === "created" || value === "deleted" || value === "renamed")
+    return value;
   return "modified";
 }
 
-function extractUsage(value: Record<string, unknown> | undefined): TokenUsage | undefined {
+function extractUsage(
+  value: Record<string, unknown> | undefined,
+): TokenUsage | undefined {
   if (!value) return undefined;
   const usage: TokenUsage = {
-    inputTokens: numberValue(value.inputTokens) ?? numberValue(value.input_tokens),
-    outputTokens: numberValue(value.outputTokens) ?? numberValue(value.output_tokens),
-    totalTokens: numberValue(value.totalTokens) ?? numberValue(value.total_tokens),
-    cacheReadTokens: numberValue(value.cacheReadTokens) ?? numberValue(value.cache_read_tokens) ?? numberValue(value.cache_read_input_tokens),
-    cacheWriteTokens: numberValue(value.cacheWriteTokens) ?? numberValue(value.cache_write_tokens) ?? numberValue(value.cache_creation_input_tokens),
-    reasoningTokens: numberValue(value.reasoningTokens) ?? numberValue(value.reasoning_tokens) ?? numberValue(value.reasoning_output_tokens),
+    inputTokens:
+      numberValue(value.inputTokens) ?? numberValue(value.input_tokens),
+    outputTokens:
+      numberValue(value.outputTokens) ?? numberValue(value.output_tokens),
+    totalTokens:
+      numberValue(value.totalTokens) ?? numberValue(value.total_tokens),
+    cacheReadTokens:
+      numberValue(value.cacheReadTokens) ??
+      numberValue(value.cache_read_tokens) ??
+      numberValue(value.cache_read_input_tokens),
+    cacheWriteTokens:
+      numberValue(value.cacheWriteTokens) ??
+      numberValue(value.cache_write_tokens) ??
+      numberValue(value.cache_creation_input_tokens),
+    reasoningTokens:
+      numberValue(value.reasoningTokens) ??
+      numberValue(value.reasoning_tokens) ??
+      numberValue(value.reasoning_output_tokens),
   };
-  return Object.values(usage).some((entry) => entry !== undefined) ? usage : undefined;
+  return Object.values(usage).some((entry) => entry !== undefined)
+    ? usage
+    : undefined;
 }
 
 function extractText(value: Record<string, unknown>): string | undefined {
-  return stringValue(value.text) ?? stringValue(value.content) ?? stringValue(value.message) ?? stringValue(value.result) ?? stringValue(value.output);
+  return (
+    stringValue(value.text) ??
+    stringValue(value.content) ??
+    stringValue(value.message) ??
+    stringValue(value.result) ??
+    stringValue(value.output)
+  );
 }
 
 function idFromMessage(message: AcpMessage, request: RuntimeRequest): string {
-  return message.id !== undefined && message.id !== null ? String(message.id) : `${request.executionId}:${Date.now()}`;
+  return message.id !== undefined && message.id !== null
+    ? String(message.id)
+    : `${request.executionId}:${Date.now()}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {

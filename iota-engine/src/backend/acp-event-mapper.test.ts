@@ -65,7 +65,12 @@ describe("mapAcpNotificationToEvent", () => {
           sessionId: "agent-s1",
           stopReason: "end_turn",
           finalMessage: "done",
-          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3, reasoningTokens: 4 },
+          usage: {
+            inputTokens: 1,
+            outputTokens: 2,
+            totalTokens: 3,
+            reasoningTokens: 4,
+          },
         },
       }),
     );
@@ -126,6 +131,49 @@ describe("mapAcpNotificationToEvent", () => {
     expect(event?.data.arguments).toEqual({ path: "README.md" });
   });
 
+  it("maps nested OpenCode tool calls and parses string arguments", () => {
+    const event = mapAcpNotificationToEvent(
+      "opencode",
+      request,
+      msg({
+        id: "tool-2",
+        method: "session/update",
+        params: {
+          sessionId: "agent-s1",
+          type: "tool_call",
+          toolCall: {
+            id: "call-2",
+            tool: { name: "web.fetch" },
+            arguments: '{"url":"https://example.com"}',
+          },
+        },
+      }),
+    );
+
+    expect(event?.type).toBe("tool_call");
+    expect(event?.data.toolCallId).toBe("call-2");
+    expect(event?.data.toolName).toBe("web.fetch");
+    expect(event?.data.arguments).toEqual({ url: "https://example.com" });
+  });
+
+  it("does not emit unknown tool calls for empty OpenCode tool_call updates", () => {
+    const event = mapAcpNotificationToEvent(
+      "opencode",
+      request,
+      msg({
+        id: "tool-empty",
+        method: "session/update",
+        params: {
+          sessionId: "agent-s1",
+          type: "tool_call",
+          content: [],
+        },
+      }),
+    );
+
+    expect(event?.type).toBe("extension");
+    expect(event?.data.name).toBe("acp_session_update");
+  });
   it("maps interrupted and error completions", () => {
     const interrupted = mapAcpNotificationToEvent(
       "hermes",
@@ -143,7 +191,11 @@ describe("mapAcpNotificationToEvent", () => {
       request,
       msg({
         method: "session/complete",
-        params: { sessionId: "agent-s1", stopReason: "error", finalMessage: "bad" },
+        params: {
+          sessionId: "agent-s1",
+          stopReason: "error",
+          finalMessage: "bad",
+        },
       }),
     );
     expect(failed?.type).toBe("error");
@@ -164,5 +216,4 @@ describe("mapAcpNotificationToEvent", () => {
     expect(event?.data.name).toBe("approval_request");
     expect(event?.data.payload.requestId).toBe("perm-2");
   });
-
 });
