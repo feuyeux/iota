@@ -491,7 +491,10 @@ export class RedisStorage implements StorageBackend {
   ): Promise<Array<StoredMemory & { score?: number }>> {
     const memories = await this.loadUnifiedMemories({ ...query, vector: undefined, limit: Math.max(topK * 5, topK) });
     return memories
-      .map((memory) => ({ ...memory, score: scoreMemoryByVector(memory, vector) }))
+      .map((memory) => {
+        const score = scoreMemoryByVector(memory, vector);
+        return { ...memory, metadata: { ...memory.metadata, vectorScore: score }, score };
+      })
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, topK);
   }

@@ -57,6 +57,16 @@ export class MemoryMapper {
           ["intention_memory", semantic("strategic", 0.87, "project", 180)],
         ]),
       ],
+      [
+        "opencode",
+        new Map([
+          ["session_history", episodic(0.9)],
+          ["tool_usage", procedural(0.86)],
+          ["codebase_facts", semantic("domain", 0.9, "project", 90)],
+          ["task_planning", semantic("strategic", 0.86, "project", 180)],
+          ["profile_memory", semantic("identity", 0.9, "user", 365)],
+        ]),
+      ],
     ]);
   }
 

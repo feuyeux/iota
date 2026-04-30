@@ -181,6 +181,12 @@ describe("MemoryMapper", () => {
       expect(result.missing).toEqual([]);
     });
 
+    it("validates complete coverage for OpenCode", () => {
+      const result = memoryMapper.validateCoverage("opencode");
+      expect(result.complete).toBe(true);
+      expect(result.missing).toEqual([]);
+    });
+
     it("reports incomplete coverage for unknown backend", () => {
       const result = memoryMapper.validateCoverage("unknown" as any);
       expect(result.complete).toBe(false);
@@ -230,6 +236,16 @@ describe("MemoryMapper", () => {
           },
           { native: "entity_knowledge", unified: "semantic", scope: "project" },
           { native: "goal_tracking", unified: "semantic", scope: "project" },
+        ],
+      },
+      {
+        backend: "opencode",
+        types: [
+          { native: "session_history", unified: "episodic", scope: "session" },
+          { native: "tool_usage", unified: "procedural", scope: "project" },
+          { native: "codebase_facts", unified: "semantic", scope: "project" },
+          { native: "task_planning", unified: "semantic", scope: "project" },
+          { native: "profile_memory", unified: "semantic", scope: "user" },
         ],
       },
       {
