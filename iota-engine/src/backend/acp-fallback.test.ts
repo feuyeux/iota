@@ -162,6 +162,19 @@ describe("ACP backend selection fallback", () => {
   });
 
 
+  it("passes model information through from ACP or fallback adapters", () => {
+    const acp = new MockBackend("gemini", async function* () {});
+    const native = new MockBackend("gemini", async function* () {});
+    acp.model = "gemini-acp-model";
+    native.model = "gemini-native-model";
+    const backend = new AcpFallbackBackend("gemini", acp, native);
+
+    expect(backend.getModel?.()).toBe("gemini-acp-model");
+
+    acp.model = undefined;
+    expect(backend.getModel?.()).toBe("gemini-native-model");
+  });
+
   it("rejects native protocol for ACP-only Hermes and OpenCode backends", () => {
     expect(
       () =>
@@ -181,6 +194,7 @@ describe("ACP backend selection fallback", () => {
 });
 
 class MockBackend implements RuntimeBackend {
+  model?: string;
   readonly capabilities = {
     sandbox: false,
     mcp: false,
@@ -227,4 +241,8 @@ class MockBackend implements RuntimeBackend {
   }
 
   async destroy(): Promise<void> {}
+
+  getModel(): string | undefined {
+    return this.model;
+  }
 }

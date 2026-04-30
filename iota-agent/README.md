@@ -125,6 +125,11 @@ curl -X POST http://localhost:9666/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"workingDirectory":"/path/to/project","backend":"claude-code"}'
 
+# 也支持其他后端：codex, gemini, hermes, opencode
+curl -X POST http://localhost:9666/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"workingDirectory":"/path/to/project","backend":"opencode"}'
+
 curl -X POST http://localhost:9666/api/v1/execute \
   -H "Content-Type: application/json" \
   -d '{

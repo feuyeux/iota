@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { BackendName, LogQueryOptions, RuntimeEvent } from "@iota/engine";
-import { BACKEND_ENUM_SCHEMA } from "./shared.js";
+import { BACKEND_ENUM_SCHEMA, parseTime } from "./shared.js";
 
 interface LogsQuery {
   sessionId?: string;
@@ -180,17 +180,4 @@ function parseLogQuery(query: LogsQuery): LogQueryOptions | string {
     offset: query.offset ? Number(query.offset) : undefined,
     limit: query.limit ? Number(query.limit) : undefined,
   };
-}
-
-function parseTime(
-  value: string | undefined,
-  fieldName: string,
-): number | undefined | string {
-  if (!value) return undefined;
-  if (/^\d+$/.test(value)) return Number(value);
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return `${fieldName} must be a Unix timestamp in milliseconds or an ISO date`;
-  }
-  return timestamp;
 }

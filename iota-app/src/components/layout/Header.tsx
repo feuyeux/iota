@@ -39,6 +39,16 @@ export const Header: React.FC = () => {
 
   const currentStatus = backends.find(b => b.backend === activeBackend);
 
+  const describeBackend = (backend: typeof backends[number]) => {
+    const caps = backend.capabilities;
+    const mcpMode = caps.mcp
+      ? caps.mcpResponseChannel
+        ? 'MCP with response channel'
+        : 'MCP without response channel'
+      : 'MCP unavailable';
+    return `${backend.label}: ${backend.status}. ${mcpMode}.`;
+  };
+
   return (
     <header className="h-14 border-b border-iota-border flex items-center justify-between px-4 bg-white/80 backdrop-blur-md sticky top-0 z-10">
       <div className="flex items-center space-x-3">
@@ -60,7 +70,7 @@ export const Header: React.FC = () => {
             key={b.backend}
             onClick={() => setActiveBackend(b.backend)}
             disabled={b.status === 'offline' || b.status === 'circuit_open'}
-            title={b.status === 'circuit_open' ? 'Backend unavailable due to repeated failures' : undefined}
+            title={b.status === 'circuit_open' ? 'Backend unavailable due to repeated failures' : describeBackend(b)}
             className={`px-3 py-1 rounded-md text-xs font-medium transition-all duration-200 flex items-center space-x-2 ${
               activeBackend === b.backend 
                 ? 'bg-white text-iota-accent shadow-sm' 

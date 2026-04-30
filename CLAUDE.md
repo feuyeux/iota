@@ -21,22 +21,17 @@ Primary first-party areas:
 
 Use current code first, then current docs. Primary docs:
 
-- `docs/guides/README.md`
-- `docs/guides/00-architecture-overview.md`
-- `docs/guides/02-cli-guide.md`
-- `docs/guides/03-tui-guide.md`
-- `docs/guides/04-agent-guide.md`
-- `docs/guides/05-app-guide.md`
-- `docs/guides/06-engine-guide.md`
-- `docs/guides/07-visibility-trace-guide.md`
-- `docs/guides/08-fun-call-guide.md`
-- `docs/guides/09-fun-runtime-install-guide.md`
-- `docs/guides/11-iota-skill.md`
-- `docs/guides/12-iota-memory.md`
-- `docs/requirement/iota_engine_design_0425.md`
-- `docs/requirement/iota_app_design.md`
-- `docs/requirement/iota_memory_design.md`
-- `docs/requirement/IMPLEMENTATION_STATUS.md`
+- `docs/iota-guides/README.md`
+- `docs/iota-guides/01-architecture.md`
+- `docs/iota-guides/02-engine.md`
+- `docs/iota-guides/03-backend-adapters.md`
+- `docs/iota-guides/04-cli-tui.md`
+- `docs/iota-guides/05-agent.md`
+- `docs/iota-guides/06-app.md`
+- `docs/iota-guides/07-visibility-trace.md`
+- `docs/iota-guides/08-memory.md`
+- `docs/iota-guides/09-skill-fun.md`
+- `docs/iota-guides/10-deployment.md`
 
 If code and docs differ, prefer the current implementation and then update docs.
 
@@ -69,8 +64,8 @@ Keep secrets out of argv. Pass credentials through environment or backend-native
 - Backend credentials, models, and endpoints are resolved through layered config plus Redis distributed config overlays.
 - Config loading supports defaults, user `~/.iota/config.yaml`, project `iota.config.yaml`, selected environment overrides, and Redis scopes (`global`, `backend`, `session`, `user`).
 - Do not rely on deleted backend-local env files such as `iota-engine/claude.env` or `codex.env`.
-- Agent WebSocket `/api/v1/stream` accepts `execute`, `interrupt`, `subscribe_app_session`, and `subscribe_visibility` inbound messages.
-- App approval UI can send `approval_decision`, but Agent WebSocket inbound schema does not currently route that message into `engine.resolveApproval()`. Do not document a completed App-to-Agent-to-Engine approval loop unless code and tests are added.
+- Agent WebSocket `/api/v1/stream` accepts `execute`, `interrupt`, `subscribe_app_session`, `subscribe_visibility`, and `approval_decision` inbound messages.
+- App approval UI sends `approval_decision` through Agent WebSocket, which routes it into `engine.resolveApproval()`. The full App-to-Agent-to-Engine approval loop is implemented and tested.
 - Approval is enforced in Engine through policy and approval hooks. CLI uses `CliApprovalHook`; Agent constructs Engine with `DeferredApprovalHook`.
 - Engine loads structured skills from configured `skill.roots`, falling back to repository-adjacent `iota-skill` when empty.
 - Executable skills run through `SkillRunner -> McpRouter -> configured MCP server`. Do not bypass MCP to call iota-fun internals directly.

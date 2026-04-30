@@ -41,6 +41,6 @@ cd ../iota-cli && bun install && bun run build
 cd ../iota-agent && bun install && bun run build
 cd ../iota-app && bun install && bun run build
 
-# 3) 验证后端
+# 3) 验证后端（可替换为 codex / gemini / hermes / opencode）
 cd ../iota-cli && node dist/index.js run --backend claude-code --trace "ping"
 ```

@@ -20,3 +20,20 @@ export function notFound(
     [`${resource.toLowerCase()}Id`]: id,
   };
 }
+
+/**
+ * Parse a query-string time value into a Unix timestamp (ms).
+ * Returns undefined if no value, a number on success, or an error string on failure.
+ */
+export function parseTime(
+  value: string | undefined,
+  fieldName: string,
+): number | undefined | string {
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value);
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return `${fieldName} must be a Unix timestamp in milliseconds or an ISO date`;
+  }
+  return timestamp;
+}

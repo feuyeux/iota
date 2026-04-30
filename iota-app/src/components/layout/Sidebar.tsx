@@ -1,9 +1,7 @@
 import React from 'react';
 import { 
   MessageSquare, 
-  History, 
   PlusCircle,
-  Cpu,
   Settings,
   Trash2,
   User
@@ -65,8 +63,6 @@ export const Sidebar: React.FC<{
         <div className="space-y-1">
           <div className="px-3 text-[10px] font-bold text-iota-text/40 uppercase tracking-widest mb-2">Main</div>
           <NavItem icon={<MessageSquare size={16} />} label="Workspace" active />
-          <NavItem icon={<History size={16} />} label="Activity" />
-          <NavItem icon={<Cpu size={16} />} label="MCP Nodes" />
           <NavItem icon={<Settings size={16} />} label="Operations" onClick={onOpenOperations} />
         </div>
 

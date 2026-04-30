@@ -16,7 +16,6 @@ function App() {
   const { sessionId, setSessionId, updateSnapshot } = useSessionStore();
   const storeError = useSessionStore(s => s.error);
 
-  const [showSidebar, _setShowSidebar] = useState(true);
   const [showOpsDrawer, setShowOpsDrawer] = useState(false);
   const [replayExecId, setReplayExecId] = useState<string | null>(null);
 
@@ -98,7 +97,7 @@ function App() {
   return (
     <>
       <div className="flex h-screen w-full bg-iota-bg text-iota-text overflow-hidden selection:bg-iota-accent/20">
-        {showSidebar && <Sidebar onOpenOperations={() => setShowOpsDrawer(true)} onOpenReplay={(id) => setReplayExecId(id)} />}
+        <Sidebar onOpenOperations={() => setShowOpsDrawer(true)} onOpenReplay={(id) => setReplayExecId(id)} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
 

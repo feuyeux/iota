@@ -154,6 +154,8 @@ curl http://localhost:9666/healthz
 
 Agent 将 RuntimeEvent + Visibility Store 整形为 App 消费的读取模型：
 
+Backend status 的 `capabilities` 包含 `streaming`、`mcp`、`mcpResponseChannel`、`memoryVisibility`、`tokenVisibility`、`chainVisibility`。`mcp` 表示 backend 可使用 MCP，`mcpResponseChannel` 表示 Engine 可在执行中向 backend 回写 MCP tool result。
+
 - `app_snapshot`: 完整 session 状态
 - `app_delta`: 低延迟增量，包括 conversation、trace step、memory、tokens、summary
 

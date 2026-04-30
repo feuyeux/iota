@@ -4,7 +4,7 @@ import {
   buildAppExecutionSnapshot,
   buildAppSessionSnapshot,
 } from "@iota/engine";
-import { BACKEND_ENUM_SCHEMA } from "./shared.js";
+import { BACKEND_ENUM_SCHEMA, parseTime } from "./shared.js";
 import { getMappedBackendStatus } from "./status-helper.js";
 
 const visibilityParamsSchema = {
@@ -417,17 +417,4 @@ function parseTraceAggregateQuery(query: {
     limit: query.limit ? Number(query.limit) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
   };
-}
-
-function parseTime(
-  value: string | undefined,
-  fieldName: string,
-): number | undefined | string {
-  if (!value) return undefined;
-  if (/^\d+$/.test(value)) return Number(value);
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return `${fieldName} must be a Unix timestamp in milliseconds or an ISO date`;
-  }
-  return timestamp;
 }

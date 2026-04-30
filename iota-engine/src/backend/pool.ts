@@ -403,6 +403,10 @@ export class AcpFallbackBackend implements RuntimeBackend {
     return this.acp.capabilities;
   }
 
+  getModel(): string | undefined {
+    return this.acp.getModel?.() ?? this.fallback.getModel?.();
+  }
+
   async init(config: BackendConfig): Promise<void> {
     return this.acp.init(config);
   }

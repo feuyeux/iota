@@ -57,6 +57,7 @@ Each backend adapter lives in `iota-engine/src/backend/`:
 | Codex | `codex.ts` | per-execution subprocess | NDJSON |
 | Gemini CLI | `gemini.ts` | per-execution subprocess | stream-json NDJSON |
 | Hermes Agent | `hermes.ts` | long-running subprocess | ACP JSON-RPC 2.0 |
+| OpenCode | `opencode-acp.ts` | long-running subprocess | ACP JSON-RPC 2.0 |
 
 Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor internal SDK dependencies or protocol-conversion executables. All native backend events must normalize to `RuntimeEvent`.
 
@@ -96,7 +97,7 @@ Notes:
 
 Verification cannot stop at executable discovery or `iota status`.
 
-After switching Claude Code, Codex, Gemini CLI, or Hermes, run one real traced request:
+After switching Claude Code, Codex, Gemini CLI, Hermes, or OpenCode, run one real traced request:
 
 ```bash
 cd iota-cli

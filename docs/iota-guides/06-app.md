@@ -77,6 +77,7 @@ bun run build  # tsc -b && vite build
 - `activeBackend`: 当前选择的 backend
 - `workingDirectory`: 当前工作目录
 - `backends`: Agent 映射后的 backend 状态
+- `backends[].capabilities.mcpResponseChannel`: backend 是否支持 Engine 中途回写 MCP tool result
 - `activeFiles`: 活跃文件列表
 - `conversations`: 会话列表项
 - `mcpServers`: MCP server 描述

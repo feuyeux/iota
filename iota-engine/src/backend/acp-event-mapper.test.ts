@@ -49,13 +49,10 @@ describe("mapAcpNotificationToEvent", () => {
       }),
     );
 
-    expect(Array.isArray(event)).toBe(true);
-    const events = event as NonNullable<typeof event>[];
-    expect(events[0]?.type).toBe("state");
-    expect(events[0]?.data.state).toBe("waiting_approval");
-    expect(events[1]?.type).toBe("extension");
-    expect(events[1]?.data.name).toBe("approval_request");
-    expect(events[1]?.data.payload.requestId).toBe("perm-1");
+    expect(Array.isArray(event)).toBe(false);
+    expect(event?.type).toBe("extension");
+    expect(event?.data.name).toBe("approval_request");
+    expect(event?.data.payload.requestId).toBe("perm-1");
   });
 
   it("maps session/complete usage to a final output event", () => {
@@ -163,10 +160,9 @@ describe("mapAcpNotificationToEvent", () => {
         params: { name: "shell", input: { command: "pwd" } },
       }),
     );
-    const events = event as NonNullable<typeof event>[];
-    expect(events[0]?.type).toBe("state");
-    expect(events[1]?.type).toBe("extension");
-    expect(events[1]?.data.payload.requestId).toBe("perm-2");
+    expect(event?.type).toBe("extension");
+    expect(event?.data.name).toBe("approval_request");
+    expect(event?.data.payload.requestId).toBe("perm-2");
   });
 
 });

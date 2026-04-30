@@ -6,7 +6,7 @@
 
 Key responsibilities:
 
-- backend adapters for Claude Code, Codex, Gemini CLI, and Hermes Agent
+- backend adapters for Claude Code, Codex, Gemini CLI, Hermes Agent, and OpenCode
 - normalized `RuntimeEvent` generation and event persistence
 - approval policy enforcement and approval hooks
 - memory injection / extraction and visibility reporting
@@ -49,6 +49,7 @@ Each adapter lives in `src/backend/`:
 | CodexAdapter | per-execution subprocess | NDJSON |
 | GeminiAdapter | per-execution subprocess | stream-json NDJSON |
 | HermesAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
+| OpenCodeAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 
 ## Hard Constraints
 
@@ -112,4 +113,4 @@ For skill or iota-fun changes, run the relevant Engine tests and, when runtime l
 - iota-fun runtime planning and cache paths
 - workspace path guards and snapshot persistence
 - Redis config overlays, storage, pub/sub, and visibility records
-- long-running Hermes per-execution trace isolation
+- long-running Hermes and OpenCode per-execution trace isolation

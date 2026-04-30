@@ -34,6 +34,7 @@ export async function getMappedBackendStatus(
       capabilities: {
         streaming: caps?.streaming ?? false,
         mcp: caps?.mcp ?? false,
+        mcpResponseChannel: caps?.mcpResponseChannel ?? false,
         memoryVisibility: true,
         tokenVisibility: true,
         chainVisibility: true,

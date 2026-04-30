@@ -9,7 +9,7 @@ iota-engine/
 ├── src/
 │   ├── approval/     # approval hooks and policy enforcement
 │   ├── audit/        # audit logging
-│   ├── backend/      # Claude / Codex / Gemini / Hermes adapters
+│   ├── backend/      # Claude / Codex / Gemini / Hermes / OpenCode adapters
 │   ├── config/       # config schema and Redis-backed config loader
 │   ├── event/        # normalized RuntimeEvent flow
 │   ├── mcp/          # MCP routing and manager
@@ -32,6 +32,7 @@ iota-engine/
 | Codex | per-execution `codex exec` subprocess | NDJSON |
 | Gemini CLI | per-execution `gemini` subprocess | stream-json NDJSON |
 | Hermes Agent | long-running `hermes acp` subprocess | ACP JSON-RPC 2.0 |
+| OpenCode | long-running `opencode acp` subprocess | ACP JSON-RPC 2.0 |
 
 Backend protocol adaptation belongs only inside `src/backend/`.
 
@@ -81,6 +82,8 @@ iota config set env.HERMES_API_KEY "<redacted>" --scope backend --scope-id herme
 iota config set env.HERMES_BASE_URL "https://api.minimaxi.com/anthropic" --scope backend --scope-id hermes
 iota config set env.HERMES_MODEL "MiniMax-M2.7" --scope backend --scope-id hermes
 iota config set env.HERMES_PROVIDER "minimax-cn" --scope backend --scope-id hermes
+
+iota config set env.OPENCODE_MODEL "anthropic/claude-sonnet-4-6" --scope backend --scope-id opencode
 ```
 
 ## Verification

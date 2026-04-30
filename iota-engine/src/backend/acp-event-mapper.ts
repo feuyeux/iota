@@ -140,7 +140,7 @@ function mapPermissionRequest(
   request: RuntimeRequest,
   message: AcpMessage,
   params: Record<string, unknown>,
-): RuntimeEvent[] {
+): RuntimeEvent {
   const permission = params as Partial<AcpPermissionRequest> & {
     type?: unknown;
     name?: unknown;
@@ -154,10 +154,7 @@ function mapPermissionRequest(
     description: stringValue(permission.description),
     ...params,
   };
-  return [
-    stateEvent(backend, request, "waiting_approval", "ACP permission requested"),
-    extensionEvent(backend, request, "approval_request", payload),
-  ];
+  return extensionEvent(backend, request, "approval_request", payload);
 }
 
 function mapMemoryEvent(

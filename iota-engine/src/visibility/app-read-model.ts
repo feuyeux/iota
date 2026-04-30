@@ -41,6 +41,7 @@ export interface BackendStatusView {
   capabilities: {
     streaming: boolean;
     mcp: boolean;
+    mcpResponseChannel: boolean;
     memoryVisibility: boolean;
     tokenVisibility: boolean;
     chainVisibility: boolean;
