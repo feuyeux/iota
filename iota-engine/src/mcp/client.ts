@@ -6,12 +6,6 @@ export interface McpClient {
   close?(): Promise<void>;
 }
 
-export class NoopMcpClient implements McpClient {
-  async request(method: string, params?: unknown): Promise<unknown> {
-    return { method, params, status: "noop" };
-  }
-}
-
 export class StdioMcpClient implements McpClient {
   private child?: ChildProcessWithoutNullStreams;
   private rl?: ReadlineInterface;

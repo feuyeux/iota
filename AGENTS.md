@@ -27,39 +27,37 @@ iota/
 
 ## Source Of Truth
 
-Use current code first, then the current docs. The primary docs are:
+Use current code first, then the current docs. The primary docs are now consolidated under `docs/iota-guides/`:
 
-- `docs/guides/00-architecture-overview.md`
-- `docs/guides/02-cli-guide.md`
-- `docs/guides/03-tui-guide.md`
-- `docs/guides/04-agent-guide.md`
-- `docs/guides/05-app-guide.md`
-- `docs/guides/06-engine-guide.md`
-- `docs/guides/07-visibility-trace-guide.md`
-- `docs/guides/08-fun-call-guide.md`
-- `docs/guides/09-fun-runtime-install-guide.md`
-- `docs/guides/11-iota-skill.md`
-- `docs/guides/12-iota-memory.md`
-- `docs/requirement/iota_engine_design_0425.md`
-- `docs/requirement/iota_app_design.md`
-- `docs/requirement/iota_memory_design.md`
-- `docs/requirement/IMPLEMENTATION_STATUS.md`
+- `docs/iota-guides/README.md`
+- `docs/iota-guides/01-architecture.md`
+- `docs/iota-guides/02-engine.md`
+- `docs/iota-guides/03-backend-adapters.md`
+- `docs/iota-guides/04-cli-tui.md`
+- `docs/iota-guides/05-agent.md`
+- `docs/iota-guides/06-app.md`
+- `docs/iota-guides/07-visibility-trace.md`
+- `docs/iota-guides/08-memory.md`
+- `docs/iota-guides/09-skill-fun.md`
+- `docs/iota-guides/10-deployment.md`
+
+Legacy `docs/guides/`, `docs/diagrams/`, and `docs/plan/` content has been consolidated. Do not recreate parallel guide trees unless the task explicitly asks for archival material.
 
 If code and docs diverge, prefer the current code path and update docs to match actual behavior.
 
 ## Backend Adapters
 
-Each backend adapter lives in `iota-engine/src/backend/`:
+Backend protocol logic lives in `iota-engine/src/backend/`; do not add vendor internal SDK dependencies or protocol-conversion executables. All native backend events must normalize to `RuntimeEvent`.
 
-| Adapter | File | Process Model | Protocol |
-|---|---|---|---|
-| Claude Code | `claude-code.ts` | per-execution subprocess | stream-json NDJSON |
-| Codex | `codex.ts` | per-execution subprocess | NDJSON |
-| Gemini CLI | `gemini.ts` | per-execution subprocess | stream-json NDJSON |
-| Hermes Agent | `hermes.ts` | long-running subprocess | ACP JSON-RPC 2.0 |
-| OpenCode | `opencode-acp.ts` | long-running subprocess | ACP JSON-RPC 2.0 |
+| Backend | Native Adapter | ACP Adapter | Process Model | Notes |
+|---|---|---|---|---|
+| Claude Code | `claude-code.ts` | `claude-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
+| Codex | `codex.ts` | `codex-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
+| Gemini CLI | `gemini.ts` | `gemini-acp.ts` | native per-execution; ACP long-running | ACP mode wraps with native fallback |
+| Hermes Agent | n/a | `hermes.ts` | ACP long-running | ACP-only; validate `hermes config show` |
+| OpenCode | n/a | `opencode-acp.ts` | ACP long-running | ACP-only; uses OpenCode provider config |
 
-Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor internal SDK dependencies or protocol-conversion executables. All native backend events must normalize to `RuntimeEvent`.
+ACP backends expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini preserve backend-native MCP events and do not support Engine mid-execution MCP result writes.
 
 ## Current Architecture Constraints
 
@@ -67,8 +65,8 @@ Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor in
 - Visibility, audit, snapshot, replay, logs, and docs must redact secrets.
 - Backend credentials, models, and endpoints are resolved through layered config plus Redis distributed config overlays. Do not rely on deleted backend-local env files such as `iota-engine/claude.env` or `codex.env`.
 - Config loading supports defaults, user config, project `iota.config.yaml`, selected environment overrides, and Redis scopes (`global`, `backend`, `session`, `user`).
-- WebSocket `/api/v1/stream` currently accepts `execute`, `interrupt`, `subscribe_app_session`, and `subscribe_visibility` inbound messages. It also emits app snapshots/deltas, runtime events, completion/errors, subscription acknowledgements, and Redis pub/sub bridge messages.
-- App approval UI can send `approval_decision`, but Agent WebSocket inbound schema does not currently route that message into `engine.resolveApproval()`. Do not document approval decision as a completed App-to-Agent-to-Engine WebSocket loop unless the code is wired and tested.
+- WebSocket `/api/v1/stream` currently accepts `execute`, `interrupt`, `subscribe_app_session`, `subscribe_visibility`, and `approval_decision` inbound messages. It emits app snapshots/deltas, runtime events, completion/errors, approval results, subscription acknowledgements, visibility snapshots, and Redis pub/sub bridge messages.
+- App approval UI sends `approval_decision`; Agent routes it into `engine.resolveApproval()`. Engine deferred approval requests are pushed to subscribed App sessions as `app_delta` approval cards. Keep this loop covered by tests when changing approval behavior.
 - Approval is enforced in Engine through approval policy and approval hooks. CLI uses `CliApprovalHook`; Agent constructs Engine with `DeferredApprovalHook`.
 - Engine loads structured skills from configured `skill.roots`, falling back to the repository-adjacent `iota-skill` directory. Executable skills run through `SkillRunner -> McpRouter -> configured MCP server`.
 - The `iota-fun` MCP server is implemented in Engine and uses source files under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`.
@@ -79,6 +77,7 @@ Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor in
 - `apply_patch` is a FREEFORM tool. Do not call it with JSON such as `{ "input": "..." }`.
 - When using `apply_patch`, the tool message body must be the raw unified diff text, beginning with `*** Begin Patch` and ending with `*** End Patch`.
 - If the environment or tool bridge keeps wrapping `apply_patch` as JSON and patching fails repeatedly, stop retrying immediately. Use a scoped fallback edit method, then verify with `git diff`.
+
 ## Development Workflow
 
 1. Engine changes: `cd iota-engine && bun install && bun run build && bun run typecheck && bun run test`
@@ -90,8 +89,9 @@ Backend protocol logic stays in `iota-engine/src/backend/`; do not add vendor in
 Notes:
 
 - `iota-app` has no standalone `typecheck` script; its build runs `tsc -b && vite build`.
-- `iota-agent` tests currently use `vitest run --passWithNoTests`.
+- `iota-agent` tests currently use `vitest run --passWithNoTests` and a Vitest alias for `@iota/engine`.
 - `iota-skill` has no package-level build; validate through Engine skill/iota-fun tests and the runtime guide relevant to the changed language.
+- Docker storage defaults to a minimal Redis-only profile. Use `deployment/scripts/start-storage.sh --full` for Redis + MinIO + Milvus, and add `--ha` for Redis Sentinel.
 
 ## Backend Verification Rule
 
@@ -115,13 +115,13 @@ Use `deployment/scripts/ensure-backends.sh --check-only` for shared backend disc
 When reviewing code or docs, pay extra attention to:
 
 - approval flow consistency between Engine, Agent, App, and diagrams
-- WebSocket inbound/outbound message schema consistency
-- whether App approval decisions are actually wired beyond UI events
+- WebSocket inbound/outbound message schema consistency, including `approval_result`, `visibility_snapshot.visibility`, and `pubsub_event.message`
+- approval request/decision ordering across Engine, Agent, App, including duplicate `waiting_approval` regressions
 - visibility / trace / replay coverage versus documentation claims
 - session / execution ownership and arrow direction in architecture diagrams
 - Redis key naming and persistence path descriptions
 - skill execution path consistency (`SKILL.md` frontmatter, `skill.roots`, MCP server config, iota-fun cache)
-- backend credential handling and redaction in examples, logs, visibility, and snapshots
+- backend credential handling and redaction in examples, logs, visibility, snapshots, and subprocess env cleanup lists
 
 ## Testing
 

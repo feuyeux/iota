@@ -29,14 +29,15 @@ The root directory is the single Git repository for Iota. There is no root packa
 
 - Backend credentials, model settings, and endpoints are resolved through layered config plus Redis distributed config overlays.
 - Config loading supports defaults, user `~/.iota/config.yaml`, project `iota.config.yaml`, selected environment overrides, and Redis scopes (`global`, `backend`, `session`, `user`).
-- Gemini backend verification requires a real traced execution, not just executable detection.
-- Agent WebSocket `/api/v1/stream` currently accepts `execute`, `interrupt`, `subscribe_app_session`, and `subscribe_visibility` inbound messages.
-- App approval UI can send `approval_decision`, but Agent WebSocket inbound schema does not currently route that message into `engine.resolveApproval()`. Do not describe an implemented App approval-decision protocol unless code and tests exist.
+- Backend verification for Claude Code, Codex, Gemini CLI, Hermes, and OpenCode requires a real traced execution, not just executable detection.
+- Agent WebSocket `/api/v1/stream` currently accepts `execute`, `interrupt`, `subscribe_app_session`, `subscribe_visibility`, and `approval_decision` inbound messages.
+- App approval UI sends `approval_decision`; Agent routes it into `engine.resolveApproval()`. Engine deferred approval requests are pushed to subscribed App sessions as `app_delta` approval cards.
 - Approval is enforced in Engine through policy and approval hooks. CLI uses `CliApprovalHook`; Agent constructs Engine with `DeferredApprovalHook`.
 - Engine loads structured skills from configured `skill.roots`, falling back to repository-adjacent `iota-skill` when empty.
 - Executable skills run through `SkillRunner -> McpRouter -> configured MCP server`; do not bypass MCP to call iota-fun internals directly.
 - The `iota-fun` MCP server is implemented in Engine; function sources live under `iota-skill/pet-generator/iota-fun/`; compiled artifacts are cached under `$HOME/.iota/iota-fun`.
 - Architecture and sequence diagrams must state exact arrow source and target boxes for every line.
+- Docker storage defaults to Redis only. Use `deployment/scripts/start-storage.sh --full` for Redis + MinIO + Milvus and `--ha` for Redis Sentinel.
 
 ## Development Commands
 
@@ -79,22 +80,21 @@ For Gemini CLI adapter internals, see:
 
 ## Documentation Index
 
-- `docs/guides/README.md`
-- `docs/guides/00-architecture-overview.md`
-- `docs/guides/02-cli-guide.md`
-- `docs/guides/03-tui-guide.md`
-- `docs/guides/04-agent-guide.md`
-- `docs/guides/05-app-guide.md`
-- `docs/guides/06-engine-guide.md`
-- `docs/guides/07-visibility-trace-guide.md`
-- `docs/guides/08-fun-call-guide.md`
-- `docs/guides/09-fun-runtime-install-guide.md`
-- `docs/guides/11-iota-skill.md`
-- `docs/guides/12-iota-memory.md`
-- `docs/requirement/iota_engine_design_0425.md`
-- `docs/requirement/iota_app_design.md`
-- `docs/requirement/iota_memory_design.md`
-- `docs/requirement/IMPLEMENTATION_STATUS.md`
+Primary docs are consolidated under `docs/iota-guides/`:
+
+- `docs/iota-guides/README.md`
+- `docs/iota-guides/01-architecture.md`
+- `docs/iota-guides/02-engine.md`
+- `docs/iota-guides/03-backend-adapters.md`
+- `docs/iota-guides/04-cli-tui.md`
+- `docs/iota-guides/05-agent.md`
+- `docs/iota-guides/06-app.md`
+- `docs/iota-guides/07-visibility-trace.md`
+- `docs/iota-guides/08-memory.md`
+- `docs/iota-guides/09-skill-fun.md`
+- `docs/iota-guides/10-deployment.md`
+
+Legacy `docs/guides/`, `docs/diagrams/`, and `docs/plan/` content has been consolidated; do not recreate parallel guide trees.
 
 ## Safety
 

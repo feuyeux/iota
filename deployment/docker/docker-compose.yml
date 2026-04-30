@@ -1,12 +1,27 @@
 version: '3.8'
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Iota Infrastructure — Docker Compose with Profiles
+#
+# Profiles:
+#   (none)    → minimal: Redis only (sufficient for dev with Engine/CLI/Agent)
+#   full      → Redis + MinIO + Milvus (production: snapshots + vector memory)
+#   ha        → adds Redis Sentinel for high availability
+#
+# Usage:
+#   docker compose up -d                         # minimal (Redis only)
+#   docker compose --profile full up -d          # full stack
+#   docker compose --profile full --profile ha up -d  # full + HA
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
+  # ── Always started (no profile = core) ────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: iota-redis
     command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     ports:
-      - "6379:6379"
+      - "${IOTA_REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -16,28 +31,33 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # ── Profile: ha ───────────────────────────────────────────────────────────
   redis-sentinel:
     image: redis:7-alpine
     container_name: iota-redis-sentinel
+    profiles: ["ha"]
     command: redis-sentinel /etc/redis/sentinel.conf
     ports:
-      - "26379:26379"
+      - "${IOTA_SENTINEL_PORT:-26379}:26379"
     volumes:
       - ./redis-sentinel.conf:/etc/redis/sentinel.conf
       - sentinel-data:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
+  # ── Profile: full ─────────────────────────────────────────────────────────
   minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     container_name: iota-minio
+    profiles: ["full"]
     environment:
-      MINIO_ROOT_USER: iota
-      MINIO_ROOT_PASSWORD: iotasecret
+      MINIO_ROOT_USER: "${IOTA_MINIO_USER:-iota}"
+      MINIO_ROOT_PASSWORD: "${IOTA_MINIO_PASSWORD:-iotasecret}"
     ports:
-      - "9002:9000"
-      - "9003:9001"
+      - "${IOTA_MINIO_API_PORT:-9002}:9000"
+      - "${IOTA_MINIO_CONSOLE_PORT:-9003}:9001"
     volumes:
       - iota-minio-data:/data
     command: minio server /data --console-address ":9001"
@@ -48,10 +68,31 @@ services:
       retries: 3
     restart: unless-stopped
 
+  milvus:
+    image: milvusdb/milvus:v2.4-latest
+    container_name: iota-milvus
+    profiles: ["full"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      COMMON_STORAGETYPE: local
+    ports:
+      - "${IOTA_MILVUS_PORT:-19530}:19530"
+      - "${IOTA_MILVUS_GRPC_PORT:-9091}:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   redis-data:
   sentinel-data:
   iota-minio-data:
+  milvus-data:
 
 networks:
   default:

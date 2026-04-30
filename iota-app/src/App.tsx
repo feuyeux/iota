@@ -11,6 +11,7 @@ import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { ExecutionReplayModal } from './components/inspector/ExecutionReplayModal'
 import { OperationsDrawer } from './components/admin/OperationsDrawer'
 import { WorkspaceExplorer } from './components/workspace/WorkspaceExplorer'
+import { IotaLogo } from './components/brand/IotaLogo'
 
 function App() {
   const { sessionId, setSessionId, updateSnapshot } = useSessionStore();
@@ -74,6 +75,7 @@ function App() {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-iota-bg">
         <div className="flex flex-col items-center space-y-3">
+          <IotaLogo showWordmark />
           <div className="w-8 h-8 border-4 border-iota-accent/20 border-t-iota-accent rounded-full animate-spin"></div>
           <span className="text-sm font-medium text-iota-text/60 italic tabular-nums tracking-widest uppercase">Initializing...</span>
         </div>

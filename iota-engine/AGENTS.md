@@ -51,6 +51,8 @@ Each adapter lives in `src/backend/`:
 | HermesAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 | OpenCodeAcpAdapter | long-running subprocess | ACP JSON-RPC 2.0 |
 
+ACP adapters expose `mcpResponseChannel: true`; legacy native Claude/Codex/Gemini expose `mcpResponseChannel: false`. Keep `BackendStatusView.capabilities.mcpResponseChannel` and Agent status mapping in sync with backend capabilities.
+
 ## Hard Constraints
 
 - Backend protocol logic stays in `src/backend/`.
@@ -64,8 +66,7 @@ Each adapter lives in `src/backend/`:
 ## Current Implementation Notes
 
 - Approval is enforced by Engine through approval policy and approval hooks. `CliApprovalHook` is used by CLI; Agent constructs Engine with `DeferredApprovalHook`.
-- `IotaEngine.resolveApproval()` exists for deferred approval hooks, but Agent WebSocket inbound messages currently do not include `approval_decision` in the accepted `IncomingMessage` union or route it into `resolveApproval()`.
-- `src/approval/guard.ts` exists and shares helpers, but confirm real wiring in `src/engine.ts` before treating it as authoritative.
+- `IotaEngine.resolveApproval()` is wired through Agent WebSocket `approval_decision`; Engine deferred approval requests are surfaced to subscribed App sessions as approval `app_delta` items.
 - Config loading merges defaults, user `~/.iota/config.yaml`, project `iota.config.yaml`, selected env overrides, and optional Redis distributed config overlays.
 - Redis distributed config is the operational source for backend credentials and model settings in shared deployments. Do not reintroduce deleted backend-local credential files.
 - `skill.roots` is part of `IotaConfig`; when empty, Engine falls back to the repository-adjacent `iota-skill` directory.
@@ -99,12 +100,12 @@ node dist/index.js run --backend <name> --trace "ping"
 
 For Hermes, inspect `hermes config show` and reject dead local-gateway configs.
 
-For skill or iota-fun changes, run the relevant Engine tests and, when runtime languages are touched, follow `docs/guides/09-fun-runtime-install-guide.md` for the language-specific toolchain check.
+For skill or iota-fun changes, run the relevant Engine tests and, when runtime languages are touched, follow `docs/iota-guides/09-skill-fun.md` for the language-specific toolchain check.
 
 ## Testing Focus
 
-- protocol parsing and backend adapter event mapping
-- approval flow and waiting state ordering
+- protocol parsing and backend adapter event mapping across Claude, Codex, Gemini, Hermes, and OpenCode
+- approval flow and waiting state ordering; ACP permission mappers must not duplicate Engine-owned `waiting_approval` states
 - deferred approval boundaries between Engine and Agent
 - visibility generation, App snapshots, App read model shaping, and redaction
 - memory mapping, retrieval, injection, storage, and visibility

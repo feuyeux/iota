@@ -51,15 +51,3 @@ export function createFsWatcher(workspaceRoot: string): WorkspaceWatcher {
     },
   };
 }
-
-/** Noop watcher for environments where fs.watch is unavailable */
-export function createNoopWatcher(): WorkspaceWatcher {
-  return {
-    getChangedPaths(): string[] {
-      return [];
-    },
-    close() {
-      return undefined;
-    },
-  };
-}

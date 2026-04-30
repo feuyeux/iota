@@ -10,6 +10,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useSessionStore } from '../../store/useSessionStore';
 import { api } from '../../lib/api';
+import { IotaLogo } from '../brand/IotaLogo';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -44,9 +45,8 @@ export const Sidebar: React.FC<{
 
   return (
     <aside className="w-64 flex flex-col h-full bg-white border-r border-iota-border">
-      <div className="p-4 border-b border-iota-border flex items-center space-x-3">
-        <div className="w-8 h-8 bg-iota-accent rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-iota-accent/20 cursor-default">I</div>
-        <span className="font-bold text-iota-heading text-sm tracking-tight uppercase">Iota Engine</span>
+      <div className="p-4 border-b border-iota-border">
+        <IotaLogo showWordmark />
       </div>
 
       <div className="p-3">

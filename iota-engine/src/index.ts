@@ -1,6 +1,5 @@
 export { IotaEngine } from "./engine.js";
 export { IotaFunEngine } from "./fun-engine.js";
-export { detectFunIntent } from "./fun-intent.js";
 export type {
   CreateSessionOptions,
   IotaEngineOptions,
@@ -49,7 +48,6 @@ export type {
 } from "./approval/hook.js";
 export {
   loadConfig,
-  resolveConfigPath,
   setConfigValue,
   exportConfig,
   importConfigToRedis,
@@ -70,11 +68,7 @@ export type {
 export { runMemoryGc } from "./memory/gc.js";
 export type { GcResult } from "./memory/gc.js";
 export type { WorkspaceSnapshot } from "./workspace/snapshot.js";
-export {
-  normalizeEvent,
-  isValidEvent,
-  sanitizeEvent,
-} from "./event/normalizer.js";
+
 export type { MetricsSnapshot } from "./metrics/collector.js";
 export type {
   StorageBackend,
